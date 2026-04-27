@@ -2,9 +2,12 @@
 
 import json
 import re
+import logging
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 class JudgeResult(BaseModel):
@@ -57,15 +60,20 @@ class Grader:
         total_weighted_score = 0
         total_possible_score = 0
         
+        if not eval_case.assertions:
+            logger.warning(f"No assertions for eval case {eval_case.id} ({eval_case.name})")
+        
         for assertion in eval_case.assertions:
-            result = self._evaluate_assertion(assertion, model_output)
-            results.append(result)
-            
-            # Calculate weighted score
-            weight_multiplier = self._get_weight_multiplier(assertion.weight)
-            if result.passed:
-                total_weighted_score += weight_multiplier
-            total_possible_score += weight_multiplier
+            try:
+                result = self._evaluate_assertion(assertion, model_output)
+                results.append(result)
+                
+                weight_multiplier = self._get_weight_multiplier(assertion.weight)
+                if result.passed:
+                    total_weighted_score += weight_multiplier
+                total_possible_score += weight_multiplier
+            except Exception as e:
+                logger.error(f"Failed to evaluate assertion {assertion.name}: {e}")
         
         # Calculate pass rate
         pass_rate = total_weighted_score / total_possible_score if total_possible_score > 0 else 0.0
