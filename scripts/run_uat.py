@@ -2,6 +2,8 @@
 import sys
 import json
 import time
+import asyncio
+import hashlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -15,30 +17,52 @@ from engine.reporter import Reporter
 
 PROJECT_ROOT = Path("/mnt/e/Private/opencode优化/xgate")
 
-def load_eval_cases(skill_name, spec, adapter):
-    import os, json as j
-    cache = Path(f"results/{skill_name}-evals-cache.json")
-    if cache.exists():
-        print(f"  Loading cached eval cases...")
+def get_cache_path(skill_name: str) -> Path:
+    return Path("results") / f"{skill_name}-evals-cache.json"
+
+def load_or_generate_evals(skill_name: str, skill_path: str, adapter, force_regenerate: bool = False):
+    cache = get_cache_path(skill_name)
+    if cache.exists() and not force_regenerate:
+        print(f"  ⚡ Loaded cached eval cases from {cache.name}")
         return json.loads(cache.read_text())
     
     from engine.testgen import EvalGenerator
+    spec = parse_skill_md(skill_path)
     gen = EvalGenerator()
     prompt = gen._prepare_generation_prompt(spec)
-    try:
-        resp = adapter.chat([{"role": "user", "content": prompt}])
-        evals = gen._parse_evals_response(resp)
-        cases = evals.get("eval_cases", evals.get("evals", []))
-        if cases:
-            cache.write_text(json.dumps(cases, ensure_ascii=False))
-            return cases
-    except Exception as e:
-        print(f"  LLM gen failed: {e}, using template")
     
-    tmpl = gen.minimum_evals_template
-    return tmpl.get("eval_cases", tmpl.get("evals", []))
+    print(f"  🔄 Generating eval cases via LLM ({len(prompt)} chars)...")
+    t0 = time.time()
+    resp = adapter.chat([{"role": "user", "content": prompt}])
+    evals = gen._parse_evals_response(resp)
+    print(f"  ✅ Generated in {time.time()-t0:.1f}s")
+    
+    if evals.get("eval_cases") or evals.get("evals"):
+        cache.write_text(json.dumps(evals, ensure_ascii=False))
+        print(f"  💾 Cached to {cache.name}")
+    return evals
 
-def run_single_skill(skill_path, output_dir):
+async def run_evals_concurrently(adapter, eval_cases, max_concurrency: int = 5):
+    semaphore = asyncio.Semaphore(max_concurrency)
+    async def _run(ec):
+        async with semaphore:
+            loop = asyncio.get_event_loop()
+            prompt = ec.get("input", ec.get("prompt", ""))
+            return await loop.run_in_executor(None, lambda: adapter.chat([{"role": "user", "content": prompt}]))
+    
+    tasks = [_run(ec) for ec in eval_cases]
+    return await asyncio.gather(*tasks)
+
+def normalize_assertions(eval_cases):
+    for ec in eval_cases:
+        for i, a in enumerate(ec.get("assertions", [])):
+            if isinstance(a, dict):
+                if "name" not in a: a["name"] = f"a{i}"
+                if "value" not in a: a["value"] = ""
+                if isinstance(a.get("weight"), float): a["weight"] = max(1, int(a["weight"]*10))
+    return eval_cases
+
+def run_single_skill(skill_path, output_dir, force_regenerate: bool = False):
     output_dir.mkdir(parents=True, exist_ok=True)
     skill_name = Path(skill_path).parent.name
     print(f"\n{'='*60}")
@@ -50,50 +74,43 @@ def run_single_skill(skill_path, output_dir):
         print("❌ No models configured")
         return None
     mc = config.models[0]
-    primary = mc.model_name
-    adapter = AnthropicCompatAdapter(base_url=mc.base_url, api_key=mc.api_key, model=primary, fallback_model=mc.fallback_model)
+    adapter = AnthropicCompatAdapter(base_url=mc.base_url, api_key=mc.api_key, model=mc.model_name, fallback_model=mc.fallback_model)
     
     print(f"\n[Phase 0] Parsing SKILL.md...")
     spec = parse_skill_md(skill_path)
     print(f"  Name: {spec['name']}, confidence={spec['parse_confidence']:.2f}")
-    print(f"  Steps: {len(spec['workflow_steps'])}, Anti-patterns: {len(spec['anti_patterns'])}")
     
-    print(f"\n[Phase 1] Loading eval cases...")
-    eval_cases = load_eval_cases(skill_name, spec, adapter)
+    print(f"\n[Phase 1] Loading/Generating eval cases...")
+    evals = load_or_generate_evals(skill_name, skill_path, adapter, force_regenerate)
+    eval_cases = evals.get("eval_cases", evals.get("evals", []))
+    eval_cases = normalize_assertions(eval_cases)
     print(f"  Loaded {len(eval_cases)} eval cases")
     
     if not eval_cases:
         print("❌ No eval cases")
         return None
     
-    print(f"\n[Phase 2] Executing eval cases with {primary}...")
-    prompts = [{"messages": [{"role": "user", "content": e.get("input", e.get("prompt", ""))}]} for e in eval_cases]
+    print(f"\n[Phase 2] Executing {len(eval_cases)} eval cases concurrently...")
     t0 = time.time()
-    outputs = adapter.batch_chat(prompts)
-    print(f"  Completed {len(outputs)} responses in {time.time()-t0:.0f}s")
+    outputs = asyncio.run(run_evals_concurrently(adapter, eval_cases, max_concurrency=5))
+    print(f"  ✅ Completed in {time.time()-t0:.1f}s")
     
     print(f"\n[Phase 2] Grading...")
     grader = Grader()
     all_gradings = []
     for eval_case, output in zip(eval_cases, outputs):
-        assertions_raw = eval_case.get("assertions", [])
         assertions = []
-        for a in assertions_raw:
+        for a in eval_case.get("assertions", []):
             if isinstance(a, dict):
-                try:
-                    assertions.append(EvalAssertion(**a))
-                except Exception:
-                    pass
-        ec_obj = type('EvalCase', (), {
-            "id": eval_case.get("id", 0),
-            "name": eval_case.get("name", "unknown"),
-            "category": eval_case.get("category", "normal"),
-            "prompt": eval_case.get("input", eval_case.get("prompt", "")),
-            "assertions": assertions,
+                try: assertions.append(EvalAssertion(**a))
+                except: pass
+        ec_obj = type('EC', (), {
+            "id": eval_case.get("id",0), "name": eval_case.get("name",""), 
+            "category": eval_case.get("category",""), "prompt": eval_case.get("input",""), 
+            "assertions": assertions
         })()
         grading = grader.grade_output(ec_obj, output)
         grading["run"] = "with-skill"
-        grading["model"] = primary
         all_gradings.append(grading)
         passed = sum(1 for a in grading.get("assertions", []) if getattr(a, "passed", False))
         total = len(grading.get("assertions", []))
@@ -131,33 +148,30 @@ def main():
     skill_paths = []
     for name in ["delphi-review", "sprint-flow", "test-specification-alignment"]:
         p = PROJECT_ROOT / "skills" / name / "SKILL.md"
-        if p.exists():
-            skill_paths.append((name, str(p)))
+        if p.exists(): skill_paths.append((name, str(p)))
     p = Path.home() / ".config" / "opencode" / "skills" / "gstack" / "plan-eng-review" / "SKILL.md"
-    if p.exists():
-        skill_paths.append(("plan-eng-review", str(p)))
+    if p.exists(): skill_paths.append(("plan-eng-review", str(p)))
     print(f"Found {len(skill_paths)} skills to evaluate")
     
     output_dir = Path("results")
     output_dir.mkdir(exist_ok=True)
+    
+    force_regenerate = "--force-regenerate" in sys.argv
     results = {}
     for name, path in skill_paths:
         try:
-            result = run_single_skill(path, output_dir)
+            result = run_single_skill(path, output_dir, force_regenerate)
             results[name] = result
         except Exception as e:
             print(f"❌ {name} failed: {e}")
-            import traceback
-            traceback.print_exc()
+            import traceback; traceback.print_exc()
     
     print(f"\n{'='*60}")
     print(f"  UAT Summary")
     print(f"{'='*60}")
     for name, result in results.items():
-        if result:
-            print(f"  {name}: {result.get('verdict', 'N/A')} (score: {result.get('overall_score', 0):.2%})")
-        else:
-            print(f"  {name}: FAILED")
+        if result: print(f"  {name}: {result.get('verdict', 'N/A')} (score: {result.get('overall_score', 0):.2%})")
+        else: print(f"  {name}: FAILED")
     return 0
 
 if __name__ == "__main__":
