@@ -1,0 +1,28 @@
+# User profiles for dialogue mode evaluation
+profiles:
+  - name: "clear_intents"
+    description: "User provides direct, clear requests with all necessary details upfront"
+    initial_messages:
+      - "I want to create a Python function that calculates the factorial of a number. Can you implement this?"
+      - "Build me a REST API endpoint that returns the current time in ISO8601 format."
+      - "Please create a function that validates an email address using regex. Return True for valid emails."
+    follow_up_style: "structured"
+    weight: 0.3
+
+  - name: "vague_intents"
+    description: "User gives unclear, incomplete requests that need clarification and guidance"
+    initial_messages:
+      - "I need something that processes data but I'm not sure how yet. Can you help me figure it out?"
+      - "Make a thing that talks to a database. I'm not sure what I want to do with it once connected."
+      - "There's an issue with my application but I'm not quite certain where the problem lies."
+    follow_up_style: "exploratory"
+    weight: 0.5
+
+  - name: "chaotic_intents"
+    description: "User changes topic mid-conversation, goes off-track, introduces random tangents"
+    initial_messages:
+      - "By the way, can you show me how to implement a bubble sort? I was thinking about algorithms earlier..."
+      - "Actually, now I remember I had that dream about a calculator app, but I also wanted to know about recursion."
+      - "What's the weather like today? Wait, no, I meant to ask about creating a simple CRUD application."
+    follow_up_style: "disjointed"
+    weight: 0.2
