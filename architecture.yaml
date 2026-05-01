@@ -1,0 +1,147 @@
+# Architecture Configuration for skill-cert
+# Clean Architecture layer boundaries adapted for Python evaluation engine
+
+version: 1
+
+# Layer definitions — adapted from src/ layout to this Python project's structure
+# domain = engine/ (core pipeline), infrastructure = adapters/ (LLM providers),
+# presentation = skill_cert/ (CLI), support = prompts/ + schemas/ + templates/
+layers:
+  domain:
+    pattern: "engine/**"
+    description: "Core evaluation pipeline: parsing, testgen, runner, grading, metrics, drift, report"
+    allowedImports: ["adapters/**", "prompts/**", "schemas/**", "templates/**"]
+    forbiddenImports: ["skill_cert/**"]
+    
+  infrastructure:
+    pattern: "adapters/**"
+    description: "LLM provider adapters (Anthropic, OpenAI-compatible) — external API integration"
+    allowedImports: []
+    forbiddenImports: ["engine/**", "skill_cert/**"]
+    
+  presentation:
+    pattern: "skill_cert/**"
+    description: "CLI entry point — user-facing interface"
+    allowedImports: ["engine/**", "adapters/**"]
+    forbiddenImports: []
+    
+  support:
+    pattern: "prompts/**"
+    description: "LLM prompt templates — reference data, no business logic"
+    allowedImports: []
+    forbiddenImports: ["engine/**", "adapters/**", "skill_cert/**"]
+
+# Rule activation and severity
+# 
+# Severity levels:
+#   - error: Blocks commit, must be fixed immediately
+#   - warning: Shows warning but allows commit
+#   - info: Informational only, no blocking
+#
+# Architecture Rules:
+#   ARCH-001: Domain isolation - Domain must not import from outer layers
+#   ARCH-002: Application boundary - Application must not import Infrastructure/Presentation
+#   ARCH-003: Presentation boundary - Presentation must not import Domain directly
+#   ARCH-004: Infrastructure boundary - Infrastructure must not import Presentation
+#   ARCH-005: Cross-layer cycles - No circular dependencies across layers
+#   ARCH-006: Within-layer cycles - No circular dependencies within same layer
+#   ARCH-007: Module-level cycles - No circular dependencies between modules
+#   ARCH-008: Repository location - Repositories must be in Infrastructure layer
+#   ARCH-009: Service location - Domain services must be in Domain layer
+#   ARCH-010: Controller location - Controllers must be in Presentation layer
+#   ARCH-011: LCOM threshold - Lack of Cohesion of Methods metric
+#   ARCH-012: CBO threshold - Coupling Between Objects metric
+#   ARCH-013: Fan-out threshold - Number of outgoing dependencies
+#   ARCH-014: Fan-in threshold - Number of incoming dependencies
+
+rules:
+  ARCH-001:
+    enabled: true
+    severity: error
+    description: "Engine must not import from skill_cert (presentation)"
+
+  ARCH-002:
+    enabled: true
+    severity: error
+    description: "Adapters must not import from engine or skill_cert"
+
+  ARCH-003:
+    enabled: false
+    severity: warning
+    description: "Presentation may import domain (Python convention — relaxed)"
+
+  ARCH-004:
+    enabled: true
+    severity: warning
+    description: "Prompt templates must not import from code layers"
+
+  ARCH-005:
+    enabled: true
+    severity: error
+    description: "No circular dependencies across layers"
+
+  ARCH-006:
+    enabled: false
+    severity: warning
+    description: "No circular dependencies within same layer"
+
+  ARCH-007:
+    enabled: true
+    severity: warning
+    description: "No circular dependencies between engine modules"
+
+  ARCH-008:
+    enabled: false
+    severity: info
+    description: "Not applicable — no repository pattern"
+
+  ARCH-009:
+    enabled: false
+    severity: info
+    description: "Not applicable — all domain logic in engine/"
+
+  ARCH-010:
+    enabled: true
+    severity: warning
+    description: "CLI entry point must reside in skill_cert/"
+
+  ARCH-011:
+    enabled: false
+    severity: warning
+    threshold: 0.8
+    description: "LCOM — not configured for Python"
+
+  ARCH-012:
+    enabled: false
+    severity: warning
+    threshold: 10
+    description: "CBO — not configured for Python"
+
+  ARCH-013:
+    enabled: false
+    severity: warning
+    threshold: 7
+    description: "Fan-out — not configured for Python"
+
+  ARCH-014:
+    enabled: false
+    severity: info
+    threshold: 20
+    description: "Fan-in — not configured for Python"
+
+baseline:
+  enabled: false
+  file: ".architecture-baseline.json"
+  mode: "ratchet"
+
+output:
+  format: json
+  file: "architecture-report.json"
+
+integration:
+  documentationOnlySkip: true
+  toolRequired: false
+  languages:
+    python:
+      tool: "deply"
+      minVersion: "0.5.0"
