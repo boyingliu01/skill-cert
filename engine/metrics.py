@@ -28,16 +28,29 @@ class MetricsCalculator:
         l2_score = self._calculate_l2_with_without_skill_delta(eval_results)
         l3_score = self._calculate_l3_step_adherence(eval_results)
         l4_score = self._calculate_l4_execution_stability(eval_results)
-        
-        # Calculate overall score as weighted average
-        overall_score = (l1_score + l2_score + l3_score + l4_score) / 4.0 if eval_results else 0.0
-        
+        l5_score = self._calculate_l5_step_efficiency(eval_results)
+        l6_score = self._calculate_l6_trajectory_quality(eval_results)
+
+        active_metrics = 6
+        score_sum = l1_score + l2_score + l3_score + l4_score
+        if l5_score is not None:
+            score_sum += l5_score
+        else:
+            active_metrics -= 1
+        if l6_score is not None:
+            score_sum += l6_score
+        else:
+            active_metrics -= 1
+        overall_score = score_sum / active_metrics if eval_results and active_metrics > 0 else 0.0
+
         return {
             "overall_score": overall_score,
             "l1_trigger_accuracy": l1_score,
             "l2_with_without_skill_delta": l2_score,
             "l3_step_adherence": l3_score,
             "l4_execution_stability": l4_score,
+            "l5_step_efficiency": l5_score,
+            "l6_trajectory_quality": l6_score,
             "metrics_breakdown": {
                 "l1_details": self._get_l1_details(eval_results),
                 "l2_details": self._get_l2_details(eval_results),
@@ -214,4 +227,58 @@ class MetricsCalculator:
             "avg_deterministic_pass_rate": avg_pass_rate,
             "stdev_deterministic_pass_rate": std_dev,
             "execution_stability": stability_score
+        }
+
+    def _calculate_l5_step_efficiency(self, eval_results) -> float | None:
+        violations = 0
+        trace_found = False
+        for r in eval_results:
+            trace = r.get("trace")
+            if trace is not None:
+                trace_found = True
+                if trace.get("violations"):
+                    violations += len(trace["violations"])
+        if not trace_found:
+            return None
+        if violations == 0:
+            return 1.0
+        if violations == 1:
+            return 0.7
+        return 0.3
+
+    def _calculate_l6_trajectory_quality(self, eval_results) -> float | None:
+        dialogue_results = [r for r in eval_results if r.get("mode") == "dialogue"]
+        if not dialogue_results:
+            return None
+        scores = []
+        for r in dialogue_results:
+            sim = r.get("turn_similarity")
+            if sim is not None:
+                scores.append(min(1.0, max(0.0, float(sim))))
+        if not scores:
+            return None
+        return round(sum(scores) / len(scores), 2)
+
+    def _get_l5_details(self, eval_results) -> dict:
+        violations = 0
+        trace_found = False
+        for r in eval_results:
+            trace = r.get("trace")
+            if trace is not None:
+                trace_found = True
+                violations += len(trace.get("violations", []))
+        score = self._calculate_l5_step_efficiency(eval_results)
+        return {
+            "step_efficiency_score": score,
+            "total_violations": violations,
+            "trace_available": trace_found,
+        }
+
+    def _get_l6_details(self, eval_results) -> dict:
+        dialogue_results = [r for r in eval_results if r.get("mode") == "dialogue"]
+        score = self._calculate_l6_trajectory_quality(eval_results)
+        return {
+            "trajectory_quality_score": score,
+            "dialogue_count": len(dialogue_results),
+            "measurement_method": "embedding_cosine_similarity",
         }
