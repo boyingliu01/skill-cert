@@ -27,6 +27,96 @@ class SkillSpec(BaseModel):
     parse_confidence: float = 0.0
 
 
+class SchemaViolation:
+    def __init__(self, field: str, reason: str):
+        self.field = field
+        self.reason = reason
+
+    def __repr__(self):
+        return f"SchemaViolation(field='{self.field}', reason='{self.reason}')"
+
+
+class SchemaValidationResult:
+    def __init__(self, violations: list, confidence_penalty: float = 0.0):
+        self.violations = violations
+        self.confidence_penalty = confidence_penalty
+
+    @property
+    def is_valid(self) -> bool:
+        return len(self.violations) == 0
+
+
+MAX_DESCRIPTION_LENGTH = 500
+FLOW_LANGUAGE_PATTERNS = [
+    r"\bstep\s+\d+", r"\bfirst\s*[,\s]+\s*then\b", r"\bafter that\b",
+    r"\bnext\s*[,\s]+\s*you\b", r"\bworkflow\b", r"\bfollow\s+these\s+steps\b",
+]
+
+
+def _validate_schema(spec: SkillSpec, raw_content: str) -> SchemaValidationResult:
+    violations = []
+    confidence_penalty = 0.0
+
+    has_security = _section_exists(raw_content, "Security Notes")
+    if not has_security:
+        violations.append(SchemaViolation("security_notes", "section missing or empty"))
+        confidence_penalty += 0.15
+
+    has_permissions = _section_exists(raw_content, "Permissions")
+    if not has_permissions:
+        violations.append(SchemaViolation("permissions", "section missing or empty"))
+        confidence_penalty += 0.15
+
+    has_scope, scope_has_does_not = _scope_check(raw_content)
+    if not has_scope:
+        violations.append(SchemaViolation("scope", "section missing"))
+        confidence_penalty += 0.10
+    elif not scope_has_does_not:
+        violations.append(SchemaViolation("scope", "missing 'Does NOT' clause"))
+        confidence_penalty += 0.10
+
+    if len(spec.description) > MAX_DESCRIPTION_LENGTH:
+        violations.append(SchemaViolation(
+            "description", f"exceeds {MAX_DESCRIPTION_LENGTH} characters ({len(spec.description)})"
+        ))
+        confidence_penalty += 0.05
+
+    if _has_flow_language(spec.description):
+        violations.append(SchemaViolation(
+            "description", "contains workflow/step-by-step language — should describe what, not how"
+        ))
+        confidence_penalty += 0.10
+
+    return SchemaValidationResult(violations=violations, confidence_penalty=round(confidence_penalty, 2))
+
+
+def _section_exists(content: str, section_name: str) -> bool:
+    pattern = rf"^##\s+{re.escape(section_name)}\s*$(.+?)(?=^##\s|\Z)"
+    match = re.search(pattern, content, re.MULTILINE | re.DOTALL)
+    if not match:
+        return False
+    body = match.group(1).strip()
+    return len(body) > 0
+
+
+def _scope_check(content: str) -> tuple:
+    has_scope = _section_exists(content, "Scope")
+    if not has_scope:
+        return False, False
+    pattern = rf"^##\s+Scope\s*$(.+?)(?=^##\s|\Z)"
+    match = re.search(pattern, content, re.MULTILINE | re.DOTALL)
+    body = match.group(1).strip().lower() if match else ""
+    has_does_not = "does not" in body
+    return True, has_does_not
+
+
+def _has_flow_language(text: str) -> bool:
+    for pattern in FLOW_LANGUAGE_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    return False
+
+
 def parse_skill_md(file_path: str) -> dict:
     """Parse a SKILL.md file and return structured SkillSpec as dict."""
     path = Path(file_path)
@@ -72,13 +162,24 @@ def parse_skill_md(file_path: str) -> dict:
         has_headings=bool(headings),
     )
 
-    # Step 5: Determine parse method
+    # Step 5: Schema validation (REQ-P0-002)
+    schema_result = _validate_schema(spec, content)
+    spec.parse_confidence = max(0.0, spec.parse_confidence - schema_result.confidence_penalty)
+
+    # Step 6: Determine parse method
     if spec.parse_confidence >= 0.6 and frontmatter:
         spec.parse_method = "regex"
     else:
         spec.parse_method = "hybrid"  # Would fallback to LLM in production
 
-    return spec.model_dump(by_alias=True)
+    result = spec.model_dump(by_alias=True)
+    result["schema_validation"] = {
+        "is_valid": schema_result.is_valid,
+        "violations": [{"field": v.field, "reason": v.reason} for v in schema_result.violations],
+        "confidence_penalty": schema_result.confidence_penalty,
+    }
+
+    return result
 
 
 def _extract_frontmatter(content: str) -> dict | None:
