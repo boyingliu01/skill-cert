@@ -361,7 +361,7 @@ def test_config_with_models_from_env():
     """Test loading configuration with models from environment variable."""
     with patch.dict(os.environ, {
         "SKILL_CERT_MODELS": "gpt-4=https://api.openai.com,test.key,fallback|claude=https://api.claude.com,claude.key"
-    }):
+    }), patch.object(SkillCertConfig, "_apply_config_file", return_value={"models": []}):
         # Create a mock CLI args without models to trigger env var usage
         class MockArgs:
             max_concurrency = None

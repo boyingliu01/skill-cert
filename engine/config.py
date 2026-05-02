@@ -144,7 +144,7 @@ class SkillCertConfig(BaseModel):
                     fallback_model = config_parts[2] if len(config_parts) > 2 else None
                     
                     models.append(ModelConfig(
-                        model=name_part,
+                        model_name=name_part,
                         base_url=base_url,
                         api_key=api_key,
                         fallback_model=fallback_model
@@ -166,7 +166,7 @@ class SkillCertConfig(BaseModel):
                     fallback_model = config_parts[2] if len(config_parts) > 2 else None
                     
                     models.append(ModelConfig(
-                        model=name,
+                        model_name=name,
                         base_url=base_url,
                         api_key=api_key,
                         fallback_model=fallback_model
