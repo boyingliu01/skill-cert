@@ -5,11 +5,17 @@ from concurrent.futures import ThreadPoolExecutor
 from aiolimiter import AsyncLimiter
 import time
 
+from engine.security_probes import SecurityScanner
+from engine.envelope import EnvelopeChecker
+
 logger = logging.getLogger(__name__)
 
 
 class EvalRunner:
-    def __init__(self, max_concurrency: int = 5, rate_limit_rpm: int = 60, request_timeout: int = 120):
+    SECURITY_MAX_OUTPUT_LENGTH = 100000
+
+    def __init__(self, max_concurrency: int = 5, rate_limit_rpm: int = 60, request_timeout: int = 120,
+                 enable_security_scan: bool = True, enable_envelope: bool = True):
         self.max_concurrency = max_concurrency
         self.rate_limit_rpm = rate_limit_rpm
         self.request_timeout = request_timeout
@@ -17,6 +23,24 @@ class EvalRunner:
         self.executor = ThreadPoolExecutor(max_workers=max_concurrency)
         self.total_tokens = 0
         self.token_budget = None
+        self.scanner = SecurityScanner() if enable_security_scan else None
+        self.envelope = EnvelopeChecker(timeout_s=request_timeout) if enable_envelope else None
+
+    def _check_security(self, output: str) -> dict:
+        if not self.scanner:
+            return {"scanned": False}
+        report = self.scanner.scan(output)
+        return {
+            "scanned": True,
+            "verdict": report.verdict,
+            "score": report.score,
+            "findings_count": report.summary.get("total", 0),
+            "critical": report.summary.get("critical", 0),
+            "high": report.summary.get("high", 0),
+        }
+
+    def _check_output_length(self, output: str) -> bool:
+        return len(output) <= self.SECURITY_MAX_OUTPUT_LENGTH if output else True
 
     @staticmethod
     async def _call_adapter(model_adapter, messages):
@@ -65,6 +89,8 @@ class EvalRunner:
                             "error": None,
                             "tokens_used": token_usage.get("total_tokens", len(response.split()) if response else 0),
                             "token_breakdown": token_usage,
+                            "security": self._check_security(response),
+                            "output_length_ok": self._check_output_length(response),
                         }
                         
                         return result
@@ -149,6 +175,8 @@ class EvalRunner:
                             "error": None,
                             "tokens_used": token_usage.get("total_tokens", len(response.split()) if response else 0),
                             "token_breakdown": token_usage,
+                            "security": self._check_security(response),
+                            "output_length_ok": self._check_output_length(response),
                         }
                         
                         return result
