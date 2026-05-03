@@ -1,7 +1,6 @@
 """SKILL.md parser — extracts structured semantic model from markdown skill files."""
 
 import re
-import json
 from pathlib import Path
 
 from markdown_it import MarkdownIt
@@ -110,7 +109,7 @@ def _scope_check(content: str) -> tuple:
     has_scope = _section_exists(content, "Scope")
     if not has_scope:
         return False, False
-    pattern = rf"^##\s+Scope\s*$(.+?)(?=^##\s|\Z)"
+    pattern = r"^##\s+Scope\s*$(.+?)(?=^##\s|\Z)"
     match = re.search(pattern, content, re.MULTILINE | re.DOTALL)
     body = match.group(1).strip().lower() if match else ""
     has_does_not = "does not" in body
@@ -298,6 +297,50 @@ def _extract_anti_patterns(content: str) -> list[str]:
     return patterns
 
 
+def _of_parse_json_keys(line: str, in_json: bool) -> tuple[list[str], bool]:
+    """Parse JSON key from line inside a code block. Returns (keys, in_json_state)."""
+    stripped = line.strip()
+    if stripped.startswith("```"):
+        return [], not in_json
+    if not in_json:
+        return [], in_json
+    m = re.match(r'\s*"(\w+)"\s*:', stripped)
+    if m:
+        return [m.group(1)], in_json
+    return [], in_json
+
+
+def _of_parse_list_item(line: str) -> str | None:
+    """Extract list item from '- item' or '* item' lines."""
+    m = re.match(r"^[-*]\s+(\S.+)$", line.strip())
+    if m:
+        item = m.group(1).strip()
+        if len(item) > 2:
+            return item
+    return None
+
+
+def _of_parse_assertion_line(line: str) -> list[str]:
+    """Extract field names from 'assertions check for: `field1`, `field2`' lines."""
+    if "assertions check for" not in line.lower():
+        return []
+    m = re.search(r"check for:\s*[`']([^`'\n]+)[`']", line)
+    if not m:
+        return []
+    raw = m.group(1)
+    return [x for x in (s.strip().strip("`").strip("'").strip() for s in raw.split(",")) if len(x) > 1]
+
+
+def _of_filter_noise(outputs: list[str]) -> list[str]:
+    """Remove markdown artifacts and anti-pattern assertion lines from output items."""
+    noise = {"", "-", "--", "**", "---", "..."}
+    ap_assertion_re = re.compile(r"→\s*Output\s+MUST", re.IGNORECASE)
+    return [
+        o for o in outputs
+        if o not in noise and not o.startswith("**") and not ap_assertion_re.search(o)
+    ]
+
+
 def _extract_output_format(content: str) -> list[str]:
     """Extract output format from ## Output Format sections."""
     pattern = r"^##\s+Output Format[^\n]*$\n(.*?)(?=^##\s|\Z)"
@@ -306,29 +349,21 @@ def _extract_output_format(content: str) -> list[str]:
         return []
 
     section = match.group(1)
-    outputs = []
+    outputs: list[str] = []
     in_json = False
     for line in section.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_json = not in_json
-            continue
-        if in_json:
-            m = re.match(r'\s*"(\w+)"\s*:', stripped)
-            if m:
-                outputs.append(m.group(1))
-        # List items: "- Output item" or "* Output item"
-        elif stripped.startswith("-") or stripped.startswith("*"):
-            item = stripped[1:].strip()
-            if item:
+        keys, in_json = _of_parse_json_keys(line, in_json)
+        for k in keys:
+            if k not in outputs:
+                outputs.append(k)
+        if not in_json:
+            item = _of_parse_list_item(line)
+            if item and item not in outputs:
                 outputs.append(item)
-        # Assertion check lines
-        if "assertions check for" in stripped.lower():
-            m = re.search(r"check for:\s*[`']?([^`'\n]+)", stripped)
-            if m:
-                items = [x.strip().strip("`").strip() for x in m.group(1).split(",")]
-                outputs.extend(items)
-    return outputs
+        for field in _of_parse_assertion_line(line):
+            if field not in outputs:
+                outputs.append(field)
+    return _of_filter_noise(outputs)
 
 
 def _extract_triggers_from_frontmatter(content: str) -> list[str]:
