@@ -1,11 +1,13 @@
 id: sprint-2026-05-04-02
-phase: 1
-status: running
+phase: 6
+status: completed
 pause_reason: none
 specification: specification.yaml
 branch: feature/skill-cert-v2-enhancement
+last_commit: de12399
 notes: >
-  Sprint 2 — deferred items from Sprint 1 feedback log.
-  Scope: 2 CCN refactors + test additions.
-  Skipping Phase 0 (scope known from feedback-log.md).
-  Phase 1 auto-complete (no taste_decisions, no delphi-review needed).
+  Sprint 2 — all deferred items from Sprint 1 completed.
+  CCN fixes: _calculate_coverage 21→5, evaluate_conversation 16→5
+  CLI tests: 8 new integration tests
+  215 tests pass, source code lint clean.
+  emergent_issues_count: 0
