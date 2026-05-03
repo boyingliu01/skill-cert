@@ -128,7 +128,7 @@ class SkillCertConfig(BaseModel):
     @staticmethod
     def _parse_models_from_env(models_env: str) -> List[ModelConfig]:
         """Parse models from environment variable in format: model1=url,key,fallback|model2=url,key,fallback"""
-        models = []
+        models: list[ModelConfig] = []
         if not models_env:
             return models
         

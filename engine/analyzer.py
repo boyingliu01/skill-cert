@@ -200,7 +200,7 @@ def _extract_frontmatter(content: str) -> dict | None:
         return None
     result = {}
     current_key = None
-    current_list = None
+    current_list: list[str] | None = None
     for line in match.group(1).split("\n"):
         # List item: "  - value"
         if line.startswith("  - ") and current_key:
@@ -259,7 +259,7 @@ def _extract_workflow_steps(content: str) -> list[WorkflowStep]:
         if m:
             name = m.group(1).strip()
             if name and name not in seen:
-                steps.append(WorkflowStep(name=name, step_type="unknown", critical=False))
+                steps.append(WorkflowStep(name=name, type="unknown", critical=False))
                 seen.add(name)
             continue
         # Phase pattern: "Phase 0: NAME" or "Phase N: ..."
@@ -269,7 +269,7 @@ def _extract_workflow_steps(content: str) -> list[WorkflowStep]:
             phase_name = m.group(2).strip().rstrip("→").strip()
             entry = f"Phase {phase_num}: {phase_name}"
             if entry not in seen:
-                steps.append(WorkflowStep(name=entry, step_type="phase", critical=False))
+                steps.append(WorkflowStep(name=entry, type="phase", critical=False))
                 seen.add(entry)
     return steps
 
@@ -368,7 +368,7 @@ def _extract_output_format(content: str) -> list[str]:
 
 def _extract_triggers_from_frontmatter(content: str) -> list[str]:
     """Extract TRIGGER items from raw frontmatter block (handles folded YAML)."""
-    triggers = []
+    triggers: list[str] = []
     fm_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
     if not fm_match:
         return triggers

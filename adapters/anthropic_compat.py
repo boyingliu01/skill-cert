@@ -58,7 +58,8 @@ class AnthropicCompatAdapter(ModelAdapter):
                     if block.get("type") == "text":
                         return block["text"]
                 return json.dumps(data)
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     raise
                 time.sleep(2 ** attempt)
+        raise RuntimeError("Request failed after retries")

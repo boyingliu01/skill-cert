@@ -1,6 +1,5 @@
-import asyncio
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +12,7 @@ class DialogueRunner:
                  evaluator, 
                  skill_runner, 
                  max_turns: int = 10, 
-                 completion_signals: List[str] = None):
+                 completion_signals: List[str] | None = None):
         """
         Initialize the DialogueRunner
         

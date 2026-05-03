@@ -1,9 +1,7 @@
 """Reporting module for skill-cert engine — generates Markdown and JSON reports."""
 
 from typing import Dict, Any, Tuple, List
-from pydantic import BaseModel
-from jinja2 import Template, Environment, PackageLoader
-import json
+from jinja2 import Environment
 
 
 class Reporter:

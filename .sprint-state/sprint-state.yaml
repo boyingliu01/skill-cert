@@ -1,0 +1,10 @@
+id: sprint-2026-05-04-01
+phase: 1
+status: running
+pause_reason: none
+specification: specification.yaml
+branch: feature/skill-cert-v2-enhancement
+notes: >
+  Phase 0 (THINK) already completed in prior sessions — spec exists,
+  pain points identified (parser differentiation, OF noise, CCN).
+  Skipping directly to Phase 1-6 per user request.

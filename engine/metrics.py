@@ -1,10 +1,7 @@
 """Metrics module for skill-cert engine — calculates L1-L4 evaluation metrics."""
 
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
+from typing import Dict, Any, List
 from dataclasses import dataclass
-from statistics import stdev
-from engine.grader import EvalCase
 
 
 @dataclass

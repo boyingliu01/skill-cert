@@ -1,5 +1,4 @@
 from typing import List, Dict, Optional, Callable, Any
-from unittest.mock import AsyncMock
 
 
 class DialogueEvaluator:
@@ -36,8 +35,6 @@ class DialogueEvaluator:
         """
         # Calculate dimension scores
         round_scores = []
-        all_user_msgs = {}
-        all_assistant_msgs = {}
         
         for idx, (user_msg, assistant_msg) in enumerate(self._pair_messages(conversation)):
             # Mark first turn as critical

@@ -1,7 +1,6 @@
 """Drift detection module for skill-cert engine — detects cross-model performance variations."""
 
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
+from typing import Dict, Any, List
 from dataclasses import dataclass
 from engine.grader import EvalCase, Grader
 

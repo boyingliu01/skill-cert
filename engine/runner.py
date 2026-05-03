@@ -81,7 +81,7 @@ class EvalRunner:
         tasks = [run_single_eval(eval_case) for eval_case in evals]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        processed_results = []
+        processed_results: list[dict[str, Any]] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(f"Exception in eval {i}: {result}")
@@ -164,7 +164,7 @@ class EvalRunner:
         tasks = [run_single_eval(eval_case) for eval_case in evals]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        processed_results = []
+        processed_results: list[dict[str, Any]] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(f"Exception in eval {i}: {result}")
