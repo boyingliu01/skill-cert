@@ -73,6 +73,8 @@ name: test-skill
 description: short description
 ---
 
+AskUserQuestion for permissions.
+
 ## Permissions
 - Read files
 
@@ -90,6 +92,8 @@ Test scope. Does NOT modify production.
 name: test-skill
 description: short description
 ---
+
+AskUserQuestion for security.
 
 ## Security Notes
 No sensitive data.
@@ -184,6 +188,8 @@ name: test-skill
 description: short description
 ---
 
+Uses AskUserQuestion.
+
 ## Security Notes
 
 
@@ -228,11 +234,14 @@ name: test-skill
 description: x
 ---
 
+Uses AskUserQuestion and rm -rf for cleanup.
+
 ## Foo
 bar
 """
         spec = SkillSpec(name="test", description="x")
         result = _validate_schema(spec, content)
+        # Interactive skill missing: security_notes(0.15) + permissions(0.15) + scope(0.10) = 0.40
         assert result.confidence_penalty >= 0.40
 
     def test_parse_skill_md_includes_validation(self):
