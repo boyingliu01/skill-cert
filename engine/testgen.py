@@ -236,61 +236,49 @@ Minimum requirements:
         
         return len(eval_cases) >= 4
 
-    def _calculate_coverage(self, evals: Dict[str, Any], skill_spec: Dict[str, Any]) -> float:
-        # Get eval_cases from various possible keys
+    @staticmethod
+    def _get_eval_cases(evals: Dict[str, Any]) -> list:
         eval_cases = evals.get("eval_cases", [])
         if not eval_cases:
             for key in ["evals", "cases", "test_cases", "evaluations", "eval"]:
                 if key in evals and isinstance(evals[key], list):
-                    eval_cases = evals[key]
-                    break
-        
+                    return evals[key]
+        return eval_cases
+
+    @staticmethod
+    def _compute_section_coverage(section_items: list, assertion_set: set) -> float:
+        total = len(section_items)
+        if total == 0:
+            return 1.0
+        covered = 0
+        for item in section_items:
+            search = item.get("name", "") if isinstance(item, dict) else str(item)
+            if any(search.lower() in str(val).lower() for val in assertion_set):
+                covered += 1
+        return covered / total
+
+    def _calculate_coverage(self, evals: Dict[str, Any], skill_spec: Dict[str, Any]) -> float:
+        eval_cases = self._get_eval_cases(evals)
         if not eval_cases:
             return 0.0
-        
-        # Extract all assertion values to check against skill spec
-        all_assertion_values = []
-        for case in eval_cases:
-            for assertion in case.get("assertions", []):
-                all_assertion_values.append(assertion.get("value", ""))
-        
-        assertion_set = set(all_assertion_values)
-        
-        total_workflow_steps = len(skill_spec.get("workflow_steps", []))
-        covered_workflow_steps = 0
-        if total_workflow_steps > 0:
-            for step in skill_spec.get("workflow_steps", []):
-                step_name = step.get("name", "") if isinstance(step, dict) else str(step)
-                if any(step_name.lower() in str(val).lower() for val in assertion_set):
-                    covered_workflow_steps += 1
-            workflow_coverage = covered_workflow_steps / total_workflow_steps
-        else:
-            workflow_coverage = 1.0
-        
-        total_anti_patterns = len(skill_spec.get("anti_patterns", []))
-        covered_anti_patterns = 0
-        if total_anti_patterns > 0:
-            for pattern in skill_spec.get("anti_patterns", []):
-                pattern_lower = str(pattern).lower()
-                if any(pattern_lower in str(val).lower() for val in assertion_set):
-                    covered_anti_patterns += 1
-            anti_pattern_coverage = covered_anti_patterns / total_anti_patterns
-        else:
-            anti_pattern_coverage = 1.0
-        
-        total_output_formats = len(skill_spec.get("output_format", []))
-        covered_output_formats = 0
-        if total_output_formats > 0:
-            for fmt in skill_spec.get("output_format", []):
-                fmt_lower = str(fmt).lower()
-                if any(fmt_lower in str(val).lower() for val in assertion_set):
-                    covered_output_formats += 1
-            output_coverage = covered_output_formats / total_output_formats
-        else:
-            output_coverage = 1.0
-        
-        coverage = (workflow_coverage * 0.5) + (anti_pattern_coverage * 0.3) + (output_coverage * 0.2)
-        return coverage
+
+        assertion_set = {
+            a.get("value", "")
+            for case in eval_cases
+            for a in case.get("assertions", [])
+        }
+
+        workflow_coverage = self._compute_section_coverage(
+            skill_spec.get("workflow_steps", []), assertion_set
+        )
+        anti_pattern_coverage = self._compute_section_coverage(
+            [str(p) for p in skill_spec.get("anti_patterns", [])], assertion_set
+        )
+        output_coverage = self._compute_section_coverage(
+            skill_spec.get("output_format", []), assertion_set
+        )
+
+        return workflow_coverage * 0.5 + anti_pattern_coverage * 0.3 + output_coverage * 0.2
 
     def _prepare_review_prompt(self, evals: Dict[str, Any], skill_spec: Dict[str, Any], coverage: float) -> str:
         return f"""

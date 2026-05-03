@@ -1,0 +1,11 @@
+id: sprint-2026-05-04-02
+phase: 1
+status: running
+pause_reason: none
+specification: specification.yaml
+branch: feature/skill-cert-v2-enhancement
+notes: >
+  Sprint 2 — deferred items from Sprint 1 feedback log.
+  Scope: 2 CCN refactors + test additions.
+  Skipping Phase 0 (scope known from feedback-log.md).
+  Phase 1 auto-complete (no taste_decisions, no delphi-review needed).
