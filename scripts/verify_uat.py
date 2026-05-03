@@ -23,15 +23,15 @@ from engine.reporter import Reporter
 def main():
     # 1. 验证 API 配置
     api_key = os.environ.get("SKILL_CERT_API_KEY", "")
-    base_url = os.environ.get("SKILL_CERT_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    model = os.environ.get("SKILL_CERT_MODEL", "qwen-coder-plus-latest")
-    
-    if not api_key:
-        print("❌ SKILL_CERT_API_KEY 未设置")
+    base_url = os.environ.get("SKILL_CERT_BASE_URL", "")
+    model = os.environ.get("SKILL_CERT_MODEL", "")
+
+    if not api_key or not base_url or not model:
+        print("❌ 缺少必要的配置")
         print("请设置环境变量：")
-        print(f'  export SKILL_CERT_API_KEY="sk-你的密钥"')
-        print(f'  export SKILL_CERT_BASE_URL="{base_url}"')
-        print(f'  export SKILL_CERT_MODEL="{model}"')
+        print(f'  export SKILL_CERT_API_KEY="your-api-key"')
+        print(f'  export SKILL_CERT_BASE_URL="https://your-provider.com/v1"')
+        print(f'  export SKILL_CERT_MODEL="model-name"')
         sys.exit(1)
     
     print(f"✅ API 配置验证通过: model={model}, base_url={base_url}")
