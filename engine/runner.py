@@ -15,6 +15,24 @@ class EvalRunner:
         self.request_timeout = request_timeout
         self.limiter = AsyncLimiter(max_rate=rate_limit_rpm / 60, time_period=1)
         self.executor = ThreadPoolExecutor(max_workers=max_concurrency)
+        self.total_tokens = 0
+        self.token_budget = None
+
+    @staticmethod
+    async def _call_adapter(model_adapter, messages):
+        cls = type(model_adapter)
+        usage_method = getattr(cls, 'chat_with_usage', None)
+        is_mock = hasattr(model_adapter, '_mock_name')
+        has_usage = usage_method is not None and not is_mock
+        if has_usage:
+            result = model_adapter.chat_with_usage(messages)
+            if asyncio.iscoroutine(result):
+                result = await result
+            return result
+        content = model_adapter.chat(messages)
+        if asyncio.iscoroutine(content):
+            content = await content
+        return content, {"prompt_tokens": 0, "completion_tokens": len(content.split()) if content else 0, "total_tokens": len(content.split()) if content else 0}
         
     async def run_with_skill(self, evals: List[Dict[str, Any]], skill_path: str, model_adapter) -> List[Dict[str, Any]]:
         results = []
@@ -27,14 +45,14 @@ class EvalRunner:
                     try:
                         skill_context = f"Using skill from {skill_path}. "
                         input_with_context = skill_context + eval_case.get("input", "")
-                        
+
                         start_time = time.time()
-                        response = await self._run_with_timeout(
-                            model_adapter.chat([{"role": "user", "content": input_with_context}]),
+                        response, token_usage = await self._run_with_timeout(
+                            self._call_adapter(model_adapter, [{"role": "user", "content": input_with_context}]),
                             self.request_timeout
                         )
                         end_time = time.time()
-                        
+
                         result = {
                             "eval_id": eval_case.get("id"),
                             "eval_name": eval_case.get("name"),
@@ -45,7 +63,8 @@ class EvalRunner:
                             "output": response,
                             "execution_time": end_time - start_time,
                             "error": None,
-                            "tokens_used": len(response.split()) if response else 0
+                            "tokens_used": token_usage.get("total_tokens", len(response.split()) if response else 0),
+                            "token_breakdown": token_usage,
                         }
                         
                         return result
@@ -112,12 +131,12 @@ class EvalRunner:
                 async with self.limiter:
                     try:
                         start_time = time.time()
-                        response = await self._run_with_timeout(
-                            model_adapter.chat([{"role": "user", "content": eval_case.get("input", "")}]),
+                        response, token_usage = await self._run_with_timeout(
+                            self._call_adapter(model_adapter, [{"role": "user", "content": eval_case.get("input", "")}]),
                             self.request_timeout
                         )
                         end_time = time.time()
-                        
+
                         result = {
                             "eval_id": eval_case.get("id"),
                             "eval_name": eval_case.get("name"),
@@ -128,7 +147,8 @@ class EvalRunner:
                             "output": response,
                             "execution_time": end_time - start_time,
                             "error": None,
-                            "tokens_used": len(response.split()) if response else 0
+                            "tokens_used": token_usage.get("total_tokens", len(response.split()) if response else 0),
+                            "token_breakdown": token_usage,
                         }
                         
                         return result

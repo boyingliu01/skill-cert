@@ -1,7 +1,7 @@
 import json
 import time
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from .base import ModelAdapter
 
 
@@ -35,6 +35,16 @@ class AnthropicCompatAdapter(ModelAdapter):
             payload["system"] = system
         return self._request(payload)
 
+    def chat_with_usage(self, messages: List[Dict[str, str]], system: Optional[str] = None, timeout: int = 120) -> Tuple[str, Dict[str, int]]:
+        formatted = [
+            {"role": "user" if m["role"] == "user" else "assistant", "content": m["content"]}
+            for m in messages if m["role"] in ("user", "assistant")
+        ]
+        payload = {"model": self.model, "max_tokens": 8192, "messages": formatted}
+        if system:
+            payload["system"] = system
+        return self._request_with_usage(payload)
+
     def batch_chat(self, requests_list: List[Dict[str, Any]], max_concurrency: int = 5) -> List[str]:
         results = []
         for req in requests_list:
@@ -45,6 +55,10 @@ class AnthropicCompatAdapter(ModelAdapter):
         return results
 
     def _request(self, payload: Dict[str, Any], max_retries: int = 3) -> str:
+        content, _ = self._request_with_usage(payload, max_retries)
+        return content
+
+    def _request_with_usage(self, payload: Dict[str, Any], max_retries: int = 3) -> Tuple[str, Dict[str, int]]:
         for attempt in range(max_retries):
             try:
                 resp = self.session.post(
@@ -54,10 +68,20 @@ class AnthropicCompatAdapter(ModelAdapter):
                 )
                 resp.raise_for_status()
                 data = resp.json()
+                content = ""
                 for block in data.get("content", []):
                     if block.get("type") == "text":
-                        return block["text"]
-                return json.dumps(data)
+                        content = block["text"]
+                        break
+                if not content:
+                    content = json.dumps(data)
+                usage = data.get("usage", {})
+                token_data = {
+                    "prompt_tokens": usage.get("input_tokens", 0),
+                    "completion_tokens": usage.get("output_tokens", 0),
+                    "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+                }
+                return content, token_data
             except Exception:
                 if attempt == max_retries - 1:
                     raise
