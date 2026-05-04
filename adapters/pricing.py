@@ -25,6 +25,9 @@ _MODEL_PRICING = {
     # Google Gemini
     "gemini-2.5-pro": {"input_per_m": 1.25, "output_per_m": 10.0},
     "gemini-2.5-flash": {"input_per_m": 0.15, "output_per_m": 0.6},
+    # Whalecloud LOCAL (free — local deployment)
+    "LOCAL/Qwen3.5-122B-A10B": {"input_per_m": 0.0, "output_per_m": 0.0},
+    "LOCAL/MiniMax-M2.7": {"input_per_m": 0.0, "output_per_m": 0.0},
 }
 
 
