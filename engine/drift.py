@@ -51,11 +51,34 @@ class DriftDetector:
             eval_results = []
             
             for eval_case in eval_cases:
-                # Get model output using the adapter
-                model_output = adapter.generate(eval_case.prompt)
+                prompt = eval_case.get("prompt") if isinstance(eval_case, dict) else getattr(eval_case, 'prompt', '')
+                if not prompt:
+                    prompt = eval_case.get("input", "") if isinstance(eval_case, dict) else getattr(eval_case, 'input', '')
+                model_output = adapter.chat([{"role": "user", "content": prompt}])
                 
-                # Grade the output
-                grade_result = grader.grade_output(eval_case, model_output)
+                if isinstance(eval_case, dict):
+                    from engine.grader import EvalCase, EvalAssertion
+                    assertions = []
+                    for a in eval_case.get("assertions", []):
+                        if isinstance(a, dict):
+                            assertions.append(EvalAssertion(
+                                name=a.get("name", ""),
+                                type=a.get("type", "contains"),
+                                value=a.get("value", ""),
+                                weight=int(float(a.get("weight", 1)))
+                            ))
+                        elif isinstance(a, EvalAssertion):
+                            assertions.append(a)
+                    case = EvalCase(
+                        id=eval_case.get("id", 0),
+                        name=eval_case.get("name", ""),
+                        category=eval_case.get("category", "normal"),
+                        prompt=prompt,
+                        assertions=assertions
+                    )
+                    grade_result = grader.grade_output(case, model_output)
+                else:
+                    grade_result = grader.grade_output(eval_case, model_output)
                 eval_results.append(grade_result)
             
             # Calculate pass rate for this model

@@ -160,6 +160,9 @@ class EvalGenerator:
         elif current_coverage >= self.degrade_threshold:
             logger.warning(f"Eval generation completed with degraded coverage ({current_coverage}), below target but above degrade threshold")
             return current_evals
+        elif current_evals.get("eval_cases") or self._get_eval_cases(current_evals):
+            logger.warning(f"Eval generation with degraded coverage ({current_coverage}), using generated evals")
+            return current_evals
         else:
             logger.error(f"Eval generation failed with insufficient coverage ({current_coverage}), below block threshold")
             return self.minimum_evals_template

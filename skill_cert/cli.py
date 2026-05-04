@@ -62,20 +62,66 @@ def _print_metric(label: str, value: float, threshold: float | None = None) -> N
 
 
 def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path):
-    with_skill = asyncio.run(runner.run_with_skill(evals, spec_path, adapter))
-    without_skill = asyncio.run(runner.run_without_skill(evals, adapter))
-    eval_cases = evals.get("eval_cases", evals.get("cases", []))
+    eval_cases_list = evals if isinstance(evals, list) else (
+        evals.get("eval_cases") or evals.get("evals") or evals.get("cases") or evals.get("test_cases") or []
+    )
+    with_skill = runner.run_with_skill(eval_cases_list, spec_path, adapter)
+    without_skill = runner.run_without_skill(eval_cases_list, adapter)
+    
+    from engine.grader import EvalCase, EvalAssertion
+    
+    def _build_eval_case(case_dict):
+        if hasattr(case_dict, 'prompt'):
+            return case_dict
+        assertions = []
+        for a in case_dict.get("assertions", []):
+            if isinstance(a, dict):
+                w = a.get("weight", 1)
+                assertions.append(EvalAssertion(
+                    name=a.get("name", ""),
+                    type=a.get("type", "contains"),
+                    value=str(a.get("value", "")),
+                    weight=int(float(w))
+                ))
+        prompt = case_dict.get("input") or case_dict.get("prompt", "")
+        return EvalCase(
+            id=case_dict.get("id", 0),
+            name=case_dict.get("name", ""),
+            category=case_dict.get("category", "normal"),
+            prompt=prompt,
+            assertions=assertions
+        )
+    
+    case_map = {c.get("id"): _build_eval_case(c) for c in eval_cases_list}
+    
+    def _flatten_grade(result, grade, mode):
+        return {
+            **result,
+            "grade": grade,
+            "mode": mode,
+            "skill_used": mode == "with_skill",
+            "final_passed": grade.get("final_passed", False),
+            "pass_rate": grade.get("pass_rate", 0.0),
+            "total_weighted_score": grade.get("total_weighted_score", 0),
+            "total_possible_score": grade.get("total_possible_score", 0),
+            "category": result.get("eval_category", result.get("category", "")),
+        }
+    
     graded = []
     for r in with_skill:
-        if "error" not in r:
-            case = next((e for e in eval_cases if e.get("id") == r.get("eval_id")), None)
-            graded.append({**r, "grade": grader.grade_output(case, r.get("output", "")), "mode": "with_skill"})
+        if not r.get("error"):
+            case = case_map.get(r.get("eval_id"))
+            if case:
+                grade = grader.grade_output(case, r.get("output") or "")
+                graded.append(_flatten_grade(r, grade, "with_skill"))
     for r in without_skill:
-        if "error" not in r:
-            case = next((e for e in eval_cases if e.get("id") == r.get("eval_id")), None)
-            graded.append({**r, "grade": grader.grade_output(case, r.get("output", "")), "mode": "without_skill"})
-    ws_passed = sum(1 for r in graded if r["mode"] == "with_skill" and r.get("grade", {}).get("passed"))
-    wos_passed = sum(1 for r in graded if r["mode"] == "without_skill" and r.get("grade", {}).get("passed"))
+        if not r.get("error"):
+            case = case_map.get(r.get("eval_id"))
+            if case:
+                grade = grader.grade_output(case, r.get("output") or "")
+                graded.append(_flatten_grade(r, grade, "without_skill"))
+    ws_passed = sum(1 for r in graded if r.get("mode") == "with_skill" and r.get("grade", {}).get("final_passed"))
+    wos_passed = sum(1 for r in graded if r.get("mode") == "without_skill" and r.get("grade", {}).get("final_passed"))
     return graded, ws_passed, wos_passed
 
 
@@ -101,6 +147,13 @@ def _run_single_phase(args, config: SkillCertConfig, spec_path, output_dir, skil
     _print_phase(3, "Calculate Metrics")
     calc = MetricsCalculator()
     metrics = calc.calculate_metrics(all_results)
+    l7 = calc.calculate_l7_cost_efficiency(all_results)
+    if l7:
+        metrics['l7_cost_efficiency'] = l7
+    
+    # Also store raw results for coverage stats
+    metrics['_results'] = all_results
+    
     _print_metric("L1 Trigger Accuracy", metrics.get("l1", 0), 0.9)
     _print_metric("L2 Output Delta", metrics.get("l2", 0), 0.2)
     _print_metric("L3 Step Adherence", metrics.get("l3", 0), 0.85)
@@ -122,12 +175,12 @@ def _run_single_phase(args, config: SkillCertConfig, spec_path, output_dir, skil
 
     _print_phase(5, "Generate Report")
     reporter = Reporter()
-    report = reporter.generate_report(metrics=metrics, drift=drift_report, config=config.model_dump())
+    md_report, json_report = reporter.generate_report(metrics=metrics, drift=drift_report, config=config.model_dump())
 
     md_path = output_dir / f"{skill_name}-report.md"
     json_path = output_dir / f"{skill_name}-result.json"
-    md_path.write_text(report["markdown"], encoding="utf-8")
-    json_path.write_text(report["json"], encoding="utf-8")
+    md_path.write_text(md_report, encoding="utf-8")
+    json_path.write_text(json.dumps(json_report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     print(f"  Markdown: {md_path}")
     print(f"  JSON: {json_path}")
 
@@ -135,7 +188,7 @@ def _run_single_phase(args, config: SkillCertConfig, spec_path, output_dir, skil
     evals_cache.write_text(json.dumps(spec["evals"], indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"  Evals cache: {evals_cache}")
 
-    verdict = report.get("verdict", "FAIL")
+    verdict = json_report.get("verdict", "FAIL")
     print(f"\n  Verdict: {verdict}")
     if verdict == "PASS":
         return EXIT_PASS

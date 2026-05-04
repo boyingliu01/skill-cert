@@ -187,6 +187,33 @@ For detailed results, see the JSON output.
             metrics, drift, verdict, overall_score, cost_analysis
         )
         
+        # Evaluation coverage
+        total_evaluations = len(metrics.get('_results', []))
+        avg_pass_rate = sum(r.get('pass_rate', 0) for r in metrics.get('_results', [])) / total_evaluations if total_evaluations > 0 else 0.0
+        
+        # Assertion breakdown
+        critical_passed = 0
+        critical_total = 0
+        important_passed = 0
+        important_total = 0
+        normal_passed = 0
+        normal_total = 0
+        for r in metrics.get('_results', []):
+            for a in r.get('grade', {}).get('assertion_results', []):
+                weight = a.get('assertion', {}).get('weight', 1)
+                if weight >= 3:
+                    critical_total += 1
+                    if a.get('passed'):
+                        critical_passed += 1
+                elif weight == 2:
+                    important_total += 1
+                    if a.get('passed'):
+                        important_passed += 1
+                else:
+                    normal_total += 1
+                    if a.get('passed'):
+                        normal_passed += 1
+        
         # Create summary
         summary = self._create_summary(verdict, overall_score, l1_score, l2_score, l3_score, l4_score)
         
@@ -206,13 +233,17 @@ For detailed results, see the JSON output.
         
         # Prepare benchmark info
         total_tokens = config.get('total_tokens', 0)
+        if not total_tokens:
+            total_tokens = config.get('total_evaluator_tokens', 0)
+        _results = metrics.get('_results', [])
+        total_eval_tokens = sum(r.get('tokens_used', 0) for r in _results) if _results else 0
         benchmark_info = {
             'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
-            'spec_version': 'v1.0',
-            'total_requirements': 10,
-            'total_acceptance_criteria': 66,
-            'test_coverage': '207 tests, 10/10 REQs covered (91% AC coverage)',
-            'total_tokens': f'{total_tokens:,}' if total_tokens else 'N/A (no live API calls)',
+            'spec_version': 'v2.0',
+            'total_requirements': 11,
+            'total_acceptance_criteria': 74,
+            'test_coverage': f'{len(_results)} evals, L1-L7 metrics computed',
+            'total_tokens': f'{total_eval_tokens:,}' if total_eval_tokens else 'N/A (local models)',
         }
         
         # Render markdown
