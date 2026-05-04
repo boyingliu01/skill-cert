@@ -20,7 +20,7 @@ class MetricsCalculator:
         pass
     
     def calculate_metrics(self, eval_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Calculate all L1-L4 metrics from evaluation results."""
+        """Calculate all L1-L6 metrics from evaluation results."""
         l1_score = self._calculate_l1_trigger_accuracy(eval_results)
         l2_score = self._calculate_l2_with_without_skill_delta(eval_results)
         l3_score = self._calculate_l3_step_adherence(eval_results)
@@ -40,6 +40,8 @@ class MetricsCalculator:
             active_metrics -= 1
         overall_score = score_sum / active_metrics if eval_results and active_metrics > 0 else 0.0
 
+        l7 = self._calculate_l7_cost_efficiency(eval_results)
+
         return {
             "overall_score": overall_score,
             "l1_trigger_accuracy": l1_score,
@@ -48,12 +50,27 @@ class MetricsCalculator:
             "l4_execution_stability": l4_score,
             "l5_step_efficiency": l5_score,
             "l6_trajectory_quality": l6_score,
+            "l7_cost_efficiency": l7,
             "metrics_breakdown": {
                 "l1_details": self._get_l1_details(eval_results),
                 "l2_details": self._get_l2_details(eval_results),
                 "l3_details": self._get_l3_details(eval_results),
                 "l4_details": self._get_l4_details(eval_results)
             }
+        }
+
+    def calculate_l7_cost_efficiency(self, eval_results: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+        """Calculate L7 cost efficiency metrics. Returns None when no cost data."""
+        l7 = self._calculate_l7_cost_efficiency(eval_results)
+        if l7 is None:
+            return None
+        return {
+            "cost_per_eval": l7["cost_per_eval"],
+            "total_cost": l7["total_cost"],
+            "cost_with_skill": l7["cost_with_skill"],
+            "cost_without_skill": l7["cost_without_skill"],
+            "cost_delta_pct": l7["cost_delta_pct"],
+            "cost_efficiency": l7["cost_efficiency"],
         }
     
     def _calculate_l1_trigger_accuracy(self, eval_results: List[Dict[str, Any]]) -> float:
@@ -278,4 +295,34 @@ class MetricsCalculator:
             "trajectory_quality_score": score,
             "dialogue_count": len(dialogue_results),
             "measurement_method": "embedding_cosine_similarity",
+        }
+
+    # ── L7: Cost Efficiency ──────────────────────────────────────
+
+    def _calculate_l7_cost_efficiency(self, eval_results) -> dict | None:
+        costs = [r.get("cost") for r in eval_results if "cost" in r]
+        if not costs:
+            return None
+
+        with_skill = [r for r in eval_results if r.get("skill_used") and "cost" in r]
+        without_skill = [r for r in eval_results if not r.get("skill_used") and "cost" in r]
+
+        total_cost = sum(costs)
+        cost_per_eval = total_cost / len(costs) if costs else 0.0
+
+        cost_with = sum(r["cost"] for r in with_skill) / len(with_skill) if with_skill else 0.0
+        cost_without = sum(r["cost"] for r in without_skill) / len(without_skill) if without_skill else 0.0
+
+        cost_delta_pct = (cost_with - cost_without) / cost_without if cost_without > 0 else 0.0
+
+        l2_delta = self._calculate_l2_with_without_skill_delta(eval_results)
+        cost_efficiency = round(l2_delta / cost_delta_pct, 4) if cost_delta_pct > 0 else 0.0
+
+        return {
+            "cost_per_eval": round(cost_per_eval, 4),
+            "total_cost": round(total_cost, 4),
+            "cost_with_skill": round(cost_with, 4),
+            "cost_without_skill": round(cost_without, 4),
+            "cost_delta_pct": round(cost_delta_pct, 4),
+            "cost_efficiency": cost_efficiency,
         }

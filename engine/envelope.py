@@ -6,11 +6,12 @@ class EnvelopeResult:
 
 
 class EnvelopeChecker:
-    def __init__(self, max_steps: int = 20, max_tool_calls: int = 15, token_budget: int = 50000, timeout_s: int = 300):
+    def __init__(self, max_steps: int = 20, max_tool_calls: int = 15, token_budget: int = 50000, timeout_s: int = 300, cost_budget: float = 0.0):
         self.max_steps = max_steps
         self.max_tool_calls = max_tool_calls
         self.token_budget = token_budget
         self.timeout_s = timeout_s
+        self.cost_budget = cost_budget
 
     def check(self, trace) -> EnvelopeResult:
         violations = []
@@ -36,5 +37,10 @@ class EnvelopeChecker:
         details["time_s"] = time_s
         if time_s > self.timeout_s:
             violations.append(f"timeout exceeded: {time_s:.1f}s > {self.timeout_s}s")
+
+        cost = getattr(trace, "cost", 0.0)
+        details["cost"] = cost
+        if self.cost_budget > 0 and cost > self.cost_budget:
+            violations.append(f"cost_budget exceeded: ${cost:.2f} > ${self.cost_budget:.2f}")
 
         return EnvelopeResult(passed=len(violations) == 0, violations=violations, details=details)

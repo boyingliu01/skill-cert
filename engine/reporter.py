@@ -66,6 +66,21 @@ class Reporter:
 - **Critical Assertions**: {{ critical_passed }}/{{ critical_total }} passed
 - **Important Assertions**: {{ important_passed }}/{{ important_total }} passed
 - **Normal Assertions**: {{ normal_passed }}/{{ normal_total }} passed
+{% if cost_analysis %}
+
+## Cost Analysis
+
+### L7: Cost Efficiency
+- **Cost per Eval**: ${{ "%.4f"|format(cost_analysis.cost_per_eval) }}
+- **Total Cost**: ${{ "%.2f"|format(cost_analysis.total_cost) }}
+- **With Skill (avg)**: ${{ "%.4f"|format(cost_analysis.cost_with_skill) }}
+- **Without Skill (avg)**: ${{ "%.4f"|format(cost_analysis.cost_without_skill) }}
+- **Cost Delta**: {{ "%.1f"|format(cost_analysis.cost_delta_pct * 100) }}%
+- **Cost Efficiency **(L2/Cost){{ "%.2f"|format(cost_analysis.cost_efficiency) }}
+{% if cost_analysis.cost_delta_pct > 0.5 %}
+⚠️ Skill increases costs by more than 50%. Consider optimizing.
+{% endif %}
+{% endif %}
 
 ## Improvement Suggestions
 
@@ -164,9 +179,12 @@ For detailed results, see the JSON output.
         normal_passed = config.get('normal_passed', 0)
         normal_total = config.get('normal_total', 0)
         
+        # Cost analysis
+        cost_analysis = metrics.get('l7_cost_efficiency')
+        
         # Generate improvement suggestions
         suggestions = self._generate_suggestions(
-            metrics, drift, verdict, overall_score
+            metrics, drift, verdict, overall_score, cost_analysis
         )
         
         # Create summary
@@ -226,6 +244,7 @@ For detailed results, see the JSON output.
             suggestions=suggestions,
             config_info=config_info,
             benchmark_info=benchmark_info,
+            cost_analysis=cost_analysis,
         )
         
         # Create JSON report
@@ -236,7 +255,7 @@ For detailed results, see the JSON output.
                 "l1_trigger_accuracy": l1_score,
                 "l2_with_without_skill_delta": l2_score,
                 "l3_step_adherence": l3_score,
-                "l4_execution_stability": l4_score
+                "l4_execution_stability": l4_score,
             },
             "drift_analysis": drift,
             "evaluation_coverage": {
@@ -252,17 +271,21 @@ For detailed results, see the JSON output.
             "timestamp": config.get("timestamp", ""),
             "config": config,
             "config_summary": config_info,
-            "benchmark": benchmark_info
+            "benchmark": benchmark_info,
         }
+        
+        if cost_analysis:
+            json_report["cost_analysis"] = cost_analysis
         
         return markdown_report, json_report
     
     def _generate_suggestions(
-        self, 
-        metrics: Dict[str, Any], 
-        drift: Dict[str, Any], 
-        verdict: str, 
-        overall_score: float
+        self,
+        metrics: Dict[str, Any],
+        drift: Dict[str, Any],
+        verdict: str,
+        overall_score: float,
+        cost_analysis: Dict[str, Any] | None = None
     ) -> List[str]:
         """Generate improvement suggestions based on metrics and drift analysis."""
         suggestions = []
@@ -296,6 +319,12 @@ For detailed results, see the JSON output.
             suggestions.append("Major improvements needed across multiple areas")
         elif overall_score < 0.8:
             suggestions.append("Several areas need improvement to reach optimal performance")
+        
+        # Cost suggestions
+        if cost_analysis and cost_analysis.get("cost_delta_pct", 0) > 0.5:
+            suggestions.append(f"Skill increases costs by {cost_analysis['cost_delta_pct']:.0%} — consider optimizing prompt or reducing verbosity")
+        if cost_analysis and cost_analysis.get("cost_efficiency", 0) < 0.1 and cost_analysis.get("cost_delta_pct", 0) > 0:
+            suggestions.append("Low cost efficiency — quality gains don't justify cost increase")
         
         if not suggestions:
             suggestions.append("Performance is strong across all metrics")
