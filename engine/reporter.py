@@ -188,31 +188,41 @@ For detailed results, see the JSON output.
         )
         
         # Evaluation coverage
-        total_evaluations = len(metrics.get('_results', []))
-        avg_pass_rate = sum(r.get('pass_rate', 0) for r in metrics.get('_results', [])) / total_evaluations if total_evaluations > 0 else 0.0
+        _results = metrics.get('_results', [])
+        total_evaluations = len(_results) or config.get('total_evaluations', 0)
+        avg_pass_rate = sum(r.get('pass_rate', 0) for r in _results) / len(_results) if _results else config.get('avg_pass_rate', 0.0)
         
-        # Assertion breakdown
+        # Assertion breakdown from results or config fallback
         critical_passed = 0
         critical_total = 0
         important_passed = 0
         important_total = 0
         normal_passed = 0
         normal_total = 0
-        for r in metrics.get('_results', []):
-            for a in r.get('grade', {}).get('assertion_results', []):
-                weight = a.get('assertion', {}).get('weight', 1)
-                if weight >= 3:
-                    critical_total += 1
-                    if a.get('passed'):
-                        critical_passed += 1
-                elif weight == 2:
-                    important_total += 1
-                    if a.get('passed'):
-                        important_passed += 1
-                else:
-                    normal_total += 1
-                    if a.get('passed'):
-                        normal_passed += 1
+        
+        if _results:
+            for r in _results:
+                for a in r.get('grade', {}).get('assertion_results', []):
+                    weight = a.get('assertion', {}).get('weight', 1)
+                    if weight >= 3:
+                        critical_total += 1
+                        if a.get('passed'):
+                            critical_passed += 1
+                    elif weight == 2:
+                        important_total += 1
+                        if a.get('passed'):
+                            important_passed += 1
+                    else:
+                        normal_total += 1
+                        if a.get('passed'):
+                            normal_passed += 1
+        else:
+            critical_passed = config.get('critical_passed', 0)
+            critical_total = config.get('critical_total', 0)
+            important_passed = config.get('important_passed', 0)
+            important_total = config.get('important_total', 0)
+            normal_passed = config.get('normal_passed', 0)
+            normal_total = config.get('normal_total', 0)
         
         # Create summary
         summary = self._create_summary(verdict, overall_score, l1_score, l2_score, l3_score, l4_score)

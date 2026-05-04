@@ -493,19 +493,11 @@ description: "Test skill for integration testing"
         
         mock_adapter = MockModelAdapter()
         
-        # Since run_with_skill and run_without_skill are async, we need to await them
-        import asyncio
-        try:
-            results_with_skill = asyncio.run(runner.run_with_skill(eval_cases, self.skill_path, mock_adapter))
-            results_without_skill = asyncio.run(runner.run_without_skill(eval_cases, mock_adapter))
-            
-            assert len(results_with_skill) == len(eval_cases)
-            assert len(results_without_skill) == len(eval_cases)
-        except RuntimeError:
-            # If asyncio event loop is already running, use a different approach
-            # For testing purposes, just verify the methods exist and can be called
-            assert hasattr(runner, 'run_with_skill')
-            assert hasattr(runner, 'run_without_skill')
+        results_with_skill = runner.run_with_skill(eval_cases, self.skill_path, mock_adapter)
+        results_without_skill = runner.run_without_skill(eval_cases, mock_adapter)
+        
+        assert len(results_with_skill) == len(eval_cases)
+        assert len(results_without_skill) == len(eval_cases)
     
     def test_reporter_generates_both_formats(self):
         reporter = Reporter()
@@ -1045,16 +1037,11 @@ description: "Test skill for integration testing"
         
         mock_adapter = MockModelAdapter()
         
-        import asyncio
-        try:
-            results_with_skill = asyncio.run(runner.run_with_skill(eval_cases, self.skill_path, mock_adapter))
-            results_without_skill = asyncio.run(runner.run_without_skill(eval_cases, mock_adapter))
-            
-            assert len(results_with_skill) == len(eval_cases)
-            assert len(results_without_skill) == len(eval_cases)
-        except RuntimeError:
-            assert hasattr(runner, 'run_with_skill')
-            assert hasattr(runner, 'run_without_skill')
+        results_with_skill = runner.run_with_skill(eval_cases, self.skill_path, mock_adapter)
+        results_without_skill = runner.run_without_skill(eval_cases, mock_adapter)
+        
+        assert len(results_with_skill) == len(eval_cases)
+        assert len(results_without_skill) == len(eval_cases)
         
         for result in results_with_skill:
             assert "eval_id" in result

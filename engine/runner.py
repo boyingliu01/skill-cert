@@ -1,7 +1,7 @@
-import asyncio
 import logging
 import threading
 from typing import Dict, Any, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
 from engine.security_probes import SecurityScanner
@@ -116,7 +116,6 @@ class EvalRunner:
                 }
 
     def run_with_skill(self, evals: List[Dict[str, Any]], skill_path: str, model_adapter) -> List[Dict[str, Any]]:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
         results = []
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
             futures = {executor.submit(self._run_single, ec, skill_path, model_adapter, True): i 
@@ -131,7 +130,6 @@ class EvalRunner:
         return [r for _, r in results]
 
     def run_without_skill(self, evals: List[Dict[str, Any]], model_adapter) -> List[Dict[str, Any]]:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
         results = []
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
             futures = {executor.submit(self._run_single, ec, None, model_adapter, False): i 

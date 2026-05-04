@@ -10,10 +10,12 @@ class MockModelAdapter:
     def __init__(self, responses):
         self.responses = responses
         self.call_count = 0
+        self.chat_called = []
     
-    def generate(self, prompt):
+    def chat(self, messages):
         """Return predefined response based on prompt."""
-        # Simple mapping for testing
+        prompt = messages[0].get("content", "") if messages else ""
+        self.chat_called.append(prompt)
         if "hello" in prompt.lower():
             return self.responses.get("hello", "Hello response")
         elif "goodbye" in prompt.lower():
@@ -23,14 +25,11 @@ class MockModelAdapter:
 
 
 class TestDriftDetector:
-    """Test the DriftDetector class and its drift detection functionality."""
     
     def test_detect_drift_basic(self):
-        """Test basic drift detection between two models."""
         detector = DriftDetector()
         grader = Grader()
         
-        # Create eval cases
         eval_cases = [
             EvalCase(
                 id=1,
@@ -48,16 +47,14 @@ class TestDriftDetector:
             )
         ]
         
-        # Create mock model adapters with different responses
         model_adapters = {
             "model_a": MockModelAdapter({"hello": "Hello there!", "goodbye": "Goodbye!"}),
             "model_b": MockModelAdapter({"hello": "Hi there!", "goodbye": "Bye!"})
         }
         
-        # Detect drift
         results = detector.detect_drift(eval_cases, model_adapters, grader)
         
-        assert len(results) == 1  # Only one pair: model_a vs model_b
+        assert len(results) == 1
         result = results[0]
         
         assert result.model_a == "model_a"
@@ -69,7 +66,6 @@ class TestDriftDetector:
         assert result.verdict in ["PASS", "PASS_WITH_CAVEATS", "FAIL"]
     
     def test_detect_drift_no_variance(self):
-        """Test drift detection when models have identical performance."""
         detector = DriftDetector()
         grader = Grader()
         
@@ -83,7 +79,6 @@ class TestDriftDetector:
             )
         ]
         
-        # Both models give identical responses
         model_adapters = {
             "model_a": MockModelAdapter({"hello": "Hello world"}),
             "model_b": MockModelAdapter({"hello": "Hello world"})
@@ -94,14 +89,12 @@ class TestDriftDetector:
         assert len(results) == 1
         result = results[0]
         
-        # Since both models have identical responses, pass rates should be the same
         assert result.pass_rate_a == result.pass_rate_b
         assert result.variance == 0.0
         assert result.severity == "none"
         assert result.verdict == "PASS"
     
     def test_detect_drift_high_variance(self):
-        """Test drift detection when models have very different performance."""
         detector = DriftDetector()
         grader = Grader()
         
@@ -115,10 +108,9 @@ class TestDriftDetector:
             )
         ]
         
-        # Models have very different responses
         model_adapters = {
-            "model_a": MockModelAdapter({"hello": "Hello world"}),  # Will pass
-            "model_b": MockModelAdapter({"hello": "Goodbye world"})  # Will fail
+            "model_a": MockModelAdapter({"hello": "Hello world"}),
+            "model_b": MockModelAdapter({"hello": "Goodbye world"})
         }
         
         results = detector.detect_drift(eval_cases, model_adapters, grader)
@@ -126,40 +118,34 @@ class TestDriftDetector:
         assert len(results) == 1
         result = results[0]
         
-        # Model A should pass, Model B should fail
         assert result.pass_rate_a == 1.0
         assert result.pass_rate_b == 0.0
-        assert result.variance == 1.0  # Maximum variance
-        assert result.severity == "high"  # High variance should result in high severity
-        assert result.verdict == "FAIL"  # High severity should result in FAIL verdict
+        assert result.variance == 1.0
+        assert result.severity == "high"
+        assert result.verdict == "FAIL"
     
     def test_determine_severity_thresholds(self):
-        """Test severity determination based on variance thresholds."""
         detector = DriftDetector()
         
-        # Test each threshold
-        assert detector._determine_severity(0.05) == "none"  # <= 0.10
-        assert detector._determine_severity(0.10) == "none"  # <= 0.10
-        assert detector._determine_severity(0.15) == "low"   # <= 0.20
-        assert detector._determine_severity(0.20) == "low"   # <= 0.20
-        assert detector._determine_severity(0.25) == "moderate"  # <= 0.35
-        assert detector._determine_severity(0.30) == "moderate"  # <= 0.35
-        assert detector._determine_severity(0.35) == "moderate"  # <= 0.35
-        assert detector._determine_severity(0.40) == "high"  # > 0.35
-        assert detector._determine_severity(0.50) == "high"  # > 0.35
+        assert detector._determine_severity(0.05) == "none"
+        assert detector._determine_severity(0.10) == "none"
+        assert detector._determine_severity(0.15) == "low"
+        assert detector._determine_severity(0.20) == "low"
+        assert detector._determine_severity(0.25) == "moderate"
+        assert detector._determine_severity(0.30) == "moderate"
+        assert detector._determine_severity(0.35) == "moderate"
+        assert detector._determine_severity(0.40) == "high"
+        assert detector._determine_severity(0.50) == "high"
     
     def test_map_verdict(self):
-        """Test verdict mapping based on severity."""
         detector = DriftDetector()
         
-        # Test verdict mapping
         assert detector._map_verdict("none") == "PASS"
         assert detector._map_verdict("low") == "PASS"
         assert detector._map_verdict("moderate") == "PASS_WITH_CAVEATS"
         assert detector._map_verdict("high") == "FAIL"
     
     def test_aggregate_drift_report_empty(self):
-        """Test aggregate drift report with no results."""
         detector = DriftDetector()
         
         report = detector.aggregate_drift_report([])
@@ -171,7 +157,6 @@ class TestDriftDetector:
         assert "No drift analysis performed" in report["summary"]
     
     def test_aggregate_drift_report_single_result(self):
-        """Test aggregate drift report with single result."""
         detector = DriftDetector()
         
         results = [
@@ -197,7 +182,6 @@ class TestDriftDetector:
         assert report["overall_verdict"] == "PASS"
     
     def test_aggregate_drift_report_multiple_results(self):
-        """Test aggregate drift report with multiple results."""
         detector = DriftDetector()
         
         results = [
@@ -208,7 +192,7 @@ class TestDriftDetector:
                 pass_rate_b=0.6,
                 variance=0.2,
                 severity="low",
-                verdict="PASS"
+                verdict="PASS_WITH_CAVEATS"
             ),
             DriftResult(
                 model_a="model_a",
@@ -223,17 +207,16 @@ class TestDriftDetector:
         
         report = detector.aggregate_drift_report(results)
         
-        assert report["drift_detected"] is True  # High severity detected
+        assert report["drift_detected"] is True
         assert report["highest_severity"] == "high"
-        assert report["average_variance"] == 0.35  # (0.2 + 0.5) / 2
+        assert report["average_variance"] == 0.35
         assert report["max_variance"] == 0.5
         assert report["model_pairs_compared"] == 2
         assert report["severity_distribution"]["low"] == 1
         assert report["severity_distribution"]["high"] == 1
-        assert report["overall_verdict"] == "FAIL"  # At least one FAIL results in overall FAIL
+        assert report["overall_verdict"] == "FAIL"
     
     def test_get_highest_severity(self):
-        """Test getting highest severity from multiple results."""
         detector = DriftDetector()
         
         results = [
@@ -260,24 +243,20 @@ class TestDriftDetector:
         assert highest == "high"
     
     def test_aggregate_verdict(self):
-        """Test aggregating verdicts from multiple comparisons."""
         detector = DriftDetector()
         
-        # Test with all PASS
         results_all_pass = [
             DriftResult(model_a="a", model_b="b", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.05, severity="none", verdict="PASS"),
             DriftResult(model_a="a", model_b="c", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.08, severity="none", verdict="PASS")
         ]
         assert detector._aggregate_verdict(results_all_pass) == "PASS"
         
-        # Test with one PASS_WITH_CAVEATS
         results_with_caveats = [
             DriftResult(model_a="a", model_b="b", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.05, severity="none", verdict="PASS"),
             DriftResult(model_a="a", model_b="c", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.25, severity="moderate", verdict="PASS_WITH_CAVEATS")
         ]
         assert detector._aggregate_verdict(results_with_caveats) == "PASS_WITH_CAVEATS"
         
-        # Test with one FAIL
         results_with_fail = [
             DriftResult(model_a="a", model_b="b", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.05, severity="none", verdict="PASS"),
             DriftResult(model_a="a", model_b="c", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.4, severity="high", verdict="FAIL")
