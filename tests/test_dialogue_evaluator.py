@@ -1,7 +1,6 @@
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from engine.dialogue_evaluator import DialogueEvaluator
-import asyncio
 
 
 @pytest.fixture

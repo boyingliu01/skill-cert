@@ -1,9 +1,7 @@
 import os
 import tempfile
 import pytest
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
-import json
-from pathlib import Path
+from unittest.mock import AsyncMock
 
 from engine.analyzer import parse_skill_md, SkillSpec
 from engine.testgen import EvalGenerator

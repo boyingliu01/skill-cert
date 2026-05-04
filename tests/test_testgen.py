@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock
 from engine.testgen import EvalGenerator
 
 
@@ -246,9 +246,7 @@ def test_generate_evals_with_convergence_degraded():
 
 def test_generator_template_loading_error():
     """Test EvalGenerator when template loading fails."""
-    import os
     from unittest.mock import patch
-    from pathlib import Path
     
     # Temporarily change the template path to a non-existent location
     with patch('engine.testgen.Path') as mock_path:

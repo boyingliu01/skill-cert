@@ -1,6 +1,5 @@
 """Tests for engine/reporter.py — report generation functionality."""
 
-import pytest
 from engine.reporter import Reporter
 
 

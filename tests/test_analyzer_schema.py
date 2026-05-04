@@ -37,7 +37,6 @@ class TestSchemaViolation:
 class TestValidateSchema:
     def setup_method(self):
         import tempfile
-        import os
         self.tmpdir = tempfile.mkdtemp()
 
     def _write_skill(self, name, content):
