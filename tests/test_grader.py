@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock
-from engine.grader import Grader, EvalCase, EvalAssertion, JudgeResult, AssertionResult
+from engine.grader import Grader, EvalCase, EvalAssertion, AssertionResult
 
 
 class TestGrader:

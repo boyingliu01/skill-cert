@@ -114,3 +114,16 @@ requirements:
       AC-010-04: "CLI validates input parameters before execution"
       AC-010-05: "CLI provides progress feedback during execution"
       AC-010-06: "CLI generates appropriate exit codes for different outcomes"
+
+  REQ-011:
+    title: "Cost Evaluation and Reporting"
+    description: "Engine tracks token usage per eval, converts to $ cost using model pricing table, calculates L7 cost efficiency metrics, and includes cost analysis in reports."
+    acceptance_criteria:
+      AC-011-01: "Pricing table supports at least 15 models across 5 provider families (Anthropic, OpenAI, Qwen, DeepSeek, Gemini)"
+      AC-011-02: "Each eval result includes cost field calculated from token usage × model pricing"
+      AC-011-03: "L7 cost efficiency calculates cost_per_eval, total_cost, cost_with_skill, cost_without_skill"
+      AC-011-04: "L7 calculates cost_delta_pct (with vs without skill cost comparison)"
+      AC-011-05: "L7 calculates cost_efficiency (L2_delta / cost_delta_pct ratio)"
+      AC-011-06: "EnvelopeChecker supports cost_budget parameter, flags violation when exceeded"
+      AC-011-07: "Reports (Markdown + JSON) include cost analysis section when cost data available"
+      AC-011-08: "Backward compatible: when no pricing data, cost returns 0 and reports skip cost section"

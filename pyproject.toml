@@ -16,6 +16,9 @@ dependencies = [
     "markdown-it-py>=3.0",
 ]
 
+[tool.setuptools.packages.find]
+include = ["skill_cert*", "engine*", "adapters*"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4",

@@ -1,5 +1,4 @@
 from typing import List, Dict, Optional, Callable, Any
-from unittest.mock import AsyncMock
 
 
 class DialogueEvaluator:
@@ -18,6 +17,24 @@ class DialogueEvaluator:
         """
         self.judge_callback = judge_callback
     
+    def _score_turn(self, idx: int, user_msg: dict, assistant_msg: dict, workflow_steps: list[str] | None) -> dict:
+        user_content = user_msg.get('content', '')
+        assistant_content = assistant_msg.get('content', '')
+        is_critical = idx == 0
+        return {
+            'turn': idx + 1,
+            'is_critical_turn': is_critical,
+            'intent_recognition': self._score_intent_recognition(user_content, assistant_content),
+            'guidance_quality': self._score_guidance_quality(user_content, assistant_content),
+            'workflow_adherence': self._score_workflow_adherence(idx, user_content, assistant_content, workflow_steps, is_critical),
+            'exception_handling': self._score_exception_handling(idx, user_content, assistant_content, is_critical),
+            'output_quality': self._score_output_quality(user_content, assistant_content),
+        }
+
+    @staticmethod
+    def _average_dimension(round_scores: list[dict], key: str) -> float:
+        return sum(r[key] for r in round_scores) / len(round_scores) if round_scores else 0.0
+
     async def evaluate_conversation(
         self, 
         conversation: List[Dict], 
@@ -34,80 +51,18 @@ class DialogueEvaluator:
         Returns:
             Dictionary with scores for all five dimensions and overall metrics
         """
-        # Calculate dimension scores
-        round_scores = []
-        all_user_msgs = {}
-        all_assistant_msgs = {}
-        
-        for idx, (user_msg, assistant_msg) in enumerate(self._pair_messages(conversation)):
-            # Mark first turn as critical
-            is_critical_turn = idx == 0
-            
-            # Calculate all 5 dimension scores for this turn
-            intent_score = self._score_intent_recognition(
-                user_msg.get('content', ''),
-                assistant_msg.get('content', '')
-            )
-            guidance_score = self._score_guidance_quality(
-                user_msg.get('content', ''),
-                assistant_msg.get('content', '')
-            )
-            workflow_score = self._score_workflow_adherence(
-                idx, 
-                user_msg.get('content', ''), 
-                assistant_msg.get('content', ''), 
-                workflow_steps,
-                is_critical_turn
-            )
-            exception_score = self._score_exception_handling(
-                idx,
-                user_msg.get('content', ''), 
-                assistant_msg.get('content', ''),
-                is_critical_turn
-            )
-            output_score = self._score_output_quality(
-                user_msg.get('content', ''), 
-                assistant_msg.get('content', '')
-            )
-            
-            round_data = {
-                'turn': idx + 1,
-                'is_critical_turn': is_critical_turn,
-                'intent_recognition': intent_score,
-                'guidance_quality': guidance_score,
-                'workflow_adherence': workflow_score,
-                'exception_handling': exception_score,
-                'output_quality': output_score
-            }
-            round_scores.append(round_data)
-        
-        # Calculate final scores across all rounds
-        all_scores = [sum([round_data[key] for round_data in round_scores]) / len(round_scores) 
-                     if round_scores else 0.0 for key in [
-                         'intent_recognition', 'guidance_quality', 'workflow_adherence', 
-                         'exception_handling', 'output_quality'
-                     ]]
-        
-        intent_recognition_final = sum(r['intent_recognition'] for r in round_scores) / len(round_scores) if round_scores else 0.0
-        guidance_quality_final = sum(r['guidance_quality'] for r in round_scores) / len(round_scores) if round_scores else 0.0
-        workflow_adherence_final = sum(r['workflow_adherence'] for r in round_scores) / len(round_scores) if round_scores else 0.0
-        exception_handling_final = sum(r['exception_handling'] for r in round_scores) / len(round_scores) if round_scores else 0.0
-        output_quality_final = sum(r['output_quality'] for r in round_scores) / len(round_scores) if round_scores else 0.0
-        
-        final_scores = {
-            'intent_recognition': intent_recognition_final,
-            'guidance_quality': guidance_quality_final,
-            'workflow_adherence': workflow_adherence_final,
-            'exception_handling': exception_handling_final,
-            'output_quality': output_quality_final
-        }
-        
-        # Calculate overall score (weighted average)
+        round_scores = [
+            self._score_turn(idx, user_msg, assistant_msg, workflow_steps)
+            for idx, (user_msg, assistant_msg) in enumerate(self._pair_messages(conversation))
+        ]
+
+        dimensions = ['intent_recognition', 'guidance_quality', 'workflow_adherence', 'exception_handling', 'output_quality']
+        all_scores = [self._average_dimension(round_scores, d) for d in dimensions]
+        final_scores = {d: self._average_dimension(round_scores, d) for d in dimensions}
+
         overall_score = self._calculate_overall(all_scores, final_scores)
-        
-        # Determine final verdict
         verdict = self._determine_verdict(all_scores, overall_score)
-        
+
         return {
             'dimension_scores': final_scores,
             'overall_score': overall_score,
@@ -116,8 +71,8 @@ class DialogueEvaluator:
             'stats': {
                 'total_turns': len(round_scores),
                 'workflow_adherence_formula_breakdown': await self._get_work_adherence_breakdown(
-                    round_scores, 
-                    workflow_adherence_final if len(round_scores) > 0 else 0
+                    round_scores,
+                    final_scores['workflow_adherence'] if round_scores else 0
                 ),
                 'boundary_violations_count': self._detect_boundary_violations(conversation)
             }

@@ -128,7 +128,7 @@ class SkillCertConfig(BaseModel):
     @staticmethod
     def _parse_models_from_env(models_env: str) -> List[ModelConfig]:
         """Parse models from environment variable in format: model1=url,key,fallback|model2=url,key,fallback"""
-        models = []
+        models: list[ModelConfig] = []
         if not models_env:
             return models
         
@@ -144,7 +144,7 @@ class SkillCertConfig(BaseModel):
                     fallback_model = config_parts[2] if len(config_parts) > 2 else None
                     
                     models.append(ModelConfig(
-                        model=name_part,
+                        model_name=name_part,
                         base_url=base_url,
                         api_key=api_key,
                         fallback_model=fallback_model
@@ -166,7 +166,7 @@ class SkillCertConfig(BaseModel):
                     fallback_model = config_parts[2] if len(config_parts) > 2 else None
                     
                     models.append(ModelConfig(
-                        model=name,
+                        model_name=name,
                         base_url=base_url,
                         api_key=api_key,
                         fallback_model=fallback_model

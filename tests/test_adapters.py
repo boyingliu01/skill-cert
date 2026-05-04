@@ -1,7 +1,7 @@
 import asyncio
 import httpx
 import tenacity
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 import pytest
 from adapters.base import ModelAdapter
 from adapters.openai_compat import OpenAICompatAdapter
@@ -40,8 +40,6 @@ def test_openai_compat_adapter_initialization():
 
 def test_openai_compat_retry_logic():
     """Test that the adapter implements retry logic correctly."""
-    import inspect
-    import tenacity
     
     method = OpenAICompatAdapter._call_with_retry
     assert hasattr(method, '__wrapped__') or hasattr(method, '__wrapped_func__')

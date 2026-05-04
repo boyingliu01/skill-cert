@@ -1,6 +1,5 @@
-import pytest
 import asyncio
-from unittest.mock import Mock, AsyncMock, MagicMock
+from unittest.mock import Mock, AsyncMock
 from engine.runner import EvalRunner
 
 

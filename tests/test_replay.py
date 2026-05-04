@@ -1,9 +1,7 @@
 import pytest
-import json
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 import tempfile
 import os
-from pathlib import Path
 import sys
 
 # Add the root directory to the path

@@ -1,16 +1,19 @@
-# engine/ — Core Evaluation Pipeline
+# engine/ — Core Evaluation Pipeline (v2)
 
 ## OVERVIEW
-13-module evaluation pipeline: parses SKILL.md skills, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L4 metrics, detects cross-model drift, and produces standardized reports.
+16-module evaluation pipeline: parses SKILL.md skills, validates schema, runs security probes, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L6 metrics, checks operating envelope, detects cross-model drift, integrates external tools, and produces standardized reports.
 
 ## STRUCTURE
 ```
 engine/
-├── analyzer.py        # SKILL.md parser → SkillSpec (regex + markdown-it-py AST, LLM fallback)
+├── analyzer.py        # SKILL.md parser → SkillSpec (regex + markdown-it-py AST, LLM fallback) + schema validation
+├── security_probes.py # Security scanner: 19 patterns across 5 categories (INJ/EXF/DCMD/CRD/OBF), verdict PASS/WARN/BLOCK
 ├── testgen.py         # EvalGenerator: generate → review → gap-fill loop until coverage ≥90%
 ├── runner.py          # Execution engine: with/without skill, concurrency, rate limiting, timeout
 ├── grader.py          # Grader: deterministic assertions + LLM-as-judge (temp=0)
-├── metrics.py         # L1-L4 calculation: trigger accuracy, delta, step adherence, stability
+├── metrics.py         # L1-L6 calculation: trigger accuracy, delta, step adherence, stability, efficiency, trajectory quality
+├── envelope.py        # Operating envelope checker: steps/tokens/timeout/tool_calls with config-driven thresholds
+├── integrations.py    # External tool integration: Provider pattern (BaseIntegration ABC + dispatcher), ToolAvailability protocol
 ├── drift.py           # Cross-model drift detection: none/low/moderate/high severity
 ├── reporter.py        # Markdown + JSON report generation with verdict
 ├── replay.py          # Regression testing with historical session data
@@ -24,17 +27,16 @@ engine/
 ## WHERE TO LOOK
 | Task | File | Notes |
 |------|------|-------|
-| Parse SKILL.md → dict | `analyzer.py` | `parse_skill_md()` entry, returns SkillSpec model_dump |
+| Parse SKILL.md → dict | `analyzer.py` | `parse_skill_md()` entry, returns SkillSpec model_dump with schema_validation |
+| Validate SKILL.md schema | `analyzer.py` | `_validate_schema()` checks Security Notes/Permissions/Scope/Description |
+| Security scanning | `security_probes.py` | `SecurityScanner.scan()` — 19 patterns, 5 categories, severity_matrix |
 | Generate evals | `testgen.py` | `EvalGenerator.generate_evals_with_convergence()` — main entry |
 | Execute evals | `runner.py` | `Runner` class: manages with/without skill parallel runs |
 | Grade outputs | `grader.py` | `Grader` class: supports contains, not_contains, regex, starts_with, json_valid |
-| Compute metrics | `metrics.py` | `calculate_metrics()` → returns dict with L1-L4 breakdowns |
+| Compute metrics | `metrics.py` | `calculate_metrics()` → returns dict with L1-L6 breakdowns |
+| Check operating envelope | `envelope.py` | `EnvelopeChecker.check()` — steps/tokens/timeout/tool_calls |
+| External integrations | `integrations.py` | `IntegrationDispatcher` with `SkillLabIntegration` + `DeepEvalIntegration` |
 | Detect drift | `drift.py` | `detect_drift()` → severity thresholds in CONSTANTS |
-| Generate reports | `reporter.py` | Produces .md + .json output files |
-| Dialogue mode | `dialogue_evaluator.py` + `dialogue_runner.py` | Multi-turn orchestration |
-| Replay mode | `replay.py` | Loads .jsonl sessions, replays evals |
-| Config | `config.py` | Validates CLI settings, rate limits, model configs |
-| Simulator | `simulator.py` | Mock LLM responses for unit testing engine |
 
 ## CONVENTIONS
 - All data models are Pydantic `BaseModel` subclasses

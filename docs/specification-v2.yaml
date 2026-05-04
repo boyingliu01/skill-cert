@@ -1,0 +1,194 @@
+project: skill-cert
+version: 2.0.0
+base_version: 0.1.0
+branch: feature/skill-cert-v2-enhancement
+
+architecture:
+  new_modules:
+    engine/security_probes.py:
+      role: builtin security pattern detector (BASE layer, always on)
+      class: SecurityScanner
+      methods:
+        - scan(skill_md_text: str) -> SecurityReport
+        - load_patterns(patterns_dir: str) -> None
+      data_model:
+        SecurityReport:
+          verdict: PASS|WARN|BLOCK
+          findings: list[SecurityFinding]
+          score: float
+          summary: dict
+        SecurityFinding:
+          id: str
+          category: INJECTION|EXFILTRATION|DANGEROUS_CMD|CREDENTIAL|OBFUSCATION
+          severity: CRITICAL|HIGH|MEDIUM|LOW
+          pattern: str
+          location: str
+          evidence: str
+      severity_logic:
+        CRITICAL: immediate BLOCK verdict
+        HIGH: 2_or_more -> BLOCK verdict
+        MEDIUM: WARNING in report only
+        LOW: INFO in report only
+      patterns_dir: security_patterns/*.yaml
+
+    engine/integrations.py:
+      role: external tool integration framework (Provider pattern)
+      architecture:
+        base_class: BaseIntegration (ABC)
+        methods:
+          - check_available() -> bool
+          - get_version() -> str
+          - run(spec: dict, **kwargs) -> dict
+        providers:
+          - SkillLabIntegration: wraps sklab evaluate CLI
+          - DeepEvalIntegration: wraps deepeval metrics API
+        dispatcher: IntegrationDispatcher class with register() and run_all()
+      fallback: all integrations gracefully skip when unavailable
+
+    engine/envelope.py:
+      role: operating envelope checker (check logic only)
+      class: EnvelopeChecker
+      constructor:
+        defaults:
+          max_steps: 20
+          max_tool_calls: 15
+          token_budget: 50000
+          timeout_s: 300
+      method: check(trace: ExecutionTrace) -> EnvelopeResult
+      data_model:
+        EnvelopeResult:
+          passed: bool
+          violations: list[str]
+          details: dict
+
+    schemas/execution-trace.schema.json:
+      role: data contract between runner and envelope/metrics
+      required: [run_id, events]
+      event_types: [TurnStart, ToolCall, ToolResult, StepComplete]
+      metrics: {total_time_ms, total_tokens, step_count, tool_call_count}
+
+  modified_modules:
+    engine/analyzer.py:
+      add: _validate_schema(spec: SkillSpec) -> SchemaValidationResult
+      checks:
+        - security_notes section exists and non-empty
+        - permissions section exists and non-empty
+        - scope section exists with Does NOT clause
+        - description length <= 500 chars
+        - description does not contain flow language
+      confidence_impact:
+        security_notes_missing: -0.15
+        permissions_missing: -0.15
+        scope_missing: -0.10
+        description_too_long: -0.05
+        description_is_flow: -0.10
+      backward_compat:
+        default: WARNING only (confidence reduced + report flagged)
+        strict: --strict-schema CLI flag -> REJECT invalid skills
+
+    engine/runner.py:
+      add: execution trace collection in run_single_eval()
+      fields: [timestamp, tokens_used, step_number, tool_calls]
+      output: ExecutionTrace appended to result dict
+
+    engine/metrics.py:
+      add:
+        L5_StepEfficiency:
+          method: envelope checking
+          scoring: passed->1.0, 1_violation->0.7, 2plus->0.3
+        L6_TrajectoryQuality:
+          method: embedding cosine similarity (sentence-transformers)
+          applicable: dialogue mode only
+          non_dialogue: set to N/A
+      integration: L5+L6 included in overall_score (weight 1/6 each)
+
+    skill_cert/cli.py:
+      add_args:
+        - --with-skill-lab: enable Skill-Lab integration
+        - --with-deepeval: enable DeepEval integration
+        - --strict-schema: reject schema-invalid skills
+        - --security-relaxed: only CRITICAL security issues block
+        - --envelope JSON: custom envelope thresholds
+
+requirements:
+  REQ-P0-001:
+    title: Security Probe Suite
+    scope: |
+      Built-in security detection (BASE layer, always active), covering 5 categories with >=15 probe patterns:
+      INJECTION (3+): prompt injection, ignore previous instructions, system prompt override
+      EXFILTRATION (3+): curl to external URLs, hardcoded URLs, data harvesting patterns
+      DANGEROUS_CMD (3+): rm -rf, format, dd, chmod 777
+      CREDENTIAL (3+): ~/.ssh references, ~/.aws references, exposed API keys
+      OBFUSCATION (3+): zero-width characters, base64 payloads, unicode homoglyphs
+      Coordination: internal probes = BASE (mandatory), AgentShield = PLUS (optional via integrations.py)
+    acceptance_criteria:
+      - SecurityScanner class in engine/security_probes.py
+      - Patterns loaded from security_patterns/*.yaml (extensible)
+      - BLOCK verdict -> immediate FAIL with security_block flag in report
+      - Security scan runs as Phase 0.5 (after parse, before eval gen)
+      - Output SecurityReport with verdict/score/findings
+      - Tests: test_security_probes.py (>=15 tests)
+
+  REQ-P0-002:
+    title: SKILL.md Schema Enforcement
+    scope: |
+      Schema validation after parse, checking SpecWeave Verified Skills minimum requirements:
+      - ## Security Notes section present and non-empty
+      - ## Permissions section present and non-empty
+      - ## Scope section present with "Does NOT" clause
+      - Frontmatter description <= 500 characters
+      - Frontmatter description does not contain workflow/flow language
+      Confidence impact per missing field (see architecture above)
+    backward_compat: |
+      Default mode: WARNING only, parse_confidence reduced + report flagged
+      --strict-schema mode: any required field missing -> direct REJECT
+    acceptance_criteria:
+      - _validate_schema() method in engine/analyzer.py
+      - schemas/skillspec-required.schema.json (subset, composed via allOf with base schema)
+      - Field limits defined via JSON Schema maxLength/minLength (not hardcoded)
+      - parse_confidence adjusted per defined weights
+      - Tests: test_analyzer_schema.py (>=10 tests)
+
+  REQ-P0-003:
+    title: Process/Trajectory Metrics + Operating Envelope
+    scope: |
+      L5 StepEfficiency: envelope check -> scoring (passed:1.0, 1violation:0.7, 2plus:0.3)
+      L6 TrajectoryQuality: dialogue mode only
+        - TurnRelevancy and KnowledgeRetention via embedding cosine similarity
+        - Uses sentence-transformers for embedding, LLM judge as fallback
+        - Non-dialogue mode: L6 = N/A
+      Envelope: envelope.py only does check logic, thresholds injected via config
+        Defaults: max_steps=20, max_tool_calls=15, token_budget=50000, timeout_s=300
+        Skill-level override via SKILL.md budget field
+    data_contract: runner produces ExecutionTrace per schemas/execution-trace.schema.json
+    acceptance_criteria:
+      - L5 and L6 metrics in engine/metrics.py
+      - engine/runner.py enhanced with execution trace collection
+      - engine/envelope.py module with EnvelopeChecker
+      - schemas/execution-trace.schema.json defining data contract
+      - Tests: test_envelope.py + test_metrics_l5l6.py (>=15 tests)
+
+  REQ-P0-004:
+    title: External Tool Integration Framework
+    scope: |
+      Provider pattern with BaseIntegration abstract class:
+      - check_available() -> bool
+      - get_version() -> str
+      - run(spec: dict, **kwargs) -> dict
+      Concrete providers:
+        SkillLabIntegration: wraps sklab evaluate CLI output
+        DeepEvalIntegration: wraps deepeval metrics API
+      IntegrationDispatcher: register providers + run_all
+      Graceful degradation: unavailable integrations silently skipped
+    acceptance_criteria:
+      - engine/integrations.py with BaseIntegration + IntegrationDispatcher
+      - --with-skill-lab CLI flag enables SkillLabIntegration
+      - --with-deepeval CLI flag enables DeepEvalIntegration
+      - Unavailable tools skip with info message
+      - Tests: test_integrations.py (>=10 tests)
+
+implementation_order:
+  - REQ-P0-004 (integration framework first, define abstract interface)
+  - REQ-P0-002 (schema validation, independent of external deps)
+  - REQ-P0-001 (security probes, independent of external deps)
+  - REQ-P0-003 (process metrics, depends on runner trace enhancement)

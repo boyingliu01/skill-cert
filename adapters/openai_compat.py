@@ -1,7 +1,6 @@
 import asyncio
 import httpx
-import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from aiolimiter import AsyncLimiter
 from .base import ModelAdapter
@@ -56,17 +55,27 @@ class OpenAICompatAdapter(ModelAdapter):
         timeout: int
     ) -> str:
         """Internal method to make API call with retry logic."""
+        content, _ = await self._call_with_usage(messages, model, timeout)
+        return content
+
+    async def _call_with_usage(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        timeout: int
+    ) -> Tuple[str, Dict[str, int]]:
+        """Internal method to make API call and return usage data."""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "model": model,
             "messages": messages,
-            "temperature": 0.0  # Fixed temperature for consistency
+            "temperature": 0.0
         }
-        
+
         try:
             response = await self.client.post(
                 f"{self.base_url}/chat/completions",
@@ -74,21 +83,28 @@ class OpenAICompatAdapter(ModelAdapter):
                 json=payload,
                 timeout=timeout
             )
-            
-            if response.status_code == 401:  # Invalid API key
+
+            if response.status_code == 401:
                 raise RuntimeError("Invalid API key")
-            elif response.status_code == 404:  # Model not found
+            elif response.status_code == 404:
                 raise RuntimeError("Model not found")
-            elif response.status_code == 429:  # Insufficient quota
+            elif response.status_code == 429:
                 raise RuntimeError("Insufficient quota")
-            elif response.status_code >= 500:  # Server errors - retry
+            elif response.status_code >= 500:
                 response.raise_for_status()
             else:
                 response.raise_for_status()
-                
+
             result = response.json()
-            return result["choices"][0]["message"]["content"]
-            
+            content = result["choices"][0]["message"]["content"]
+            usage = result.get("usage", {})
+            token_data = {
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("total_tokens", 0),
+            }
+            return content, token_data
+
         except httpx.TimeoutException:
             raise
         except httpx.ConnectError:
@@ -117,6 +133,29 @@ class OpenAICompatAdapter(ModelAdapter):
             return asyncio.run(self._make_request(messages, system, timeout))
         else:
             return loop.run_until_complete(self._make_request(messages, system, timeout))
+
+    def chat_with_usage(self, messages: List[Dict[str, str]], system: str | None = None, timeout: int = 120) -> Tuple[str, Dict[str, int]]:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self._make_request_with_usage(messages, system, timeout))
+        else:
+            return loop.run_until_complete(self._make_request_with_usage(messages, system, timeout))
+
+    async def _make_request_with_usage(
+        self,
+        messages: List[Dict[str, str]],
+        system: str | None = None,
+        timeout: int = 120
+    ) -> Tuple[str, Dict[str, int]]:
+        prepared_messages = []
+        if system:
+            prepared_messages.append({"role": "system", "content": system})
+        prepared_messages.extend(messages)
+
+        model_to_use = self.model
+        await self.rate_limiter.acquire()
+        return await self._call_with_usage(prepared_messages, model_to_use, timeout)
     
     async def _process_single_request(
         self, 

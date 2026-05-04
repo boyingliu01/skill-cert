@@ -1,8 +1,11 @@
 import os
+import sys
 import tempfile
-from unittest.mock import patch, MagicMock
+from pathlib import Path
+from unittest.mock import patch
 import pytest
-from engine.config import SkillCertConfig, ModelConfig
+from skill_cert.cli import main, EXIT_PASS, EXIT_ERROR, EXIT_FAIL_WITH_CAVEATS
+from engine.config import SkillCertConfig
 
 
 def test_default_config_values():
@@ -361,7 +364,7 @@ def test_config_with_models_from_env():
     """Test loading configuration with models from environment variable."""
     with patch.dict(os.environ, {
         "SKILL_CERT_MODELS": "gpt-4=https://api.openai.com,test.key,fallback|claude=https://api.claude.com,claude.key"
-    }):
+    }), patch.object(SkillCertConfig, "_apply_config_file", return_value={"models": []}):
         # Create a mock CLI args without models to trigger env var usage
         class MockArgs:
             max_concurrency = None
@@ -385,6 +388,66 @@ def test_config_with_models_from_env():
         assert config.models[1].base_url == "https://api.claude.com"
         assert config.models[1].api_key == "claude.key"
         assert config.models[1].fallback_model is None
+
+
+class TestCLI:
+    def test_cli_no_args_shows_error(self):
+        with patch.object(sys, 'argv', ['skill_cert']), patch('sys.exit') as mock_exit:
+            main()
+            mock_exit.assert_called_once()
+
+    def test_cli_help_output(self, capsys):
+        with patch.object(sys, 'argv', ['skill_cert', '--help']), pytest.raises(SystemExit):
+            main()
+        captured = capsys.readouterr()
+        assert '--skill' in captured.out
+        assert '--mode' in captured.out
+        assert '--models' in captured.out
+        assert '--max-turns' in captured.out
+        assert '--session' in captured.out
+
+    def test_cli_missing_skill(self):
+        with patch.object(sys, 'argv', ['skill_cert']), pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 2
+
+    def test_cli_nonexistent_skill(self):
+        with patch.object(sys, 'argv', ['skill_cert', '--skill', '/nonexistent.md']):
+            exit_code = main()
+            assert exit_code == EXIT_ERROR
+
+    def test_cli_valid_skill_no_models(self):
+        spec_path = str(Path(__file__).parent.parent / 'examples' / 'minimum-skill.md')
+        if not Path(spec_path).exists():
+            pytest.skip('minimum-skill.md not found')
+        with patch.object(sys, 'argv', ['skill_cert', '--skill', spec_path]):
+            exit_code = main()
+            assert exit_code == EXIT_ERROR
+
+    def test_cli_mode_single_is_default(self, capsys):
+        with patch.object(sys, 'argv', ['skill_cert', '--help']), pytest.raises(SystemExit):
+            main()
+        captured = capsys.readouterr()
+        assert 'single' in captured.out
+        assert 'dialogue' in captured.out
+        assert 'replay' in captured.out
+
+    def test_cli_mode_dialogue_requires_max_turns(self, capsys):
+        with patch.object(sys, 'argv', ['skill_cert', '--help']), pytest.raises(SystemExit):
+            main()
+        captured = capsys.readouterr()
+        assert '--max-turns' in captured.out
+
+    def test_cli_mode_replay_requires_session(self, capsys):
+        with patch.object(sys, 'argv', ['skill_cert', '--help']), pytest.raises(SystemExit):
+            main()
+        captured = capsys.readouterr()
+        assert '--session' in captured.out
+
+    def test_cli_exit_codes_defined(self):
+        assert EXIT_PASS == 0
+        assert EXIT_ERROR == 1
+        assert EXIT_FAIL_WITH_CAVEATS == 2
 
 
 if __name__ == "__main__":

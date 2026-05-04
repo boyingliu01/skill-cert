@@ -1,6 +1,5 @@
 """Tests for engine/drift.py — cross-model drift detection."""
 
-import pytest
 from engine.drift import DriftDetector, DriftResult
 from engine.grader import Grader, EvalCase, EvalAssertion
 

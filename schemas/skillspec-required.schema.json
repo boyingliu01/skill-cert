@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "schemas/skillspec-required.schema.json",
+  "title": "SKILL.md Required Fields Schema",
+  "description": "SpecWeave Verified Skills minimum required fields for SKILL.md validation",
+  "type": "object",
+  "required": ["security_notes", "permissions", "scope"],
+  "properties": {
+    "security_notes": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Must describe data security considerations"
+    },
+    "permissions": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Must declare tool permissions required"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Must define scope with Does NOT clause"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Skill description, must not contain workflow language"
+    }
+  }
+}

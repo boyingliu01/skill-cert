@@ -91,7 +91,7 @@ class Grader:
             "model_output": model_output,
             "assertion_results": [
                 {
-                    "assertion": result.assertion.dict(),
+                    "assertion": result.assertion.model_dump(),
                     "passed": result.passed,
                     "confidence": result.confidence,
                     "reason": result.reason
@@ -101,7 +101,7 @@ class Grader:
             "total_weighted_score": total_weighted_score,
             "total_possible_score": total_possible_score,
             "pass_rate": pass_rate,
-            "judge_result": judge_result.dict() if judge_result else None,
+            "judge_result": judge_result.model_dump() if judge_result else None,
             "final_passed": judge_result.passed if judge_result and judge_result.confidence >= 0.8 else pass_rate >= 0.5
         }
     
