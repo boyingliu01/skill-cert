@@ -173,12 +173,19 @@ def _run_single_phase(args, config: SkillCertConfig, spec_path, output_dir, skil
     # Also store raw results for coverage stats
     metrics['_results'] = all_results
     
-    _print_metric("L1 Trigger Accuracy", metrics.get("l1", 0), 0.9)
-    _print_metric("L2 Output Delta", metrics.get("l2", 0), 0.2)
-    _print_metric("L3 Step Adherence", metrics.get("l3", 0), 0.85)
-    l4_val = metrics.get("l4", 0)
-    l4_pass = metrics.get("l4_stability_pass", True)
-    print(f"  L4 Stability: {l4_val * 100:.1f}% (std≤10%) {'✓' if l4_pass else '✗'}")
+    _print_metric("L1 Trigger Accuracy", metrics.get("l1_trigger_accuracy", 0), 0.9)
+    _print_metric("L2 Output Delta", metrics.get("l2_with_without_skill_delta", 0), 0.2)
+    _print_metric("L3 Step Adherence", metrics.get("l3_step_adherence", 0), 0.85)
+    num_runs = getattr(args, "runs", 1) or 1
+    if num_runs > 1:
+        stability_d = metrics.get("stability_data", {})
+        l4_val = metrics.get("l4_execution_stability", 0)
+        l4_pass = metrics.get("l4_stability_pass", True)
+        print(f"  L4 Stability: {l4_val * 100:.1f}% (std={stability_d.get('overall_std_dev', 0):.4f})")
+    else:
+        l4_val = metrics.get("l4_execution_stability", 0)
+        l4_pass = True
+    print(f"  L4 Execution Stability: {l4_val * 100:.1f}% (std<=10%) {'OK' if l4_pass else 'FAIL'}")
     print(f"  Overall: {metrics.get('overall', 0) * 100:.1f}%")
 
     _print_phase(4, "Drift Detection")
@@ -251,7 +258,7 @@ def _setup_single_mode(args, config: SkillCertConfig):
     primary_adapter = list(adapters.values())[0]
     review_adapter = list(adapters.values())[1] if len(adapters) > 1 else primary_adapter
     evals = generator.generate_evals_with_convergence(spec, primary_adapter, review_adapter)
-    total_evals = sum(len(evals.get(k, [])) for k in ("eval_cases", "cases", "test_cases", "evaluations", "eval"))
+    total_evals = sum(len(evals.get(k, [])) for k in ("eval_cases", "evals", "cases", "test_cases", "evaluations", "eval"))
     print(f"  Generated: {total_evals} eval cases")
     if generator._calculate_coverage(evals, spec) < generator.coverage_threshold:
         print(f"  WARNING: Coverage below {generator.coverage_threshold * 100:.0f}% threshold")

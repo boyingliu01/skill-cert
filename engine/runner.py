@@ -51,8 +51,14 @@ class EvalRunner:
                     input_text = str(input_text)
                 
                 if with_skill:
-                    skill_context = f"Using skill from {skill_path}. "
-                    input_text = skill_context + input_text
+                    try:
+                        with open(skill_path, 'r', encoding='utf-8') as f:
+                            lines = f.readlines()
+                            skill_header = ''.join(lines[:20])[:1000]
+                    except (FileNotFoundError, IOError):
+                        skill_header = skill_path
+                    skill_context = f"Skill file: {skill_path}\n{skill_header}\n\n---\nTask: {input_text}"
+                    input_text = skill_context
                 
                 start_time = time.time()
                 messages = [{"role": "user", "content": input_text}]
