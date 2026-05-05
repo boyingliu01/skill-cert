@@ -336,7 +336,8 @@ Minimum requirements:
         covered = 0
         for item in section_items:
             search = item.get("name", "") if isinstance(item, dict) else str(item)
-            if any(search.lower() in str(val).lower() for val in assertion_set):
+            # Bidirectional matching: step_name IN assertion_value OR assertion_value IN step_name
+            if any(search.lower() in str(val).lower() or str(val).lower() in search.lower() for val in assertion_set):
                 covered += 1
         return covered / total
 
@@ -346,7 +347,7 @@ Minimum requirements:
             return 0.0
 
         assertion_set = {
-            a.get("value", "")
+            a.get("value", a.get("name", ""))
             for case in eval_cases
             for a in case.get("assertions", [])
         }
