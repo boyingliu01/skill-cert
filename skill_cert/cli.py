@@ -11,6 +11,7 @@ from engine.analyzer import parse_skill_md
 from engine.config import SkillCertConfig, ModelConfig
 from engine.testgen import EvalGenerator
 from engine.runner import EvalRunner
+from engine.stability import StabilityRunner, calculate_l4_stability
 from engine.grader import Grader
 from engine.metrics import MetricsCalculator
 from engine.drift import DriftDetector
@@ -147,6 +148,24 @@ def _run_single_phase(args, config: SkillCertConfig, spec_path, output_dir, skil
     _print_phase(3, "Calculate Metrics")
     calc = MetricsCalculator()
     metrics = calc.calculate_metrics(all_results)
+
+    num_runs = getattr(args, "runs", 1) or 1
+    if num_runs > 1:
+        _print_phase(4, f"Stability Analysis ({num_runs} runs)")
+        eval_cases = spec["evals"].get("eval_cases", spec["evals"].get("cases", []))
+        stab_runner = StabilityRunner(
+            base_runner=EvalRunner(max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm),
+            num_runs=num_runs, max_concurrency=config.max_concurrency
+        )
+        stability_data = stab_runner.run_stability(eval_cases, spec_path, primary_adapter, with_skill=True)
+        l4_score = calculate_l4_stability(stability_data)
+        metrics["l4_execution_stability"] = l4_score
+        metrics["l4_stability_pass"] = l4_score >= 0.8
+        metrics["stability_data"] = stability_data
+        print(f"  Runs: {num_runs}")
+        print(f"  Mean pass rate: {stability_data['overall_mean_pass_rate']:.2f}")
+        print(f"  Stability std: {stability_data['overall_std_dev']:.4f}, L4: {l4_score:.2f}")
+    
     l7 = calc.calculate_l7_cost_efficiency(all_results)
     if l7:
         metrics['l7_cost_efficiency'] = l7
@@ -359,6 +378,7 @@ Examples:
     parser.add_argument("--rate-limit-rpm", type=int, help="Rate limit (requests per minute)")
     parser.add_argument("--request-timeout", type=int, help="Request timeout in seconds")
     parser.add_argument("--max-total-time", type=int, default=3600, help="Global timeout in seconds")
+    parser.add_argument("--runs", type=int, default=1, help="Number of evaluation runs for stability (default: 1)")
 
     args = parser.parse_args()
 
