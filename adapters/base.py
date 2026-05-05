@@ -1,5 +1,30 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Tuple
+from dataclasses import dataclass
+from typing import List, Dict, Any, Tuple, Optional
+
+
+@dataclass
+class TokenUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+
+    def to_dict(self) -> Dict[str, int]:
+        return {"input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "total_tokens": self.total_tokens}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, int]) -> "TokenUsage":
+        return cls(input_tokens=data.get("input_tokens", 0), output_tokens=data.get("output_tokens", 0), total_tokens=data.get("total_tokens", 0))
+
+
+@dataclass
+class LLMResponse:
+    text: str
+    token_usage: Optional[TokenUsage] = None
+    latency_ms: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"text": self.text, "token_usage": self.token_usage.to_dict() if self.token_usage else None, "latency_ms": self.latency_ms}
 
 
 class ModelAdapter(ABC):
