@@ -81,6 +81,23 @@ class Reporter:
 ⚠️ Skill increases costs by more than 50%. Consider optimizing.
 {% endif %}
 {% endif %}
+{% if latency_analysis %}
+
+## Latency Analysis
+
+### L8: Execution Latency
+{% if latency_analysis.with_skill %}
+| Metric | With Skill | Without Skill | Overhead |
+|--------|-----------|---------------|----------|
+| P50 | {{ "%.2f"|format(latency_analysis.with_skill.p50) }}s | {{ "%.2f"|format(latency_analysis.without_skill.p50) }}s | {% if latency_analysis.with_skill.p50 > latency_analysis.without_skill.p50 %}+{{ "%.1f"|format(((latency_analysis.with_skill.p50 - latency_analysis.without_skill.p50) / latency_analysis.without_skill.p50 * 100) if latency_analysis.without_skill.p50 > 0 else 0) }}%{% else %}—{% endif %} |
+| P95 | {{ "%.2f"|format(latency_analysis.with_skill.p95) }}s | {{ "%.2f"|format(latency_analysis.without_skill.p95) }}s | {% if latency_analysis.with_skill.p95 > latency_analysis.without_skill.p95 %}+{{ "%.1f"|format(((latency_analysis.with_skill.p95 - latency_analysis.without_skill.p95) / latency_analysis.without_skill.p95 * 100) if latency_analysis.without_skill.p95 > 0 else 0) }}%{% else %}—{% endif %} |
+| Mean | {{ "%.2f"|format(latency_analysis.with_skill.mean) }}s | {{ "%.2f"|format(latency_analysis.without_skill.mean) }}s | — |
+| Slow (>30s) | {{ latency_analysis.slow_with_skill }} | {{ latency_analysis.slow_without_skill }} | +{{ latency_analysis.slow_with_skill - latency_analysis.slow_without_skill }} |
+{% endif %}
+{% if latency_analysis.overhead_pct and latency_analysis.overhead_pct > 20 %}
+⚠️ Skill adds {{ latency_analysis.overhead_pct }}% latency overhead.
+{% endif %}
+{% endif %}
 
 ## Improvement Suggestions
 
@@ -181,10 +198,11 @@ For detailed results, see the JSON output.
         
         # Cost analysis
         cost_analysis = metrics.get('l7_cost_efficiency')
+        latency_analysis = metrics.get('l8_latency_metrics')
         
         # Generate improvement suggestions
         suggestions = self._generate_suggestions(
-            metrics, drift, verdict, overall_score, cost_analysis
+            metrics, drift, verdict, overall_score, cost_analysis, latency_analysis
         )
         
         # Evaluation coverage
@@ -286,6 +304,7 @@ For detailed results, see the JSON output.
             config_info=config_info,
             benchmark_info=benchmark_info,
             cost_analysis=cost_analysis,
+            latency_analysis=latency_analysis,
         )
         
         # Create JSON report
@@ -317,6 +336,8 @@ For detailed results, see the JSON output.
         
         if cost_analysis:
             json_report["cost_analysis"] = cost_analysis
+        if latency_analysis:
+            json_report["latency_analysis"] = latency_analysis
         
         return markdown_report, json_report
     
@@ -326,7 +347,8 @@ For detailed results, see the JSON output.
         drift: Dict[str, Any],
         verdict: str,
         overall_score: float,
-        cost_analysis: Dict[str, Any] | None = None
+        cost_analysis: Dict[str, Any] | None = None,
+        latency_analysis: Dict[str, Any] | None = None,
     ) -> List[str]:
         """Generate improvement suggestions based on metrics and drift analysis."""
         suggestions = []
@@ -366,6 +388,13 @@ For detailed results, see the JSON output.
             suggestions.append(f"Skill increases costs by {cost_analysis['cost_delta_pct']:.0%} — consider optimizing prompt or reducing verbosity")
         if cost_analysis and cost_analysis.get("cost_efficiency", 0) < 0.1 and cost_analysis.get("cost_delta_pct", 0) > 0:
             suggestions.append("Low cost efficiency — quality gains don't justify cost increase")
+        
+        # Latency suggestions
+        if latency_analysis and latency_analysis.get("overhead_pct", 0) > 50:
+            suggestions.append(f"Skill adds {latency_analysis['overhead_pct']}% latency overhead — optimize prompt or reduce steps")
+        slow_count = latency_analysis.get("slow_with_skill", 0) if latency_analysis else 0
+        if slow_count > 0:
+            suggestions.append(f"{slow_count} requests exceeded 30s threshold — consider async processing or timeouts")
         
         if not suggestions:
             suggestions.append("Performance is strong across all metrics")

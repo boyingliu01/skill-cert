@@ -41,6 +41,7 @@ class MetricsCalculator:
         overall_score = score_sum / active_metrics if eval_results and active_metrics > 0 else 0.0
 
         l7 = self._calculate_l7_cost_efficiency(eval_results)
+        l8 = self._calculate_l8_latency_metrics(eval_results)
 
         return {
             "overall_score": overall_score,
@@ -51,11 +52,13 @@ class MetricsCalculator:
             "l5_step_efficiency": l5_score,
             "l6_trajectory_quality": l6_score,
             "l7_cost_efficiency": l7,
+            "l8_latency_metrics": l8,
             "metrics_breakdown": {
                 "l1_details": self._get_l1_details(eval_results),
                 "l2_details": self._get_l2_details(eval_results),
                 "l3_details": self._get_l3_details(eval_results),
-                "l4_details": self._get_l4_details(eval_results)
+                "l4_details": self._get_l4_details(eval_results),
+                "l8_latency_details": l8 if l8 else {},
             }
         }
 
@@ -325,4 +328,45 @@ class MetricsCalculator:
             "cost_without_skill": round(cost_without, 4),
             "cost_delta_pct": round(cost_delta_pct, 4),
             "cost_efficiency": cost_efficiency,
+        }
+
+    # ── L8: Latency Metrics ──────────────────────────────────────
+
+    def _calculate_l8_latency_metrics(self, eval_results) -> dict | None:
+        """Calculate latency metrics: P50, P95, P99, with/without overhead."""
+        with_times = [r["execution_time"] for r in eval_results if r.get("skill_used") and "execution_time" in r and r["execution_time"] > 0]
+        without_times = [r["execution_time"] for r in eval_results if not r.get("skill_used") and "execution_time" in r and r["execution_time"] > 0]
+
+        if not with_times and not without_times:
+            return None
+
+        stats = {}
+        if with_times:
+            stats["with_skill"] = self._compute_latency_stats(with_times)
+        if without_times:
+            stats["without_skill"] = self._compute_latency_stats(without_times)
+
+        if with_times and without_times:
+            with_avg = sum(with_times) / len(with_times)
+            without_avg = sum(without_times) / len(without_times)
+            overhead_pct = ((with_avg - without_avg) / max(without_avg, 0.001)) * 100
+            stats["overhead_pct"] = round(overhead_pct, 1)
+            stats["slow_threshold_sec"] = 30.0
+            stats["slow_with_skill"] = len([t for t in with_times if t > 30.0])
+            stats["slow_without_skill"] = len([t for t in without_times if t > 30.0])
+
+        return stats
+
+    def _compute_latency_stats(self, times: list[float]) -> dict:
+        """Compute P50, P95, P99 for a list of execution times."""
+        sorted_times = sorted(times)
+        n = len(sorted_times)
+        return {
+            "p50": round(sorted_times[n // 2], 3),
+            "p95": round(sorted_times[int(n * 0.95)] if n > 1 else sorted_times[0], 3),
+            "p99": round(sorted_times[int(n * 0.99)] if n > 1 else sorted_times[0], 3),
+            "mean": round(sum(sorted_times) / n, 3),
+            "min": round(sorted_times[0], 3),
+            "max": round(sorted_times[-1], 3),
+            "count": n,
         }
