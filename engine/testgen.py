@@ -195,22 +195,21 @@ Minimum requirements:
 
     def _parse_evals_response(self, response: str) -> Dict[str, Any]:
         try:
-            start_idx = response.find('{')
-            end_idx = response.rfind('}') + 1
+            cleaned = self._strip_markdown_fences(response)
+            start_idx = cleaned.find('{')
+            end_idx = cleaned.rfind('}') + 1
             
             if start_idx != -1 and end_idx != 0:
-                json_str = response[start_idx:end_idx]
+                json_str = cleaned[start_idx:end_idx]
                 parsed = json.loads(json_str)
                 
                 # Normalize to use eval_cases key
                 if "eval_cases" not in parsed:
-                    # Look for other possible keys that might contain eval cases
                     for key in ["evals", "cases", "test_cases", "evaluations", "eval"]:
                         if key in parsed and isinstance(parsed[key], list):
                             parsed["eval_cases"] = parsed[key]
                             break
                     else:
-                        # If no eval_cases found, wrap the whole response in an eval case
                         parsed["eval_cases"] = [{
                             "id": 1,
                             "name": "fallback-case",
@@ -220,12 +219,77 @@ Minimum requirements:
                             "assertions": [{"type": "contains", "value": "skill", "weight": 1}]
                         }]
                 
+                # Normalize each eval case
+                parsed["eval_cases"] = [
+                    self._normalize_eval_case(c, idx)
+                    for idx, c in enumerate(parsed["eval_cases"])
+                ]
+                
                 return parsed
             else:
                 return self.minimum_evals_template
         except json.JSONDecodeError:
             logger.warning("Could not parse JSON from model response, using template")
             return self.minimum_evals_template
+
+    @staticmethod
+    def _strip_markdown_fences(text: str) -> str:
+        """Strip markdown JSON fences and return clean JSON text."""
+        lines = text.split('\n')
+        fences = []
+        in_fence = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('```'):
+                if in_fence:
+                    in_fence = False
+                elif stripped.startswith('```json') or stripped == '```':
+                    in_fence = True
+                continue
+            if not in_fence or stripped:
+                fences.append(line)
+        return '\n'.join(fences)
+
+    @staticmethod
+    def _normalize_eval_case(case: dict, idx: int) -> dict:
+        """Normalize an eval case to ensure correct structure."""
+        normalized = dict(case)
+
+        # Ensure 'input' field (fallback from 'prompt')
+        if not normalized.get("input"):
+            normalized["input"] = normalized.get("prompt", "")
+
+        # Normalize flat assertion_type/assertion_value → assertions array
+        if "assertions" not in normalized or not isinstance(normalized.get("assertions"), list):
+            flat_type = normalized.pop("assertion_type", None)
+            flat_value = normalized.pop("assertion_value", "")
+            flat_weight = normalized.pop("assertion_weight", 1)
+            if flat_type:
+                normalized["assertions"] = [{
+                    "type": flat_type,
+                    "value": str(flat_value),
+                    "weight": int(float(flat_weight))
+                }]
+            else:
+                normalized["assertions"] = []
+
+        # Ensure assertions have proper structure
+        clean_asserts = []
+        for i, a in enumerate(normalized["assertions"]):
+            if isinstance(a, dict):
+                clean_asserts.append({
+                    "type": a.get("type", "contains"),
+                    "value": str(a.get("value", "")),
+                    "weight": int(float(a.get("weight", 1)))
+                })
+        normalized["assertions"] = clean_asserts
+
+        # Ensure required fields
+        normalized.setdefault("id", idx + 1)
+        normalized.setdefault("name", f"eval-{idx + 1}")
+        normalized.setdefault("category", "normal")
+
+        return normalized
 
     def _has_sufficient_evals(self, evals: Dict[str, Any]) -> bool:
         """Check if evals have sufficient cases."""
