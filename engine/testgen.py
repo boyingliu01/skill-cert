@@ -187,6 +187,22 @@ Generate a JSON object with an array of eval_cases containing:
 - expected_triggers: boolean (whether the skill should trigger)
 - assertions: array of objects with type ("contains", "not_contains", "regex", "starts_with", "json_valid"), value, and weight
 
+IMPORTANT: Use STRUCTURAL ASSERTIONS, not single keyword checks.
+
+For TRIGGER evals (category="trigger"):
+- Use regex assertions to check for structural output patterns
+- Example: {{"type": "regex", "value": "(PASS|FAIL|PASS_WITH_CAVEATS|CAVEATS)", "weight": 3}}
+- Example: {{"type": "regex", "value": "(L1|L2|L3|Overall|Score|Metric)", "weight": 2}}
+- Example: {{"type": "regex", "value": "(verdict|drift|evaluation|coverage)", "weight": 2}}
+
+For NORMAL evals:
+- Check that specific workflow steps appear in output
+- Example: {{"type": "regex", "value": "(Phase|Step|Execute|Pipeline)", "weight": 2}}
+- Example: {{"type": "regex", "value": "(passed|results|metrics|coverage)", "weight": 2}}
+
+Each eval case MUST have at least 2 assertions. Mix regex and keyword checks for depth.
+Use weights >= 2 for critical assertions.
+
 Minimum requirements:
 - At least 4 eval cases total
 - At least 5 trigger cases (should_trigger and should_not_trigger)

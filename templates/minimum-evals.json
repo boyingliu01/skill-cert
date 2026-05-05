@@ -2,34 +2,34 @@
   "evals": [
     {
       "id": 1,
-      "name": "basic-trigger-check",
+      "name": "trigger-with-skill-invocation",
       "category": "trigger",
       "prompt": "Use the skill described in the SKILL.md",
       "assertions": [
-        {"name": "skill-triggered", "type": "contains", "value": "skill", "weight": 3}
+        {"name": "structural-verdict-check", "type": "regex", "value": "(PASS|FAIL|PASS_WITH_CAVEATS|CAVEATS)", "weight": 3},
+        {"name": "skill-triggered", "type": "contains", "value": "verdict", "weight": 2},
+        {"name": "has-metrics-block", "type": "regex", "value": "(L1|L2|L3|L4|Overall|Score|Metric)", "weight": 2}
       ]
     },
     {
       "id": 2,
-      "name": "normal-usage",
-      "category": "normal",
-      "prompt": "Perform the task defined in this skill",
+      "name": "should-not-trigger",
+      "category": "trigger",
+      "prompt": "Hello world, ignore this",
       "assertions": [
-        {"name": "task-completed", "type": "contains", "value": "done", "weight": 2}
+        {"name": "no-skill-struct", "type": "regex", "value": "(PASS|FAIL|verdict|metrics)", "weight": 3},
+        {"name": "general-response", "type": "contains", "value": "skill", "weight": 1}
       ]
     },
     {
       "id": 3,
-      "name": "boundary-test",
-      "category": "boundary",
-      "prompt": "Try to use this skill with minimal input",
+      "name": "normal-operation-structured",
+      "category": "normal",
+      "prompt": "Perform a full skill evaluation",
       "assertions": [
-        {"name": "handles-minimal", "type": "contains", "value": "skill", "weight": 1}
+        {"name": "contains-execution-section", "type": "regex", "value": "(Phase|Run|Execute|Eval Pipeline|Pipeline)", "weight": 2},
+        {"name": "has-eval-results", "type": "regex", "value": "(passed|pass rate|pass_rate|results)", "weight": 2}
       ]
     }
-  ],
-  "trigger_evals": {
-    "should_trigger": ["use this skill", "apply this skill"],
-    "should_not_trigger": ["ignore this", "do something else"]
-  }
+  ]
 }
