@@ -10,6 +10,8 @@ class ModelConfig(BaseModel):
     api_key: str
     model_name: str
     fallback_model: Optional[str] = None
+    fallback_base_url: Optional[str] = None
+    fallback_api_key: Optional[str] = None
 
 
 class SkillCertConfig(BaseModel):

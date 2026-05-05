@@ -1,11 +1,15 @@
 import httpx
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from .base import ModelAdapter
 
+logger = logging.getLogger(__name__)
+
 
 class OpenAICompatAdapter(ModelAdapter):
-    """Adapter for OpenAI-compatible APIs — uses sync httpx.Client for thread safety."""
+    """Adapter for OpenAI-compatible APIs — uses sync httpx.Client for thread safety.
+    Supports fallback to a different endpoint when primary is unreachable."""
     
     def __init__(
         self, 
@@ -13,22 +17,32 @@ class OpenAICompatAdapter(ModelAdapter):
         api_key: str, 
         model: str, 
         fallback_model: Optional[str] = None,
+        fallback_base_url: Optional[str] = None,
+        fallback_api_key: Optional[str] = None,
         rpm_limit: int = 60
     ):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
         self.model = model
         self.fallback_model = fallback_model
+        self.fallback_base_url = fallback_base_url.rstrip('/') if fallback_base_url else None
+        self.fallback_api_key = fallback_api_key
+        self._has_fallback = bool(self.fallback_model and self.fallback_base_url and self.fallback_api_key)
         self.client = httpx.Client(timeout=httpx.Timeout(120.0))
         
     def _call_with_usage(
         self,
         messages: List[Dict[str, str]],
         model: str,
-        timeout: int
+        timeout: int,
+        base_url: str = None,
+        api_key: str = None,
     ) -> Tuple[str, Dict[str, int]]:
+        use_base = base_url or self.base_url
+        use_key = api_key or self.api_key
+        
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {use_key}",
             "Content-Type": "application/json"
         }
 
@@ -39,7 +53,7 @@ class OpenAICompatAdapter(ModelAdapter):
         }
 
         response = self.client.post(
-            f"{self.base_url}/chat/completions",
+            f"{use_base}/chat/completions",
             headers=headers,
             json=payload,
             timeout=timeout
@@ -63,10 +77,6 @@ class OpenAICompatAdapter(ModelAdapter):
             "total_tokens": usage.get("total_tokens", 0),
         }
         return content, token_data
-    
-    def chat(self, messages: List[Dict[str, str]], system: str = None, timeout: int = 120) -> str:
-        content, _ = self._call_with_usage_sync(messages, system, timeout)
-        return content
 
     def _call_with_usage_sync(
         self,
@@ -79,7 +89,34 @@ class OpenAICompatAdapter(ModelAdapter):
             prepared_messages.append({"role": "system", "content": system})
         prepared_messages.extend(messages)
         
-        return self._call_with_usage(prepared_messages, self.model, timeout)
+        return self._call_with_usage_with_fallback(prepared_messages, self.model, timeout)
+
+    def _call_with_usage_with_fallback(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        timeout: int
+    ) -> Tuple[str, Dict[str, int]]:
+        try:
+            return self._call_with_usage(messages, model, timeout)
+        except (httpx.ConnectError, httpx.ConnectTimeout, OSError) as e:
+            if self._has_fallback:
+                logger.warning(
+                    f"Primary endpoint unreachable ({self.base_url}, {self.model}), "
+                    f"falling back to {self.fallback_base_url}/{self.fallback_model}: {e}"
+                )
+                return self._call_with_usage(
+                    messages,
+                    self.fallback_model,
+                    timeout,
+                    base_url=self.fallback_base_url,
+                    api_key=self.fallback_api_key
+                )
+            raise
+    
+    def chat(self, messages: List[Dict[str, str]], system: str = None, timeout: int = 120) -> str:
+        content, _ = self._call_with_usage_sync(messages, system, timeout)
+        return content
 
     def chat_with_usage(self, messages: List[Dict[str, str]], system: str = None, timeout: int = 120) -> Tuple[str, Dict[str, int]]:
         return self._call_with_usage_sync(messages, system, timeout)
