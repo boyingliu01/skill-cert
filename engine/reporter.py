@@ -98,6 +98,25 @@ class Reporter:
 ⚠️ Skill adds {{ latency_analysis.overhead_pct }}% latency overhead.
 {% endif %}
 {% endif %}
+{% if reliability and reliability.total_evals > 0 %}
+
+## Reliability Analysis
+
+| Metric | Value |
+|--------|-------|
+| Total Eval Runs | {{ reliability.total_evals }} |
+| Success Rate | {{ "%.1f"|format(reliability.success_rate * 100) }}% |
+| Error Rate | {{ "%.1f"|format(reliability.error_rate * 100) }}% |
+| Retries (avg) | {{ "%.2f"|format(reliability.retry_stats.avg_retries) }} |
+| Retries (max) | {{ reliability.retry_stats.max_retries }} |
+
+{% if reliability.errors_by_category %}
+### Errors by Category
+{% for category, count in reliability.errors_by_category.items() %}
+- **{{ category }}**: {{ count }}
+{% endfor %}
+{% endif %}
+{% endif %}
 
 ## Improvement Suggestions
 
@@ -198,11 +217,16 @@ For detailed results, see the JSON output.
         
         # Cost analysis
         cost_analysis = metrics.get('l7_cost_efficiency')
-        latency_analysis = metrics.get('l8_latency_metrics')
+        
+        # Latency analysis
+        latency_analysis = metrics.get('l8_latency', {})
+        
+        # Reliability analysis
+        reliability = metrics.get('reliability', {})
         
         # Generate improvement suggestions
         suggestions = self._generate_suggestions(
-            metrics, drift, verdict, overall_score, cost_analysis, latency_analysis
+            metrics, drift, verdict, overall_score, cost_analysis, latency_analysis, reliability
         )
         
         # Evaluation coverage
@@ -305,6 +329,7 @@ For detailed results, see the JSON output.
             benchmark_info=benchmark_info,
             cost_analysis=cost_analysis,
             latency_analysis=latency_analysis,
+            reliability=reliability,
         )
         
         # Create JSON report
@@ -338,6 +363,8 @@ For detailed results, see the JSON output.
             json_report["cost_analysis"] = cost_analysis
         if latency_analysis:
             json_report["latency_analysis"] = latency_analysis
+        if reliability:
+            json_report["reliability"] = reliability
         
         return markdown_report, json_report
     
@@ -349,6 +376,7 @@ For detailed results, see the JSON output.
         overall_score: float,
         cost_analysis: Dict[str, Any] | None = None,
         latency_analysis: Dict[str, Any] | None = None,
+        reliability: Dict[str, Any] | None = None,
     ) -> List[str]:
         """Generate improvement suggestions based on metrics and drift analysis."""
         suggestions = []
@@ -395,6 +423,18 @@ For detailed results, see the JSON output.
         slow_count = latency_analysis.get("slow_with_skill", 0) if latency_analysis else 0
         if slow_count > 0:
             suggestions.append(f"{slow_count} requests exceeded 30s threshold — consider async processing or timeouts")
+        
+        # Reliability suggestions
+        if reliability and reliability.get("error_rate", 0) > 0.2:
+            suggestions.append(f"Error rate is {reliability['error_rate']:.0%} — implement retry logic or fallback models")
+        if reliability and reliability.get("retry_stats", {}).get("max_retries", 0) > 2:
+            suggestions.append(f"Max retries of {reliability['retry_stats']['max_retries']} detected — consider backoff or circuit breaker")
+        if reliability and reliability.get("errors_by_category"):
+            cats = list(reliability['errors_by_category'].keys())
+            if "timeout" in cats:
+                suggestions.append("Timeout errors detected — increase timeout or optimize prompts")
+            if "rate_limit" in cats:
+                suggestions.append("Rate limit errors detected — reduce concurrency or request rate")
         
         if not suggestions:
             suggestions.append("Performance is strong across all metrics")

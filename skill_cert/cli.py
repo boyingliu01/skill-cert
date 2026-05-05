@@ -12,6 +12,7 @@ from engine.config import SkillCertConfig, ModelConfig
 from engine.testgen import EvalGenerator
 from engine.runner import EvalRunner
 from engine.stability import StabilityRunner, calculate_l4_stability
+from engine.reliability import ReliabilityTracker
 from engine.grader import Grader
 from engine.metrics import MetricsCalculator
 from engine.drift import DriftDetector
@@ -62,12 +63,26 @@ def _print_metric(label: str, value: float, threshold: float | None = None) -> N
         print(f"  {label}: {pct}")
 
 
-def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path):
+def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path, tracker=None):
     eval_cases_list = evals if isinstance(evals, list) else (
         evals.get("eval_cases") or evals.get("evals") or evals.get("cases") or evals.get("test_cases") or []
     )
     with_skill = runner.run_with_skill(eval_cases_list, spec_path, adapter)
     without_skill = runner.run_without_skill(eval_cases_list, adapter)
+    
+    if tracker:
+        for r in with_skill:
+            tracker.record_eval(
+                r.get("eval_id"),
+                r.get("error") is None,
+                r.get("error"),
+            )
+        for r in without_skill:
+            tracker.record_eval(
+                r.get("eval_id"),
+                r.get("error") is None,
+                r.get("error"),
+            )
     
     from engine.grader import EvalCase, EvalAssertion
     
@@ -126,11 +141,11 @@ def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path):
     return graded, ws_passed, wos_passed
 
 
-def _run_all_evals(adapters, runner, grader, evals, spec_path):
+def _run_all_evals(adapters, runner, grader, evals, spec_path, tracker=None):
     all_results = []
     for name, adapter in adapters.items():
         print(f"\n  Model: {name}")
-        graded, ws, wos = _run_eval_for_model(name, adapter, runner, grader, evals, spec_path)
+        graded, ws, wos = _run_eval_for_model(name, adapter, runner, grader, evals, spec_path, tracker)
         all_results.extend(graded)
         print(f"    With-skill passed: {ws}")
         print(f"    Without-skill passed: {wos}")
@@ -141,9 +156,20 @@ def _run_single_phase(args, config: SkillCertConfig, spec_path, output_dir, skil
     runner = EvalRunner(max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm, request_timeout=config.request_timeout)
     primary_adapter = list(adapters.values())[0]
     grader = Grader(llm_client=primary_adapter)
+    tracker = ReliabilityTracker()
 
-    all_results = _run_all_evals(adapters, runner, grader, spec["evals"], spec_path)
+    all_results = _run_all_evals(adapters, runner, grader, spec["evals"], spec_path, tracker)
     runner.close()
+    
+    reliability_report = tracker.generate_report()
+    _print_phase(4, "Reliability Analysis")
+    print(f"  Success rate: {reliability_report['success_rate'] * 100:.1f}%")
+    print(f"  Error rate: {reliability_report['error_rate'] * 100:.1f}%")
+    if reliability_report['errors_by_category']:
+        for cat, count in reliability_report['errors_by_category'].items():
+            print(f"    {cat}: {count}")
+    if reliability_report['retry_stats']['total_retries'] > 0:
+        print(f"  Retries: avg={reliability_report['retry_stats']['avg_retries']:.2f}, max={reliability_report['retry_stats']['max_retries']}")
 
     _print_phase(3, "Calculate Metrics")
     calc = MetricsCalculator()
@@ -169,6 +195,9 @@ def _run_single_phase(args, config: SkillCertConfig, spec_path, output_dir, skil
     l7 = calc.calculate_l7_cost_efficiency(all_results)
     if l7:
         metrics['l7_cost_efficiency'] = l7
+    
+    # Add reliability data to metrics for reporter
+    metrics['reliability'] = reliability_report
     
     # Also store raw results for coverage stats
     metrics['_results'] = all_results
