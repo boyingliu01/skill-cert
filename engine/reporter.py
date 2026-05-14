@@ -137,6 +137,40 @@ class Reporter:
 - Configuration details not available
 {% endif %}
 
+{% if maintainability %}
+## Maintainability
+
+**Score**: {{ maintainability.total_score }}/100 (Grade: {{ maintainability.grade }})
+
+| Dimension | Score |
+|-----------|-------|
+| Readability | {{ maintainability.readability_score }} |
+| Completeness | {{ maintainability.completeness_score }} |
+| Freshness | {{ maintainability.freshness_score }} |
+
+{% if maintainability.readability_details.avg_line_length > 100 %}
+⚠️ Average line length exceeds 100 characters: {{ maintainability.readability_details.avg_line_length }}
+{% endif %}
+{% if maintainability.readability_details.max_depth > 3 %}
+⚠️ Section nesting exceeds 3 levels: depth {{ maintainability.readability_details.max_depth }}
+{% endif %}
+{% if maintainability.readability_details.todo_count > 0 %}
+⚠️ Contains {{ maintainability.readability_details.todo_count }} TODO/FIXME marker(s)
+{% endif %}
+{% if maintainability.completeness_details.has_workflow == false %}
+⚠️ Missing Workflow section
+{% endif %}
+{% if maintainability.completeness_details.has_anti_patterns == false %}
+⚠️ Missing Anti-Patterns section
+{% endif %}
+{% if maintainability.completeness_details.has_triggers == false %}
+⚠️ Missing Triggers section
+{% endif %}
+{% if maintainability.freshness_details.outdated_refs > 0 %}
+⚠️ {{ maintainability.freshness_details.outdated_refs }} outdated reference(s) detected
+{% endif %}
+{% endif %}
+
 ## Benchmark Information
 
 - **Generated**: {{ benchmark_info.timestamp }}
@@ -159,7 +193,8 @@ For detailed results, see the JSON output.
         self, 
         metrics: Dict[str, Any], 
         drift: Dict[str, Any], 
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        maintainability: Dict[str, Any] | None = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Generate Markdown and JSON reports from metrics and drift analysis.
@@ -330,6 +365,7 @@ For detailed results, see the JSON output.
             cost_analysis=cost_analysis,
             latency_analysis=latency_analysis,
             reliability=reliability,
+            maintainability=maintainability,
         )
         
         # Create JSON report
@@ -365,6 +401,8 @@ For detailed results, see the JSON output.
             json_report["latency_analysis"] = latency_analysis
         if reliability:
             json_report["reliability"] = reliability
+        if maintainability:
+            json_report["maintainability"] = maintainability
         
         return markdown_report, json_report
     
@@ -457,3 +495,128 @@ For detailed results, see the JSON output.
         )
         
         return " ".join(summary_parts)
+
+    def generate_report_with_multi_skill(
+        self,
+        metrics: Dict[str, Any],
+        drift: Dict[str, Any],
+        config: Dict[str, Any],
+        multi_skill_report: Dict[str, Any],
+    ) -> Tuple[str, Dict[str, Any]]:
+        safe_metrics = {
+            "overall_score": metrics.get("overall_score", 0.5),
+            "l1_trigger_accuracy": metrics.get("l1_trigger_accuracy", 0.0),
+            "l2_with_without_skill_delta": metrics.get("l2_with_without_skill_delta", 0.0),
+            "l3_step_adherence": metrics.get("l3_step_adherence", 0.0),
+            "l4_execution_stability": metrics.get("l4_execution_stability", 0.0),
+            "metrics_breakdown": metrics.get("metrics_breakdown", {
+                "l1_details": {"total_trigger_evals": 0, "passed_trigger_evals": 0, "trigger_accuracy": 0.0},
+                "l2_details": {"with_skill_avg_pass_rate": 0.0, "without_skill_avg_pass_rate": 0.0, "improvement_percentage": 0.0},
+                "l3_details": {"step_coverage_ratio": 0.0},
+                "l4_details": {"execution_stability": 0.0, "stdev_deterministic_pass_rate": 0.0},
+            }),
+        }
+        md_report, json_report = self.generate_report(safe_metrics, drift, config)
+
+        multi_md = self._build_multi_skill_section(multi_skill_report)
+        md_report = md_report.replace("\n## Raw Results", f"\n{multi_md}\n## Raw Results")
+
+        json_report["multi_skill_analysis"] = {
+            "skill_count": multi_skill_report.get("skill_count", 0),
+            "overall_risk": multi_skill_report.get("overall_risk", "none"),
+            "summary": multi_skill_report.get("summary", ""),
+            "conflicts": [c.to_dict() if hasattr(c, "to_dict") else c for c in multi_skill_report.get("conflicts", [])],
+            "trigger_conflicts": multi_skill_report.get("trigger_conflicts", 0),
+            "prompt_contamination_conflicts": multi_skill_report.get("prompt_contamination_conflicts", 0),
+            "token_overflow_conflicts": multi_skill_report.get("token_overflow_conflicts", 0),
+        }
+
+        return md_report, json_report
+
+    def _build_multi_skill_section(self, report: Dict[str, Any]) -> str:
+        lines = [
+            "## Multi-Skill Analysis",
+            "",
+            f"**Skills Analysed**: {report.get('skill_count', 0)}",
+            f"**Overall Risk**: {report.get('overall_risk', 'none').upper()}",
+            "",
+            report.get("summary", "No conflicts detected."),
+            "",
+            "| Category | Count |",
+            "|----------|-------|",
+            f"| Trigger Overlaps | {report.get('trigger_conflicts', 0)} |",
+            f"| Prompt Contamination | {report.get('prompt_contamination_conflicts', 0)} |",
+            f"| Token Overflow | {report.get('token_overflow_conflicts', 0)} |",
+            "",
+        ]
+
+        conflicts = report.get("conflicts", [])
+        if conflicts:
+            lines.append("### Conflicts")
+            lines.append("")
+            lines.append("| Severity | Type | Skill A | Skill B | Details |")
+            lines.append("|----------|------|---------|---------|---------|")
+            for c in conflicts:
+                if hasattr(c, "to_dict"):
+                    cd = c.to_dict()
+                else:
+                    cd = c
+                lines.append(
+                    f"| {cd.get('severity', '')} | {cd.get('conflict_type', '')} | "
+                    f"{cd.get('skill_a', '')} | {cd.get('skill_b', '')} | "
+                    f"{cd.get('description', '')} |"
+                )
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def generate_report_with_stress(
+        self,
+        metrics: Dict[str, Any],
+        drift: Dict[str, Any],
+        config: Dict[str, Any],
+        stress_result: Dict[str, Any],
+    ) -> Tuple[str, Dict[str, Any]]:
+        md_report, json_report = self.generate_report(metrics, drift, config)
+
+        stress_section = self._build_stress_section(stress_result)
+        md_report = md_report.replace("\n## Raw Results", f"\n{stress_section}\n## Raw Results")
+
+        json_report["scalability"] = stress_result
+        return md_report, json_report
+
+    def _build_stress_section(self, result: Dict[str, Any]) -> str:
+        verdict = result.get("verdict", "FAIL")
+        score = result.get("scalability_score", 0)
+        lines = [
+            "## Scalability",
+            "",
+            f"**Verdict:** {verdict} | **Score:** {score:.1f}/100",
+            "",
+            f"- **Total evals:** {result.get('total_evals', 0)}",
+            f"- **Completed:** {result.get('completed', 0)}",
+            f"- **Failed:** {result.get('failed', 0)}",
+            f"- **Timed out:** {result.get('timed_out', 0)}",
+            f"- **Errored:** {result.get('errored', 0)}",
+            f"- **Completion rate:** {result.get('completion_rate', 0):.1%}",
+            f"- **Fairness ratio:** {result.get('fairness_ratio', 0):.2f}",
+            "",
+            "**Latency**",
+            "",
+        ]
+        lat = result.get("latency", {})
+        lines.append(f"- **Avg:** {lat.get('avg', 0):.2f}s")
+        lines.append(f"- **Min:** {lat.get('min', 0):.2f}s | **Max:** {lat.get('max', 0):.2f}s")
+        lines.append(f"- **Median:** {lat.get('median', 0):.2f}s")
+        lines.append(f"- **P95:** {lat.get('p95', 0):.2f}s | **P99:** {lat.get('p99', 0):.2f}s")
+        lines.append("")
+        lines.append(f"**Peak memory:** {result.get('memory_mb_peak', 0):.2f} MB")
+        lines.append("")
+        model_counts = result.get("model_exec_counts", {})
+        if model_counts:
+            lines.append("**Model execution counts**")
+            lines.append("")
+            for model, count in model_counts.items():
+                lines.append(f"- {model}: {count}")
+            lines.append("")
+        return "\n".join(lines)

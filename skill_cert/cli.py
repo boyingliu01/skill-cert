@@ -21,8 +21,9 @@ from engine.dialogue_runner import DialogueRunner
 from engine.dialogue_evaluator import DialogueEvaluator
 from engine.simulator import UserSimulator
 from engine.replay import HistoryReplay
+from engine.maintainability import MaintainabilityScorer
+from engine.stress_test import StressTester, format_scalability_report
 from adapters.openai_compat import OpenAICompatAdapter
-from adapters.anthropic_compat import AnthropicCompatAdapter
 
 
 EXIT_PASS = 0
@@ -31,14 +32,15 @@ EXIT_FAIL_WITH_CAVEATS = 2
 
 
 def _create_adapter(model_config: ModelConfig, rpm_limit: int = 60):
-    if "anthropic" in model_config.base_url.lower() or model_config.model_name in AnthropicCompatAdapter.SUPPORTED_MODELS:
-        return AnthropicCompatAdapter(
-            base_url=model_config.base_url,
-            api_key=model_config.api_key,
-            model=model_config.model_name,
-            fallback_model=model_config.fallback_model,
-            rpm_limit=rpm_limit,
-        )
+    return OpenAICompatAdapter(
+        base_url=model_config.base_url,
+        api_key=model_config.api_key,
+        model=model_config.model_name,
+        fallback_model=model_config.fallback_model,
+        fallback_base_url=model_config.fallback_base_url,
+        fallback_api_key=model_config.fallback_api_key,
+        rpm_limit=rpm_limit,
+    )
     return OpenAICompatAdapter(
         base_url=model_config.base_url,
         api_key=model_config.api_key,
@@ -230,7 +232,10 @@ def _run_single_phase(args, config: SkillCertConfig, spec_path, output_dir, skil
 
     _print_phase(5, "Generate Report")
     reporter = Reporter()
-    md_report, json_report = reporter.generate_report(metrics=metrics, drift=drift_report, config=config.model_dump())
+    md_report, json_report = reporter.generate_report(
+        metrics=metrics, drift=drift_report, config=config.model_dump(),
+        maintainability=spec.get("maintainability"),
+    )
 
     md_path = output_dir / f"{skill_name}-report.md"
     json_path = output_dir / f"{skill_name}-result.json"
@@ -274,6 +279,23 @@ def _setup_single_mode(args, config: SkillCertConfig):
 
     if spec["parse_confidence"] < 0.6:
         print("  WARNING: Low parse confidence. Results may be unreliable.")
+
+    _print_phase(0, "Maintainability Assessment")
+    scorer = MaintainabilityScorer()
+    maintainability = scorer.score_file(spec_path)
+    spec["maintainability"] = {
+        "total_score": maintainability.total_score,
+        "grade": maintainability.grade,
+        "readability_score": maintainability.readability_score,
+        "completeness_score": maintainability.completeness_score,
+        "freshness_score": maintainability.freshness_score,
+    }
+    print(f"  Maintainability Score: {maintainability.total_score:.1f}/100 (Grade: {maintainability.grade})")
+    print(f"  Readability: {maintainability.readability_score:.1f}")
+    print(f"  Completeness: {maintainability.completeness_score:.1f}")
+    print(f"  Freshness: {maintainability.freshness_score:.1f}")
+    if maintainability.grade in ("D", "F"):
+        print("  WARNING: Low maintainability score — SKILL.md needs improvement.")
 
     if not config.models:
         print("\nERROR: No models configured. Use --models, SKILL_CERT_MODELS env, or ~/.skill-cert/models.yaml")
@@ -392,6 +414,133 @@ def run_replay_mode(args, config: SkillCertConfig) -> int:
     return EXIT_PASS
 
 
+def run_stress_mode(args, config: SkillCertConfig) -> int:
+    spec_path = args.skill[0] if isinstance(args.skill, list) else args.skill
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    skill_name = Path(spec_path).stem
+
+    _print_phase(0, "Parse SKILL.md")
+    spec = parse_skill_md(spec_path)
+    print(f"  Name: {spec['name']}, Confidence: {spec['parse_confidence']:.2f}")
+
+    if not config.models:
+        print("\nERROR: No models configured.")
+        return EXIT_ERROR
+
+    concurrency = args.stress_concurrency
+    num_evals = args.stress_evals
+    print(f"\n  Stress test: concurrency={concurrency}, evals={num_evals}")
+
+    _print_phase(1, "Stress Test")
+    stress_tester = StressTester(
+        concurrency=concurrency,
+        rate_limit_rpm=config.rate_limit_rpm,
+        models=[mc.model_name for mc in config.models],
+    )
+    adapter = _create_adapter(config.models[0], config.rate_limit_rpm)
+
+    eval_cases = [
+        {"id": f"stress-{i}", "model": config.models[i % len(config.models)].model_name}
+        for i in range(num_evals)
+    ]
+
+    stress_result = asyncio.run(
+        stress_tester.run_stress_test(eval_cases, adapter, concurrency=concurrency)
+    )
+
+    report_text = format_scalability_report(stress_result)
+    print(report_text)
+
+    import json
+    result_path = output_dir / f"{skill_name}-stress-result.json"
+    result_data = {
+        "total_evals": stress_result.total_evals,
+        "completed": stress_result.completed,
+        "failed": stress_result.failed,
+        "timed_out": stress_result.timed_out,
+        "errored": stress_result.errored,
+        "completion_rate": stress_result.completion_rate,
+        "fairness_ratio": stress_result.fairness_ratio,
+        "scalability_score": stress_result.scalability_score,
+        "verdict": stress_result.verdict,
+        "latency": {
+            "avg": stress_result.avg_latency,
+            "min": stress_result.min_latency,
+            "max": stress_result.max_latency,
+            "median": stress_result.median_latency,
+            "p95": stress_result.p95_latency,
+            "p99": stress_result.p99_latency,
+        },
+        "memory_mb_peak": stress_result.memory_mb_peak,
+        "model_exec_counts": stress_result.model_exec_counts,
+    }
+    result_path.write_text(json.dumps(result_data, indent=2), encoding="utf-8")
+    print(f"  Results: {result_path}")
+
+    stress_md_path = output_dir / f"{skill_name}-stress-report.md"
+    stress_md_path.write_text(report_text, encoding="utf-8")
+    print(f"  Report: {stress_md_path}")
+
+    print(f"\n  Verdict: {stress_result.verdict}")
+    return EXIT_PASS if stress_result.verdict == "PASS" else EXIT_ERROR
+
+
+def run_multi_skill_mode(args, config: SkillCertConfig) -> int:
+    from engine.multi_skill import MultiSkillAnalyzer
+
+    skill_paths = args.skill if isinstance(args.skill, list) else [args.skill]
+    if len(skill_paths) < 2:
+        print("\nERROR: --multi-skill requires at least 2 --skill arguments")
+        return EXIT_ERROR
+
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    specs = []
+    for sp in skill_paths:
+        _print_phase(0, f"Parse SKILL.md: {Path(sp).name}")
+        spec = parse_skill_md(sp)
+        print(f"  Name: {spec['name']}, Confidence: {spec['parse_confidence']:.2f}")
+        specs.append(spec)
+
+    _print_phase(1, "Multi-Skill Conflict Analysis")
+    analyzer = MultiSkillAnalyzer()
+    analyzer.inject_multiple_skills(specs)
+    report = analyzer.analyze(token_budget=args.token_budget)
+
+    conflicts = report["conflicts"]
+    print(f"  Skills analysed: {report['skill_count']}")
+    print(f"  Total conflicts: {len(conflicts)}")
+    print(f"  Trigger overlaps: {report['trigger_conflicts']}")
+    print(f"  Prompt contamination: {report['prompt_contamination_conflicts']}")
+    print(f"  Token overflow: {report['token_overflow_conflicts']}")
+    print(f"  Overall risk: {report['overall_risk']}")
+
+    if conflicts:
+        for c in conflicts:
+            print(f"    [{c.severity.value}] {c}")
+
+    reporter = Reporter()
+    md_report, json_report = reporter.generate_report_with_multi_skill(
+        metrics={"overall_score": 1.0 if report["overall_risk"] == "none" else 0.5},
+        drift={"drift_detected": False, "highest_severity": "none"},
+        config={"total_evaluations": 0},
+        multi_skill_report=report,
+    )
+
+    md_path = output_dir / "multi-skill-report.md"
+    json_path = output_dir / "multi-skill-result.json"
+    md_path.write_text(md_report, encoding="utf-8")
+    json_path.write_text(json.dumps(json_report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+    print(f"\n  Markdown: {md_path}")
+    print(f"  JSON: {json_path}")
+
+    verdict = "PASS" if report["overall_risk"] in ("none", "low") else "FAIL"
+    print(f"\n  Verdict: {verdict}")
+    return EXIT_PASS if verdict == "PASS" else EXIT_ERROR
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Skill-Cert: AI Skill Evaluation Engine",
@@ -404,10 +553,12 @@ Examples:
   skill-cert --skill path/to/SKILL.md --models "m1=url,key|m2=url,key" --output ./results/
 """,
     )
-    parser.add_argument("--skill", required=True, help="Path to SKILL.md file")
+    parser.add_argument("--skill", required=True, action="append", help="Path to SKILL.md file (can be repeated for --multi-skill)")
     parser.add_argument("--models", default="", help="Models: 'name=url,key[,fallback]|name2=url,key'")
     parser.add_argument("--output", default="./results", help="Output directory (default: ./results)")
     parser.add_argument("--mode", choices=["single", "dialogue", "replay"], default="single", help="Evaluation mode (default: single)")
+    parser.add_argument("--multi-skill", action="store_true", help="Enable multi-skill conflict analysis (requires --skill repeated)")
+    parser.add_argument("--token-budget", type=int, default=100000, help="Token budget for multi-skill analysis (default: 100000)")
     parser.add_argument("--max-turns", type=int, default=10, help="Max turns for dialogue mode (default: 10)")
     parser.add_argument("--session", help="Session JSONL file for replay mode")
     parser.add_argument("--max-concurrency", type=int, help="Max concurrent requests")
@@ -415,6 +566,9 @@ Examples:
     parser.add_argument("--request-timeout", type=int, help="Request timeout in seconds")
     parser.add_argument("--max-total-time", type=int, default=3600, help="Global timeout in seconds")
     parser.add_argument("--runs", type=int, default=1, help="Number of evaluation runs for stability (default: 1)")
+    parser.add_argument("--stress", action="store_true", help="Run scalability stress test")
+    parser.add_argument("--stress-concurrency", type=int, default=50, help="Concurrency for stress test (default: 50)")
+    parser.add_argument("--stress-evals", type=int, default=100, help="Number of evals for stress test (default: 100)")
 
     args = parser.parse_args()
 
@@ -425,6 +579,10 @@ Examples:
         return EXIT_ERROR
 
     try:
+        if args.stress:
+            return run_stress_mode(args, config)
+        if args.multi_skill:
+            return run_multi_skill_mode(args, config)
         if args.mode == "dialogue":
             return run_dialogue_mode(args, config)
         elif args.mode == "replay":
