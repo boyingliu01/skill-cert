@@ -88,3 +88,60 @@ Some description here.
         """Should raise FileNotFoundError for missing file."""
         with pytest.raises(FileNotFoundError):
             parse_skill_md("/nonexistent/SKILL.md")
+
+    def test_bash_fenced_code_block_not_interactive(self, tmp_path):
+        """Regression test for #10: fenced bash blocks must not trigger
+        the interactive skill false positive penalty."""
+        bt = "\x60\x60\x60"
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text(f"""---
+name: cli-helper
+description: A CLI helper tool with installation commands
+---
+# CLI Helper
+
+## Workflow
+1. Run the installation command
+
+### Installation
+
+{bt}bash
+npm install my-package
+{bt}
+
+{bt}bash
+export MY_VAR=hello
+{bt}
+
+## Scope
+Use: run installation commands. Does NOT modify source code.
+""")
+        result = parse_skill_md(str(skill_file))
+        sv = result.get("schema_validation", {})
+        assert sv.get("is_valid") is True, f"False positive: {sv}"
+        assert sv.get("confidence_penalty", 0) == pytest.approx(0.0, abs=0.01)
+
+    def test_really_interactive_skill_still_detected(self, tmp_path):
+        """Interactive skills with Security Notes should still work after #10 fix."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: interactive-shell
+description: An interactive shell skill
+---
+# Interactive Shell
+
+## Workflow
+1. Ask the user for a command
+
+## Security Notes
+This skill executes arbitrary shell commands.
+
+## Permissions
+- dangerous_cmd: shell execution
+
+## Scope
+Use: execute user-provided shell commands. Does NOT run commands autonomously.
+""")
+        result = parse_skill_md(str(skill_file))
+        sv = result.get("schema_validation", {})
+        assert sv.get("is_valid") is True
