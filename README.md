@@ -38,13 +38,16 @@ skill-cert --skill path/to/SKILL.md --mode dialogue --max-turns 10
 
 # Replay mode (regression testing)
 skill-cert --skill path/to/SKILL.md --mode replay --session session.jsonl
+
+# Multi-run for stability metrics
+skill-cert --skill path/to/SKILL.md --models ... --runs 5
 ```
 
 ---
 
 ## Metrics
 
-Skill-Cert uses a 4-tier metric framework:
+Skill-Cert uses an 8-tier metric system:
 
 | Tier | Name | What It Measures | Threshold |
 |------|------|-----------------|-----------|
@@ -52,8 +55,40 @@ Skill-Cert uses a 4-tier metric framework:
 | **L2** | Output Delta | Does the skill actually *improve* output quality? | ≥ 20% |
 | **L3** | Step Adherence | Does the agent *follow* the skill's workflow? | ≥ 85% |
 | **L4** | Stability | How *consistent* are results across runs? | std ≤ 10% |
+| **L5** | Step Efficiency | Does the skill operate within resource envelopes? | All pass |
+| **L6** | Trajectory Quality | Is the multi-turn dialogue coherent? (dialogue mode only) | N/A |
+| **L7** | Cost Efficiency | Token → $ conversion, cost delta with/without skill | ≤ budget |
+| **L8** | Latency | P50/P95/P99 request latency, with/without overhead | No slow req |
 
-L1 and L2 measure the skill's **effectiveness**. L3 and L4 measure the skill's **reliability**.
+L1 and L2 measure the skill's **effectiveness**. L3 and L4 measure the skill's **reliability**. L7 and L8 measure **efficiency**.
+
+### Security Scanning
+
+Built-in security detection runs as Phase 0.5 (after parse, before eval generation):
+- **5 categories**: Injection (INJ), Exfiltration (EXF), Dangerous Commands (DCMD), Credential Access (CRD), Obfuscation (OBF)
+- **19 probe patterns** with severity classification (CRITICAL/HIGH/MEDIUM/LOW)
+- **Verdict**: PASS / WARN / BLOCK — BLOCK verdict causes immediate FAIL
+
+### Multi-Skill Conflict Detection
+
+When multiple skills load simultaneously, the engine detects:
+- **Trigger overlap** — same trigger words activating different skills
+- **Prompt contamination** — shared workflow steps, anti-patterns, or output formats
+- **Token overflow** — combined skill content exceeding context budget
+
+### Additional Capabilities
+
+| Capability | Module | Description |
+|-----------|--------|-------------|
+| **Stress Testing** | `stress_test.py` | Concurrent fairness, memory tracking, scalability scoring |
+| **Reliability Tracking** | `reliability.py` | Error classification, retry statistics, graceful degradation |
+| **Maintainability** | `maintainability.py` | SKILL.md readability, completeness, freshness scoring |
+| **External Integrations** | `integrations.py` | SkillLab + DeepEval providers with graceful degradation |
+| **Operating Envelope** | `envelope.py` | Steps/tokens/timeout/tool_calls limit enforcement |
+| **Real Token Tracking** | `adapters/` | TokenUsage dataclass with real API counts (not approximations) |
+| **Cost Analysis** | `adapters/pricing.py` | 17 models across 5 providers: Anthropic, OpenAI, Qwen, DeepSeek, Gemini |
+
+---
 
 ### Cross-Model Drift
 
@@ -83,13 +118,15 @@ For regression testing. Replays historical session data (JSONL format) through t
 
 ```
 skill-cert/
-├── engine/          # Core pipeline: parser, testgen, runner, grader, metrics, reporter, drift, dialogue, replay, simulator
-├── skill_cert/      # CLI entry point
-├── adapters/        # LLM provider adapters (Anthropic, OpenAI-compatible)
+├── engine/          # Core pipeline: parser, testgen, runner, grader, metrics, reporter, drift,
+│                    # dialogue, replay, simulator, security_probes, envelope, integrations,
+│                    # reliability, maintainability, multi_skill, stress_test, stability, config
+├── skill_cert/      # CLI entry point (cli.py)
+├── adapters/        # LLM provider adapters (Anthropic, OpenAI-compatible) + pricing table
 ├── prompts/         # LLM prompt templates (judge, dialogue, drift, testgen, test-review, test-gap)
 ├── schemas/         # JSON schemas for eval cases and SkillSpec
 ├── templates/       # Fallback eval template (minimum-evals.json)
-├── tests/           # pytest suite — mirrors engine/ module structure 1:1
+├── tests/           # pytest suite — 402 tests, mirrors engine/ modules 1:1
 └── results/         # Output directory: {skill}-report.md, {skill}-result.json
 ```
 
