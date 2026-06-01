@@ -41,13 +41,6 @@ def _create_adapter(model_config: ModelConfig, rpm_limit: int = 60):
         fallback_api_key=model_config.fallback_api_key,
         rpm_limit=rpm_limit,
     )
-    return OpenAICompatAdapter(
-        base_url=model_config.base_url,
-        api_key=model_config.api_key,
-        model=model_config.model_name,
-        fallback_model=model_config.fallback_model,
-        rpm_limit=rpm_limit,
-    )
 
 
 def _print_phase(phase: int, name: str) -> None:
@@ -299,7 +292,7 @@ def _setup_single_mode(args, config: SkillCertConfig):
 
     if not config.models:
         print("\nERROR: No models configured. Use --models, SKILL_CERT_MODELS env, or ~/.skill-cert/models.yaml")
-        return None, None, None, None, None
+        return None, None, None, None, None, None
 
     adapters = {mc.model_name: _create_adapter(mc, config.rate_limit_rpm) for mc in config.models}
     print(f"\n  Models: {', '.join(adapters.keys())}")
@@ -315,16 +308,16 @@ def _setup_single_mode(args, config: SkillCertConfig):
         print(f"  WARNING: Coverage below {generator.coverage_threshold * 100:.0f}% threshold")
 
     _print_phase(2, "Execute Evals")
-    return spec_path, output_dir, skill_name, spec, evals
+    return spec_path, output_dir, skill_name, spec, evals, adapters
 
 
 def run_single_mode(args, config: SkillCertConfig) -> int:
     result = _setup_single_mode(args, config)
-    spec_path, output_dir, skill_name, spec, evals = result
+    spec_path, output_dir, skill_name, spec, evals, adapters = result
     if spec_path is None:
         return EXIT_ERROR
     spec["evals"] = evals
-    return _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, {mc.model_name: _create_adapter(mc, config.rate_limit_rpm) for mc in config.models})
+    return _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, adapters)
 
 
 def run_dialogue_mode(args, config: SkillCertConfig) -> int:

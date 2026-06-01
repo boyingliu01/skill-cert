@@ -1,6 +1,6 @@
 """Metrics module for skill-cert engine — calculates L1-L4 evaluation metrics."""
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 
@@ -19,11 +19,11 @@ class MetricsCalculator:
         """Initialize metrics calculator."""
         pass
     
-    def calculate_metrics(self, eval_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def calculate_metrics(self, eval_results: List[Dict[str, Any]], workflow_steps: Optional[List[str]] = None) -> Dict[str, Any]:
         """Calculate all L1-L6 metrics from evaluation results."""
         l1_score = self._calculate_l1_trigger_accuracy(eval_results)
         l2_score = self._calculate_l2_with_without_skill_delta(eval_results)
-        l3_score = self._calculate_l3_step_adherence(eval_results)
+        l3_score = self._calculate_l3_step_adherence(eval_results, workflow_steps)
         l4_score = self._calculate_l4_execution_stability(eval_results)
         l5_score = self._calculate_l5_step_efficiency(eval_results)
         l6_score = self._calculate_l6_trajectory_quality(eval_results)
@@ -56,7 +56,7 @@ class MetricsCalculator:
             "metrics_breakdown": {
                 "l1_details": self._get_l1_details(eval_results),
                 "l2_details": self._get_l2_details(eval_results),
-                "l3_details": self._get_l3_details(eval_results),
+                "l3_details": self._get_l3_details(eval_results, workflow_steps),
                 "l4_details": self._get_l4_details(eval_results),
                 "l8_latency_details": l8 if l8 else {},
             }
@@ -88,10 +88,12 @@ class MetricsCalculator:
         return passed_triggers / len(trigger_results) if trigger_results else 0.0
     
     def _calculate_l2_with_without_skill_delta(self, eval_results: List[Dict[str, Any]]) -> float:
-        """L2: With/without skill delta (compare weighted_score difference)."""
-        # Group results by skill presence (would normally compare with/without skill usage)
-        # For now, we'll simulate by assuming some results represent "with skill" and others "without"
-        # In a real implementation, this would compare results from two different model runs
+        """L2: With/without skill delta — measures pass_rate improvement when skill is active.
+
+        Groups results by skill_used flag, computes average pass_rate for each group,
+        and returns the absolute delta capped to [0.0, 1.0]. When one group is missing
+        (no with-skill or no without-skill data), falls back to overall average pass_rate.
+        """
         with_skill_results = [r for r in eval_results if r.get('skill_used', True)]
         without_skill_results = [r for r in eval_results if not r.get('skill_used', True)]
         
@@ -109,21 +111,33 @@ class MetricsCalculator:
         # Normalize to 0-1 range (assuming max possible delta is 1.0)
         return max(0.0, min(1.0, abs(delta)))
     
-    def _calculate_l3_step_adherence(self, eval_results: List[Dict[str, Any]]) -> float:
-        """L3: Step adherence (check workflow_steps covered by passing evals)."""
-        # This would typically check if passing evaluations cover the expected workflow steps
-        # For now, we'll calculate based on the ratio of passing evaluations that have step coverage
+    def _calculate_l3_step_adherence(self, eval_results: List[Dict[str, Any]], workflow_steps: Optional[List[str]] = None) -> float:
+        """L3: Step adherence — real workflow_step coverage, fallback to pass_rate proxy."""
         if not eval_results:
             return 0.0
-        
-        # Count how many passing evaluations have step coverage info
+
         passing_evals = [r for r in eval_results if r.get('final_passed', False)]
         if not passing_evals:
             return 0.0
-        
-        # In a real implementation, this would check if the eval results cover workflow steps
-        # For now, we'll just return the pass rate as a proxy
-        return sum(r.get('pass_rate', 0.0) for r in passing_evals) / len(passing_evals)
+
+        # Check if workflow_step info is available on results AND total steps from spec is provided
+        has_workflow_step_info = any(r.get('workflow_step') is not None for r in passing_evals)
+        if has_workflow_step_info and workflow_steps is not None:
+            total_steps = len(workflow_steps)
+            if total_steps == 0:
+                return 0.0
+
+            # Real step coverage: unique_covered_steps / total_workflow_steps
+            covered_steps: set[str] = set()
+            for r in passing_evals:
+                ws = r.get('workflow_step')
+                if ws:
+                    covered_steps.add(ws)
+
+            return len(covered_steps) / total_steps
+        else:
+            # Fall back to pass_rate proxy (backward compatible)
+            return sum(r.get('pass_rate', 0.0) for r in passing_evals) / len(passing_evals)
     
     def _calculate_l4_execution_stability(self, eval_results: List[Dict[str, Any]]) -> float:
         """L4: Execution stability (std of pass_rate across multiple runs, using ONLY deterministic assertions)."""
@@ -196,16 +210,36 @@ class MetricsCalculator:
             "improvement_percentage": ((with_skill_avg - without_skill_avg) / without_skill_avg * 100) if without_skill_avg > 0 else 0.0
         }
     
-    def _get_l3_details(self, eval_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _get_l3_details(self, eval_results: List[Dict[str, Any]], workflow_steps: Optional[List[str]] = None) -> Dict[str, Any]:
         """Get detailed information for L3 metric."""
         passing_evals = [r for r in eval_results if r.get('final_passed', False)]
         total_evals = len(eval_results)
+        l3_value = self._calculate_l3_step_adherence(eval_results, workflow_steps)
         
-        return {
+        details: Dict[str, Any] = {
             "total_evaluations": total_evals,
             "passing_evaluations": len(passing_evals),
-            "step_coverage_ratio": len(passing_evals) / total_evals if total_evals > 0 else 0.0
+            "step_coverage_ratio": len(passing_evals) / total_evals if total_evals > 0 else 0.0,
+            "method": "pass_rate_proxy",
         }
+        
+        # Add workflow step coverage details when available
+        has_workflow_step_info = any(r.get('workflow_step') is not None for r in passing_evals)
+        if has_workflow_step_info and workflow_steps is not None:
+            covered_steps = set()
+            for r in passing_evals:
+                ws = r.get('workflow_step')
+                if ws:
+                    covered_steps.add(ws)
+            details["method"] = "workflow_step_coverage"
+            details["workflow_step_coverage"] = l3_value
+            details["covered_workflow_steps"] = sorted(covered_steps)
+            details["total_workflow_steps"] = len(workflow_steps)
+            details["uncovered_workflow_steps"] = sorted(set(workflow_steps) - covered_steps)
+        else:
+            details["workflow_step_coverage"] = None
+        
+        return details
     
     def _get_l4_details(self, eval_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Get detailed information for L4 metric."""

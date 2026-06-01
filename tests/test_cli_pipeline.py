@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -718,6 +719,1087 @@ class TestCLIIntegration:
             
             assert output_dir.exists()
             assert output_dir.is_dir()
+
+
+class TestCLIEntryPoint:
+    """Direct tests for CLI entry point, dispatch, and core functions — covering uncovered lines."""
+
+    # ── _setup_single_mode tests ──────────────────────────────────────────────
+
+    @pytest.fixture
+    def temp_skill_path(self):
+        """Create minimal SKILL.md for setup tests."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""---
+name: test-skill
+description: "A test skill"
+---
+
+# Test Skill
+
+## Workflow
+
+1. Do something
+
+## Anti-Patterns
+
+| Pattern | Description |
+|---------|-------------|
+| Skip X | Never skip X |
+
+## Output Format
+
+- JSON
+
+## Triggers
+
+- test-trigger
+""")
+            path = f.name
+        yield path
+        if os.path.exists(path):
+            os.unlink(path)
+
+    def make_mock_parse_result(self, **overrides):
+        """Helper to create a mock parse_skill_md return value."""
+        result = {
+            "name": "test-skill",
+            "parse_method": "regex",
+            "parse_confidence": 0.95,
+            "workflow_steps": [{"step": 1, "description": "Do something", "references": []}],
+            "anti_patterns": [{"pattern": "Skip X", "description": "Never skip X"}],
+            "output_format": [{"name": "output", "format": "JSON"}],
+            "triggers": ["test-trigger"],
+            "schema_validation": {"valid": True, "issues": []},
+        }
+        result.update(overrides)
+        return result
+
+    def make_mock_maintainability(self, grade="B", total=75.0):
+        m = MagicMock()
+        m.total_score = total
+        m.grade = grade
+        m.readability_score = 7.0
+        m.completeness_score = 7.0
+        m.freshness_score = 7.0
+        return m
+
+    def make_mock_scorer(self, grade="B", total=75.0):
+        """Create a mock MaintainabilityScorer instance with .score_file() configured."""
+        scorer = MagicMock()
+        report = self.make_mock_maintainability(grade, total)
+        scorer.score_file.return_value = report
+        return scorer
+
+    def test_setup_single_mode_parses_skill(self, temp_skill_path):
+        """_setup_single_mode calls parse_skill_md with the correct path."""
+        from skill_cert.cli import _setup_single_mode
+        from engine.config import SkillCertConfig, ModelConfig
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = tempfile.mkdtemp()
+        args.runs = 1
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.rate_limit_rpm = 60
+
+        mock_parse = MagicMock(return_value=self.make_mock_parse_result())
+        mock_maintainability = self.make_mock_scorer()
+        mock_gen = MagicMock()
+        mock_gen.generate_evals_with_convergence.return_value = {"eval_cases": []}
+        mock_gen._calculate_coverage.return_value = 0.95
+        mock_gen.coverage_threshold = 0.7
+
+        with patch("skill_cert.cli.parse_skill_md", mock_parse), \
+             patch("skill_cert.cli.MaintainabilityScorer") as MockScorer, \
+             patch("skill_cert.cli.EvalGenerator", return_value=mock_gen):
+            MockScorer.return_value = mock_maintainability
+            result = _setup_single_mode(args, config)
+
+        spec_path, output_dir, skill_name, spec, evals, adapters = result
+        assert spec_path == temp_skill_path
+        assert skill_name == Path(temp_skill_path).stem  # derived from filename, not metadata
+        assert "maintainability" in spec
+        assert "m1" in adapters
+        mock_parse.assert_called_once_with(temp_skill_path)
+
+    def test_setup_single_mode_no_models(self, temp_skill_path):
+        """_setup_single_mode returns None-tuple when no models configured."""
+        from skill_cert.cli import _setup_single_mode
+        from engine.config import SkillCertConfig
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = tempfile.mkdtemp()
+        args.runs = 1
+
+        config = SkillCertConfig()  # models defaults to []
+
+        with patch("skill_cert.cli.parse_skill_md") as mock_parse:
+            mock_parse.return_value = self.make_mock_parse_result()
+            with patch("skill_cert.cli.MaintainabilityScorer") as MockScorer:
+                MockScorer.return_value = self.make_mock_scorer()
+                result = _setup_single_mode(args, config)
+
+        assert result == (None, None, None, None, None, None)
+
+    def test_setup_single_mode_creates_output_dir(self, temp_skill_path):
+        """_setup_single_mode creates the output directory."""
+        from skill_cert.cli import _setup_single_mode
+        from engine.config import SkillCertConfig, ModelConfig
+
+        out_dir = tempfile.mkdtemp()
+        nested = os.path.join(out_dir, "nested", "results")
+        # Remove the dir so it doesn't exist yet
+        shutil.rmtree(out_dir)
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = nested
+        args.runs = 1
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.rate_limit_rpm = 60
+
+        with patch("skill_cert.cli.parse_skill_md") as mp, \
+             patch("skill_cert.cli.MaintainabilityScorer") as MockSc, \
+             patch("skill_cert.cli.EvalGenerator") as MockGen:
+            mp.return_value = self.make_mock_parse_result()
+            MockSc.return_value = self.make_mock_scorer()
+            mg = MagicMock()
+            mg.generate_evals_with_convergence.return_value = {"eval_cases": []}
+            mg._calculate_coverage.return_value = 0.95
+            mg.coverage_threshold = 0.7
+            MockGen.return_value = mg
+
+            _setup_single_mode(args, config)
+
+        assert os.path.isdir(nested)
+        shutil.rmtree(out_dir)
+
+    def test_setup_single_mode_low_confidence_warning(self, temp_skill_path):
+        """_setup_single_mode prints warning for low parse confidence."""
+        from skill_cert.cli import _setup_single_mode
+        from engine.config import SkillCertConfig, ModelConfig
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = tempfile.mkdtemp()
+        args.runs = 1
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.rate_limit_rpm = 60
+
+        with patch("skill_cert.cli.parse_skill_md") as mp, \
+             patch("skill_cert.cli.MaintainabilityScorer") as MockSc, \
+             patch("skill_cert.cli.EvalGenerator") as MockGen:
+            mp.return_value = self.make_mock_parse_result(parse_confidence=0.4)
+            MockSc.return_value = self.make_mock_scorer(grade="D", total=35.0)
+            mg = MagicMock()
+            mg.generate_evals_with_convergence.return_value = {"eval_cases": []}
+            mg._calculate_coverage.return_value = 0.95
+            mg.coverage_threshold = 0.7
+            MockGen.return_value = mg
+
+            result = _setup_single_mode(args, config)
+            # Should still return successfully despite warning
+            spec_path, *_ = result
+            assert spec_path is not None
+
+    def test_setup_single_mode_low_coverage(self, temp_skill_path):
+        """_setup_single_mode prints warning when coverage below threshold."""
+        from skill_cert.cli import _setup_single_mode
+        from engine.config import SkillCertConfig, ModelConfig
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = tempfile.mkdtemp()
+        args.runs = 1
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.rate_limit_rpm = 60
+
+        with patch("skill_cert.cli.parse_skill_md") as mp, \
+             patch("skill_cert.cli.MaintainabilityScorer") as MockSc, \
+             patch("skill_cert.cli.EvalGenerator") as MockGen:
+            mp.return_value = self.make_mock_parse_result()
+            MockSc.return_value = self.make_mock_scorer()
+            mg = MagicMock()
+            mg.generate_evals_with_convergence.return_value = {"eval_cases": []}
+            mg._calculate_coverage.return_value = 0.5  # below 0.7 threshold
+            mg.coverage_threshold = 0.7
+            MockGen.return_value = mg
+
+            result = _setup_single_mode(args, config)
+            spec_path, *_ = result
+            assert spec_path is not None
+
+    # ── run_single_mode tests ─────────────────────────────────────────────────
+
+    def test_run_single_mode_no_models(self, temp_skill_path):
+        """run_single_mode returns EXIT_ERROR when no models."""
+        from skill_cert.cli import run_single_mode, EXIT_ERROR
+        from engine.config import SkillCertConfig
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = tempfile.mkdtemp()
+        args.runs = 1
+
+        config = SkillCertConfig()
+        config.models = []
+
+        with patch("skill_cert.cli.parse_skill_md") as mp, \
+             patch("skill_cert.cli.MaintainabilityScorer") as MockSc:
+            mp.return_value = self.make_mock_parse_result()
+            MockSc.return_value = self.make_mock_scorer()
+            code = run_single_mode(args, config)
+
+        assert code == EXIT_ERROR
+
+    def test_run_single_mode_success(self, temp_skill_path):
+        """run_single_mode succeeds with proper mocks."""
+        from skill_cert.cli import run_single_mode, EXIT_PASS, EXIT_ERROR
+        from engine.config import SkillCertConfig, ModelConfig
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = tempfile.mkdtemp()
+        args.runs = 1
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.rate_limit_rpm = 60
+        config.max_concurrency = 5
+        config.request_timeout = 120
+
+        with patch("skill_cert.cli.parse_skill_md") as mp, \
+             patch("skill_cert.cli.MaintainabilityScorer") as MockSc, \
+             patch("skill_cert.cli.EvalGenerator") as MockGen:
+            mp.return_value = self.make_mock_parse_result()
+            MockSc.return_value = self.make_mock_scorer()
+            mg = MagicMock()
+            mg.generate_evals_with_convergence.return_value = {"eval_cases": []}
+            mg._calculate_coverage.return_value = 0.95
+            mg.coverage_threshold = 0.7
+            MockGen.return_value = mg
+
+            with patch("skill_cert.cli._run_single_phase") as mock_run:
+                mock_run.return_value = EXIT_PASS
+                code = run_single_mode(args, config)
+
+        assert code == EXIT_PASS
+
+    # ── _run_eval_for_model tests ─────────────────────────────────────────────
+
+    def test_run_eval_for_model_grades_outputs(self):
+        """_run_eval_for_model grades with-skill and without-skill outputs."""
+        from skill_cert.cli import _run_eval_for_model
+
+        adapter = MagicMock()
+        runner = MagicMock()
+        grader = MagicMock()
+
+        evals_list = [
+            {"id": 1, "name": "t1", "category": "normal", "input": "prompt1",
+             "assertions": [{"name": "a1", "type": "contains", "value": "good", "weight": 1}]},
+            {"id": 2, "name": "t2", "category": "boundary", "input": "prompt2",
+             "assertions": []},
+        ]
+
+        runner.run_with_skill.return_value = [
+            {"eval_id": 1, "output": "good output", "error": None, "category": "normal"},
+            {"eval_id": 2, "output": "output2", "error": None, "category": "boundary"},
+        ]
+        runner.run_without_skill.return_value = [
+            {"eval_id": 1, "output": "bad output", "error": None, "category": "normal"},
+            {"eval_id": 2, "output": "output2", "error": None, "category": "boundary"},
+        ]
+
+        grader.grade_output.return_value = {
+            "final_passed": True, "pass_rate": 1.0,
+            "total_weighted_score": 1, "total_possible_score": 1,
+        }
+
+        spec_path = "/tmp/test.md"
+        graded, ws, wos = _run_eval_for_model(
+            "m1", adapter, runner, grader, {"eval_cases": evals_list}, spec_path
+        )
+
+        assert len(graded) == 4  # 2 with + 2 without
+        assert ws == 2
+        assert wos == 2
+
+    def test_run_eval_for_model_with_tracker(self):
+        """_run_eval_for_model records reliability data when tracker is given."""
+        from skill_cert.cli import _run_eval_for_model
+
+        adapter = MagicMock()
+        runner = MagicMock()
+        grader = MagicMock()
+        tracker = MagicMock()
+
+        evals_list = [
+            {"id": 1, "name": "t1", "category": "normal", "input": "prompt1",
+             "assertions": [{"name": "a1", "type": "contains", "value": "pass", "weight": 1}]},
+        ]
+
+        runner.run_with_skill.return_value = [
+            {"eval_id": 1, "output": "pass output", "error": None, "category": "normal"},
+        ]
+        runner.run_without_skill.return_value = [
+            {"eval_id": 1, "output": "fail output", "error": None, "category": "normal"},
+        ]
+
+        grader.grade_output.return_value = {
+            "final_passed": True, "pass_rate": 1.0,
+            "total_weighted_score": 1, "total_possible_score": 1,
+        }
+
+        _run_eval_for_model(
+            "m1", adapter, runner, grader, {"eval_cases": evals_list}, "/tmp/test.md", tracker
+        )
+
+        # Tracker.record_eval should have been called for each eval
+        assert tracker.record_eval.call_count == 2
+
+    def test_run_eval_for_model_dict_evals(self):
+        """_run_eval_for_model handles evals passed as dict with flexible keys."""
+        from skill_cert.cli import _run_eval_for_model
+
+        adapter = MagicMock()
+        runner = MagicMock()
+        grader = MagicMock()
+
+        runner.run_with_skill.return_value = []
+        runner.run_without_skill.return_value = []
+
+        # Test with 'cases' key instead of 'eval_cases'
+        graded, ws, wos = _run_eval_for_model(
+            "m1", adapter, runner, grader, {"cases": []}, "/tmp/test.md"
+        )
+        assert len(graded) == 0
+
+        # Test with 'evals' key
+        graded, ws, wos = _run_eval_for_model(
+            "m1", adapter, runner, grader, {"evals": []}, "/tmp/test.md"
+        )
+        assert len(graded) == 0
+
+        # Test with plain list
+        graded, ws, wos = _run_eval_for_model(
+            "m1", adapter, runner, grader, [], "/tmp/test.md"
+        )
+        assert len(graded) == 0
+
+    # ── _run_all_evals tests ──────────────────────────────────────────────────
+
+    def test_run_all_evals_multiple_adapters(self):
+        """_run_all_evals iterates over multiple adapters."""
+        from skill_cert.cli import _run_all_evals
+
+        adapters = {"m1": MagicMock(), "m2": MagicMock()}
+        runner = MagicMock()
+        grader = MagicMock()
+
+        with patch("skill_cert.cli._run_eval_for_model") as mock_run:
+            mock_run.return_value = ([], 1, 0)
+            results = _run_all_evals(adapters, runner, grader, {"eval_cases": []}, "/tmp/test.md")
+
+        assert mock_run.call_count == 2
+        assert results == []
+
+    # ── _run_single_phase tests ───────────────────────────────────────────────
+
+    def make_mock_runner(self):
+        runner = MagicMock()
+        runner.run_with_skill.return_value = []
+        runner.run_without_skill.return_value = []
+        return runner
+
+    def test_run_single_phase_basic(self, temp_skill_path):
+        """_run_single_phase runs full pipeline with one model."""
+        from skill_cert.cli import _run_single_phase, EXIT_PASS
+        from engine.config import SkillCertConfig, ModelConfig
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.max_concurrency = 5
+        config.rate_limit_rpm = 60
+        config.request_timeout = 120
+
+        args = MagicMock()
+        args.runs = 1
+        adapters = {"m1": MagicMock()}
+        spec = self.make_mock_parse_result()
+        spec["evals"] = {"eval_cases": []}
+
+        out_dir = Path(tempfile.mkdtemp())
+
+        with patch("skill_cert.cli.EvalRunner") as MockRunner, \
+             patch("skill_cert.cli.Grader") as MockGrader, \
+             patch("skill_cert.cli.ReliabilityTracker") as MockTracker, \
+             patch("skill_cert.cli._run_all_evals") as mock_run_evals, \
+             patch("skill_cert.cli.MetricsCalculator") as MockMetrics, \
+             patch("skill_cert.cli.Reporter") as MockReporter:
+
+            mock_runner_instance = MagicMock()
+            MockRunner.return_value = mock_runner_instance
+
+            mock_grader = MagicMock()
+            MockGrader.return_value = mock_grader
+
+            mock_tracker = MagicMock()
+            mock_tracker.generate_report.return_value = {
+                "success_rate": 0.95,
+                "error_rate": 0.05,
+                "errors_by_category": {"APIError": 2, "TimeoutError": 1},
+                "retry_stats": {"total_retries": 3, "avg_retries": 1.5, "max_retries": 2},
+            }
+            MockTracker.return_value = mock_tracker
+
+            mock_run_evals.return_value = [
+                {"mode": "with_skill", "grade": {"final_passed": True}, "pass_rate": 1.0},
+                {"mode": "without_skill", "grade": {"final_passed": False}, "pass_rate": 0.0},
+            ]
+
+            mock_calc = MagicMock()
+            mock_calc.calculate_metrics.return_value = {
+                "overall": 0.85, "l1_trigger_accuracy": 0.9,
+                "l2_with_without_skill_delta": 0.3, "l3_step_adherence": 0.85,
+                "l4_execution_stability": 0.95,
+            }
+            mock_calc.calculate_l7_cost_efficiency.return_value = {
+                "cost_delta": 0.15, "budget_utilization": 0.3
+            }
+            MockMetrics.return_value = mock_calc
+
+            mock_reporter = MagicMock()
+            mock_reporter.generate_report.return_value = (
+                "# Report", {"verdict": "PASS"}
+            )
+            MockReporter.return_value = mock_reporter
+
+            code = _run_single_phase(args, config, temp_skill_path, out_dir, "test-skill", spec, adapters)
+
+        assert code == EXIT_PASS
+
+    def test_run_single_phase_with_stability_and_drift(self, temp_skill_path):
+        """_run_single_phase runs stability analysis (runs>1) and drift detection."""
+        from skill_cert.cli import _run_single_phase, EXIT_PASS
+        from engine.config import SkillCertConfig, ModelConfig
+
+        config = SkillCertConfig()
+        config.models = [
+            ModelConfig(model_name="m1", base_url="http://u1", api_key="k1"),
+            ModelConfig(model_name="m2", base_url="http://u2", api_key="k2"),
+        ]
+        config.max_concurrency = 5
+        config.rate_limit_rpm = 60
+        config.request_timeout = 120
+
+        args = MagicMock()
+        args.runs = 3
+        adapters = {"m1": MagicMock(), "m2": MagicMock()}
+        spec = self.make_mock_parse_result()
+        spec["evals"] = {"eval_cases": [{"id": 1}]}
+
+        out_dir = Path(tempfile.mkdtemp())
+
+        with patch("skill_cert.cli.EvalRunner") as MockRunner, \
+             patch("skill_cert.cli.Grader") as MockGrader, \
+             patch("skill_cert.cli.ReliabilityTracker") as MockTracker, \
+             patch("skill_cert.cli._run_all_evals") as mock_run_evals, \
+             patch("skill_cert.cli.MetricsCalculator") as MockMetrics, \
+             patch("skill_cert.cli.Reporter") as MockReporter, \
+             patch("skill_cert.cli.StabilityRunner") as MockStabRunner, \
+             patch("skill_cert.cli.calculate_l4_stability") as mock_l4, \
+             patch("skill_cert.cli.DriftDetector") as MockDrift:
+
+            mock_runner_instance = MagicMock()
+            MockRunner.return_value = mock_runner_instance
+
+            mock_grader = MagicMock()
+            MockGrader.return_value = mock_grader
+
+            mock_tracker = MagicMock()
+            mock_tracker.generate_report.return_value = {
+                "success_rate": 1.0, "error_rate": 0.0,
+                "errors_by_category": {}, "retry_stats": {"total_retries": 0, "avg_retries": 0, "max_retries": 0},
+            }
+            MockTracker.return_value = mock_tracker
+
+            mock_run_evals.return_value = []
+
+            mock_calc = MagicMock()
+            mock_calc.calculate_metrics.return_value = {
+                "overall": 0.9, "l1_trigger_accuracy": 0.95,
+                "l2_with_without_skill_delta": 0.4, "l3_step_adherence": 0.9,
+                "l4_execution_stability": 0.85,
+            }
+            mock_calc.calculate_l7_cost_efficiency.return_value = {}
+            MockMetrics.return_value = mock_calc
+
+            mock_stab = MagicMock()
+            mock_stab.run_stability.return_value = {
+                "overall_mean_pass_rate": 0.9, "overall_std_dev": 0.05,
+            }
+            MockStabRunner.return_value = mock_stab
+            mock_l4.return_value = 0.85
+
+            mock_drift = MagicMock()
+            mock_drift.detect_drift.return_value = []
+            mock_drift.aggregate_drift_report.return_value = {
+                "highest_severity": "none", "average_variance": 0.05,
+            }
+            MockDrift.return_value = mock_drift
+
+            mock_reporter = MagicMock()
+            mock_reporter.generate_report.return_value = (
+                "# Report", {"verdict": "PASS"}
+            )
+            MockReporter.return_value = mock_reporter
+
+            code = _run_single_phase(args, config, temp_skill_path, out_dir, "test-skill", spec, adapters)
+
+        assert code == EXIT_PASS
+
+    def test_run_single_phase_passes_with_caveats(self, temp_skill_path):
+        """Verdict PASS_WITH_CAVEATS returns EXIT_FAIL_WITH_CAVEATS."""
+        from skill_cert.cli import _run_single_phase, EXIT_FAIL_WITH_CAVEATS
+        from engine.config import SkillCertConfig, ModelConfig
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.max_concurrency = 5
+        config.rate_limit_rpm = 60
+        config.request_timeout = 120
+
+        args = MagicMock()
+        args.runs = 1
+        adapters = {"m1": MagicMock()}
+        spec = self.make_mock_parse_result()
+        spec["evals"] = {"eval_cases": []}
+        out_dir = Path(tempfile.mkdtemp())
+
+        with patch("skill_cert.cli.EvalRunner") as MockRunner, \
+             patch("skill_cert.cli.Grader") as MockGrader, \
+             patch("skill_cert.cli.ReliabilityTracker") as MockTracker, \
+             patch("skill_cert.cli._run_all_evals") as mock_run_evals, \
+             patch("skill_cert.cli.MetricsCalculator") as MockMetrics, \
+             patch("skill_cert.cli.Reporter") as MockReporter:
+
+            MockRunner.return_value = MagicMock()
+            MockGrader.return_value = MagicMock()
+            mock_tracker = MagicMock()
+            mock_tracker.generate_report.return_value = {
+                "success_rate": 1.0, "error_rate": 0.0, "errors_by_category": {}, "retry_stats": {"total_retries": 0, "avg_retries": 0, "max_retries": 0},
+            }
+            MockTracker.return_value = mock_tracker
+            mock_run_evals.return_value = []
+
+            mock_calc = MagicMock()
+            mock_calc.calculate_metrics.return_value = {"overall": 0.8}
+            mock_calc.calculate_l7_cost_efficiency.return_value = {}
+            MockMetrics.return_value = mock_calc
+
+            mock_reporter = MagicMock()
+            mock_reporter.generate_report.return_value = (
+                "# Report", {"verdict": "PASS_WITH_CAVEATS"}
+            )
+            MockReporter.return_value = mock_reporter
+
+            code = _run_single_phase(args, config, temp_skill_path, out_dir, "test-skill", spec, adapters)
+
+        assert code == EXIT_FAIL_WITH_CAVEATS
+
+    def test_run_single_phase_fails(self, temp_skill_path):
+        """FAIL verdict returns EXIT_ERROR."""
+        from skill_cert.cli import _run_single_phase, EXIT_ERROR
+        from engine.config import SkillCertConfig, ModelConfig
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.max_concurrency = 5
+        config.rate_limit_rpm = 60
+        config.request_timeout = 120
+
+        args = MagicMock()
+        args.runs = 1
+        adapters = {"m1": MagicMock()}
+        spec = self.make_mock_parse_result()
+        spec["evals"] = {"eval_cases": []}
+        out_dir = Path(tempfile.mkdtemp())
+
+        with patch("skill_cert.cli.EvalRunner") as MockRunner, \
+             patch("skill_cert.cli.Grader") as MockGrader, \
+             patch("skill_cert.cli.ReliabilityTracker") as MockTracker, \
+             patch("skill_cert.cli._run_all_evals") as mock_run_evals, \
+             patch("skill_cert.cli.MetricsCalculator") as MockMetrics, \
+             patch("skill_cert.cli.Reporter") as MockReporter:
+
+            MockRunner.return_value = MagicMock()
+            MockGrader.return_value = MagicMock()
+            mock_tracker = MagicMock()
+            mock_tracker.generate_report.return_value = {
+                "success_rate": 1.0, "error_rate": 0.0, "errors_by_category": {}, "retry_stats": {"total_retries": 0, "avg_retries": 0, "max_retries": 0},
+            }
+            MockTracker.return_value = mock_tracker
+            mock_run_evals.return_value = []
+
+            mock_calc = MagicMock()
+            mock_calc.calculate_metrics.return_value = {"overall": 0.5}
+            mock_calc.calculate_l7_cost_efficiency.return_value = {}
+            MockMetrics.return_value = mock_calc
+
+            mock_reporter = MagicMock()
+            mock_reporter.generate_report.return_value = (
+                "# Report", {"verdict": "FAIL"}
+            )
+            MockReporter.return_value = mock_reporter
+
+            code = _run_single_phase(args, config, temp_skill_path, out_dir, "test-skill", spec, adapters)
+
+        assert code == EXIT_ERROR
+
+    # ── run_dialogue_mode error paths ─────────────────────────────────────────
+
+    def test_dialogue_mode_no_models(self):
+        """run_dialogue_mode returns EXIT_ERROR when no models."""
+        from skill_cert.cli import run_dialogue_mode, EXIT_ERROR
+        from engine.config import SkillCertConfig
+
+        args = MagicMock()
+        args.skill = "/tmp/test.md"
+        args.output = tempfile.mkdtemp()
+        args.max_turns = 5
+
+        config = SkillCertConfig()
+        config.models = []
+
+        with patch("skill_cert.cli.parse_skill_md") as mp:
+            mp.return_value = self.make_mock_parse_result()
+            code = run_dialogue_mode(args, config)
+
+        assert code == EXIT_ERROR
+
+    # ── run_replay_mode error paths ───────────────────────────────────────────
+
+    def test_replay_mode_no_session(self):
+        """run_replay_mode returns EXIT_ERROR when --session is missing."""
+        from skill_cert.cli import run_replay_mode, EXIT_ERROR
+        from engine.config import SkillCertConfig
+
+        args = MagicMock()
+        args.skill = "/tmp/test.md"
+        args.session = None
+        args.output = tempfile.mkdtemp()
+
+        config = SkillCertConfig()
+        config.models = []
+
+        code = run_replay_mode(args, config)
+        assert code == EXIT_ERROR
+
+    def test_replay_mode_no_models(self):
+        """run_replay_mode returns EXIT_ERROR when no models configured."""
+        from skill_cert.cli import run_replay_mode, EXIT_ERROR
+        from engine.config import SkillCertConfig
+
+        args = MagicMock()
+        args.skill = "/tmp/test.md"
+        args.session = "/tmp/session.jsonl"
+        args.output = tempfile.mkdtemp()
+
+        config = SkillCertConfig()
+        config.models = []
+
+        with patch("skill_cert.cli.parse_skill_md") as mp:
+            mp.return_value = self.make_mock_parse_result()
+            code = run_replay_mode(args, config)
+
+        assert code == EXIT_ERROR
+
+    # ── run_stress_mode tests ─────────────────────────────────────────────────
+
+    def test_stress_mode_runs(self, temp_skill_path):
+        """run_stress_mode executes stress test pipeline."""
+        from skill_cert.cli import run_stress_mode, EXIT_PASS, EXIT_ERROR
+        from engine.config import SkillCertConfig, ModelConfig
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = tempfile.mkdtemp()
+        args.stress_concurrency = 10
+        args.stress_evals = 5
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.rate_limit_rpm = 60
+
+        with patch("skill_cert.cli.parse_skill_md") as mp, \
+             patch("skill_cert.cli.StressTester") as MockTester, \
+             patch("skill_cert.cli.format_scalability_report") as mock_fmt:
+
+            mp.return_value = self.make_mock_parse_result()
+            mock_fmt.return_value = "# Stress Report"
+
+            mock_stress_result = MagicMock()
+            mock_stress_result.total_evals = 5
+            mock_stress_result.completed = 5
+            mock_stress_result.failed = 0
+            mock_stress_result.timed_out = 0
+            mock_stress_result.errored = 0
+            mock_stress_result.completion_rate = 1.0
+            mock_stress_result.fairness_ratio = 1.0
+            mock_stress_result.scalability_score = 1.0
+            mock_stress_result.verdict = "PASS"
+            mock_stress_result.avg_latency = 1.0
+            mock_stress_result.min_latency = 0.5
+            mock_stress_result.max_latency = 2.0
+            mock_stress_result.median_latency = 1.0
+            mock_stress_result.p95_latency = 1.5
+            mock_stress_result.p99_latency = 1.8
+            mock_stress_result.memory_mb_peak = 100
+            mock_stress_result.model_exec_counts = {"m1": 5}
+
+            mock_tester = MagicMock()
+            mock_tester.run_stress_test = AsyncMock(return_value=mock_stress_result)
+            MockTester.return_value = mock_tester
+
+            code = run_stress_mode(args, config)
+
+        assert code == EXIT_PASS
+
+    def test_stress_mode_fail(self, temp_skill_path):
+        """run_stress_mode returns EXIT_ERROR on FAIL verdict."""
+        from skill_cert.cli import run_stress_mode, EXIT_ERROR
+        from engine.config import SkillCertConfig, ModelConfig
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = tempfile.mkdtemp()
+        args.stress_concurrency = 10
+        args.stress_evals = 5
+
+        config = SkillCertConfig()
+        config.models = [ModelConfig(model_name="m1", base_url="http://u", api_key="k")]
+        config.rate_limit_rpm = 60
+
+        with patch("skill_cert.cli.parse_skill_md") as mp, \
+             patch("skill_cert.cli.StressTester") as MockTester, \
+             patch("skill_cert.cli.format_scalability_report") as mock_fmt:
+
+            mp.return_value = self.make_mock_parse_result()
+            mock_fmt.return_value = "# Stress Report"
+
+            mock_stress_result = MagicMock()
+            mock_stress_result.verdict = "FAIL"
+            mock_stress_result.total_evals = 10
+            mock_stress_result.completed = 5
+            mock_stress_result.failed = 5
+            mock_stress_result.timed_out = 3
+            mock_stress_result.errored = 2
+            mock_stress_result.completion_rate = 0.5
+            mock_stress_result.fairness_ratio = 0.5
+            mock_stress_result.scalability_score = 0.5
+            mock_stress_result.avg_latency = 2.0
+            mock_stress_result.min_latency = 1.0
+            mock_stress_result.max_latency = 5.0
+            mock_stress_result.median_latency = 2.0
+            mock_stress_result.p95_latency = 4.0
+            mock_stress_result.p99_latency = 4.5
+            mock_stress_result.memory_mb_peak = 200
+            mock_stress_result.model_exec_counts = {}
+
+            mock_tester = MagicMock()
+            mock_tester.run_stress_test = AsyncMock(return_value=mock_stress_result)
+            MockTester.return_value = mock_tester
+
+            code = run_stress_mode(args, config)
+
+        assert code == EXIT_ERROR
+
+    def test_stress_mode_no_models(self, temp_skill_path):
+        """run_stress_mode returns EXIT_ERROR when no models."""
+        from skill_cert.cli import run_stress_mode, EXIT_ERROR
+        from engine.config import SkillCertConfig
+
+        args = MagicMock()
+        args.skill = temp_skill_path
+        args.output = tempfile.mkdtemp()
+        args.stress_concurrency = 10
+        args.stress_evals = 5
+
+        config = SkillCertConfig()
+        config.models = []
+
+        with patch("skill_cert.cli.parse_skill_md") as mp:
+            mp.return_value = self.make_mock_parse_result()
+            code = run_stress_mode(args, config)
+
+        assert code == EXIT_ERROR
+
+    # ── run_multi_skill_mode tests ────────────────────────────────────────────
+
+    def test_multi_skill_mode_runs(self):
+        """run_multi_skill_mode executes conflict analysis."""
+        from skill_cert.cli import run_multi_skill_mode, EXIT_PASS
+        from engine.config import SkillCertConfig
+
+        args = MagicMock()
+        args.skill = ["/tmp/skill1.md", "/tmp/skill2.md"]
+        args.output = tempfile.mkdtemp()
+        args.token_budget = 100000
+        args.multi_skill = True
+
+        config = SkillCertConfig()
+
+        with patch("skill_cert.cli.parse_skill_md") as mp, \
+             patch("engine.multi_skill.MultiSkillAnalyzer") as MockAnalyzer, \
+             patch("skill_cert.cli.Reporter") as MockReporter:
+
+            mp.return_value = self.make_mock_parse_result()
+
+            mock_analyzer = MagicMock()
+            mock_analyzer.inject_multiple_skills = MagicMock()
+            mock_analyzer.analyze.return_value = {
+                "skill_count": 2,
+                "conflicts": [],
+                "trigger_conflicts": 0,
+                "prompt_contamination_conflicts": 0,
+                "token_overflow_conflicts": 0,
+                "overall_risk": "none",
+            }
+            MockAnalyzer.return_value = mock_analyzer
+
+            mock_reporter = MagicMock()
+            mock_reporter.generate_report_with_multi_skill.return_value = (
+                "# Report", {"verdict": "PASS"}
+            )
+            MockReporter.return_value = mock_reporter
+
+            code = run_multi_skill_mode(args, config)
+
+        assert code == EXIT_PASS
+
+    def test_multi_skill_mode_too_few_skills(self):
+        """run_multi_skill_mode fails with < 2 skills."""
+        from skill_cert.cli import run_multi_skill_mode, EXIT_ERROR
+        from engine.config import SkillCertConfig
+
+        args = MagicMock()
+        args.skill = ["/tmp/skill1.md"]  # only one
+        args.output = tempfile.mkdtemp()
+
+        config = SkillCertConfig()
+        code = run_multi_skill_mode(args, config)
+        assert code == EXIT_ERROR
+
+    def test_multi_skill_mode_high_risk(self):
+        """run_multi_skill_mode fails with high overall risk."""
+        from skill_cert.cli import run_multi_skill_mode, EXIT_ERROR
+        from engine.config import SkillCertConfig
+
+        args = MagicMock()
+        args.skill = ["/tmp/skill1.md", "/tmp/skill2.md"]
+        args.output = tempfile.mkdtemp()
+        args.token_budget = 100000
+
+        config = SkillCertConfig()
+
+        with patch("skill_cert.cli.parse_skill_md") as mp, \
+             patch("engine.multi_skill.MultiSkillAnalyzer") as MockAnalyzer, \
+             patch("skill_cert.cli.Reporter") as MockReporter:
+
+            mp.return_value = self.make_mock_parse_result()
+
+            # Use enum for severity
+            from engine.multi_skill import ConflictSeverity
+
+            mock_conflict = MagicMock()
+            mock_conflict.severity = ConflictSeverity.HIGH
+            mock_conflict.__str__.return_value = "Test conflict"
+
+            mock_analyzer = MagicMock()
+            mock_analyzer.inject_multiple_skills = MagicMock()
+            mock_analyzer.analyze.return_value = {
+                "skill_count": 2,
+                "conflicts": [mock_conflict],
+                "trigger_conflicts": 1,
+                "prompt_contamination_conflicts": 1,
+                "token_overflow_conflicts": 1,
+                "overall_risk": "high",
+            }
+            MockAnalyzer.return_value = mock_analyzer
+
+            mock_reporter = MagicMock()
+            mock_reporter.generate_report_with_multi_skill.return_value = (
+                "# Report", {"verdict": "FAIL"}
+            )
+            MockReporter.return_value = mock_reporter
+
+            code = run_multi_skill_mode(args, config)
+
+        assert code == EXIT_ERROR
+
+    # ── main() entry point tests ──────────────────────────────────────────────
+
+    def test_main_dispatches_single_mode(self):
+        """main() dispatches to run_single_mode for default mode."""
+        from skill_cert.cli import main
+
+        mock_config = MagicMock()
+        mock_config.models = [MagicMock()]
+
+        with patch("skill_cert.cli.SkillCertConfig.load", return_value=mock_config), \
+             patch("skill_cert.cli.run_single_mode", return_value=0) as mock_dispatch, \
+             patch.object(sys, "argv", ["skill-cert", "--skill", "/tmp/test.md",
+                                        "--models", "m1=http://u,k"]):
+
+            code = main()
+            assert code == 0
+            mock_dispatch.assert_called_once()
+
+    def test_main_dispatches_dialogue_mode(self):
+        """main() dispatches to run_dialogue_mode."""
+        from skill_cert.cli import main
+
+        mock_config = MagicMock()
+        mock_config.models = [MagicMock()]
+
+        with patch("skill_cert.cli.SkillCertConfig.load", return_value=mock_config), \
+             patch("skill_cert.cli.run_dialogue_mode", return_value=0) as mock_dispatch, \
+             patch.object(sys, "argv", ["skill-cert", "--skill", "/tmp/test.md",
+                                        "--models", "m1=http://u,k",
+                                        "--mode", "dialogue"]):
+
+            code = main()
+            assert code == 0
+            mock_dispatch.assert_called_once()
+
+    def test_main_dispatches_replay_mode(self):
+        """main() dispatches to run_replay_mode."""
+        from skill_cert.cli import main
+
+        mock_config = MagicMock()
+        mock_config.models = [MagicMock()]
+
+        with patch("skill_cert.cli.SkillCertConfig.load", return_value=mock_config), \
+             patch("skill_cert.cli.run_replay_mode", return_value=0) as mock_dispatch, \
+             patch.object(sys, "argv", ["skill-cert", "--skill", "/tmp/test.md",
+                                        "--models", "m1=http://u,k",
+                                        "--mode", "replay", "--session", "/tmp/session.jsonl"]):
+
+            code = main()
+            assert code == 0
+            mock_dispatch.assert_called_once()
+
+    def test_main_dispatches_stress_mode(self):
+        """main() dispatches to run_stress_mode when --stress flag is set."""
+        from skill_cert.cli import main
+
+        mock_config = MagicMock()
+        mock_config.models = [MagicMock()]
+
+        with patch("skill_cert.cli.SkillCertConfig.load", return_value=mock_config), \
+             patch("skill_cert.cli.run_stress_mode", return_value=0) as mock_dispatch, \
+             patch.object(sys, "argv", ["skill-cert", "--skill", "/tmp/test.md",
+                                        "--models", "m1=http://u,k",
+                                        "--stress"]):
+
+            code = main()
+            assert code == 0
+            mock_dispatch.assert_called_once()
+
+    def test_main_dispatches_multi_skill(self):
+        """main() dispatches to run_multi_skill_mode."""
+        from skill_cert.cli import main
+
+        mock_config = MagicMock()
+        mock_config.models = [MagicMock()]
+
+        with patch("skill_cert.cli.SkillCertConfig.load", return_value=mock_config), \
+             patch("skill_cert.cli.run_multi_skill_mode", return_value=0) as mock_dispatch, \
+             patch.object(sys, "argv", ["skill-cert", "--skill", "/tmp/skill1.md",
+                                        "--skill", "/tmp/skill2.md",
+                                        "--multi-skill",
+                                        "--models", "m1=http://u,k"]):
+
+            code = main()
+            assert code == 0
+            mock_dispatch.assert_called_once()
+
+    # ── main() error handling ─────────────────────────────────────────────────
+
+    def test_main_invalid_config(self):
+        """main() returns EXIT_ERROR when SkillCertConfig.load raises Exception."""
+        from skill_cert.cli import main, EXIT_ERROR
+
+        with patch("skill_cert.cli.SkillCertConfig.load", side_effect=ValueError("bad config")), \
+             patch.object(sys, "argv", ["skill-cert", "--skill", "test.md"]):
+
+            code = main()
+            assert code == EXIT_ERROR
+
+    def test_main_file_not_found(self):
+        """main() catches FileNotFoundError and returns EXIT_ERROR."""
+        from skill_cert.cli import main, EXIT_ERROR
+
+        mock_config = MagicMock()
+        mock_config.models = [MagicMock()]
+
+        with patch("skill_cert.cli.SkillCertConfig.load", return_value=mock_config), \
+             patch("skill_cert.cli.run_single_mode", side_effect=FileNotFoundError("file not found")), \
+             patch.object(sys, "argv", ["skill-cert", "--skill", "/tmp/test.md",
+                                        "--models", "m1=http://u,k"]):
+
+            code = main()
+            assert code == EXIT_ERROR
+
+    def test_main_keyboard_interrupt(self):
+        """main() catches KeyboardInterrupt and returns EXIT_ERROR."""
+        from skill_cert.cli import main, EXIT_ERROR
+
+        mock_config = MagicMock()
+        mock_config.models = [MagicMock()]
+
+        with patch("skill_cert.cli.SkillCertConfig.load", return_value=mock_config), \
+             patch("skill_cert.cli.run_single_mode", side_effect=KeyboardInterrupt()), \
+             patch.object(sys, "argv", ["skill-cert", "--skill", "/tmp/test.md",
+                                        "--models", "m1=http://u,k"]):
+
+            code = main()
+            assert code == EXIT_ERROR
+
+    def test_main_generic_exception(self):
+        """main() catches unexpected Exception and returns EXIT_ERROR."""
+        from skill_cert.cli import main, EXIT_ERROR
+
+        mock_config = MagicMock()
+        mock_config.models = [MagicMock()]
+
+        with patch("skill_cert.cli.SkillCertConfig.load", return_value=mock_config), \
+             patch("skill_cert.cli.run_single_mode", side_effect=RuntimeError("unexpected")), \
+             patch.object(sys, "argv", ["skill-cert", "--skill", "/tmp/test.md",
+                                        "--models", "m1=http://u,k"]):
+
+            code = main()
+            assert code == EXIT_ERROR
+
+    def test_main_help_exits_zero(self):
+        """main() with --help exits with code 0."""
+        from skill_cert.cli import main
+
+        with patch.object(sys, "argv", ["skill-cert", "--help"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+            assert exc.value.code == 0
 
 
 if __name__ == "__main__":

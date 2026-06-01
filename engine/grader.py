@@ -33,6 +33,7 @@ class EvalCase(BaseModel):
     expected_output: Optional[str] = None
     files: List[str] = Field(default_factory=list)
     assertions: List[EvalAssertion]
+    workflow_step: Optional[str] = None  # Name of the workflow step this case targets
 
 
 @dataclass
@@ -88,6 +89,7 @@ class Grader:
             "eval_id": eval_case.id,
             "eval_name": eval_case.name,
             "category": eval_case.category,
+            "workflow_step": eval_case.workflow_step,
             "model_output": model_output,
             "assertion_results": [
                 {
@@ -159,30 +161,106 @@ class Grader:
     
     def _llm_judge(self, eval_case: EvalCase, model_output: str, assertion_results: List[AssertionResult]) -> Optional[JudgeResult]:
         """Use LLM as judge for complex behavior evaluation."""
-        # Mock implementation - in real scenario, this would call an LLM
-        # For now, return a mock result based on assertion results
-        passed_assertions = sum(1 for r in assertion_results if r.passed)
-        total_assertions = len(assertion_results)
-        
-        if total_assertions == 0:
+        import os
+
+        if not assertion_results:
             return JudgeResult(
                 passed=False,
                 confidence=0.0,
-                reasoning="No assertions to evaluate"
+                reasoning="No assertions to evaluate",
+                judge_version="1.0",
+                judge_model="",
             )
-        
-        # Calculate confidence based on assertion results
-        passed_ratio = passed_assertions / total_assertions
-        confidence = passed_ratio  # Simplified confidence calculation
-        
-        # If confidence is low, we might want a secondary judge
-        if confidence < 0.8 and self.llm_client:
-            # In a real implementation, we'd call a secondary judge here
-            # For now, just return the initial result
-            pass
-        
-        return JudgeResult(
-            passed=passed_ratio >= 0.5,
-            confidence=confidence,
-            reasoning=f"LLM evaluation: {passed_assertions}/{total_assertions} assertions passed ({passed_ratio:.2f})"
-        )
+
+        # Check if LLM judge is disabled via environment variable
+        llm_judge_enabled = os.environ.get("SKILL_CERT_LLM_JUDGE_ENABLED", "true").lower() != "false"
+
+        # Fallback to simplified logic if LLM client is None or LLM judge is disabled
+        if self.llm_client is None or not llm_judge_enabled:
+            passed_assertions = sum(1 for r in assertion_results if r.passed)
+            total_assertions = len(assertion_results)
+            passed_ratio = passed_assertions / total_assertions
+            return JudgeResult(
+                passed=passed_ratio >= 0.5,
+                confidence=passed_ratio,
+                reasoning=f"LLM evaluation: {passed_assertions}/{total_assertions} assertions passed ({passed_ratio:.2f})",
+                judge_version="1.0",
+                judge_model="",
+            )
+
+        expected_behavior = eval_case.expected_output or eval_case.prompt
+
+        prompt = f"""# LLM-as-Judge Prompt
+
+你是一个严格的评测裁判。评估以下模型输出是否满足指定的行为要求。
+
+## 评测要求
+
+1. 只回答 `true` 或 `false`
+2. 给出置信度（0.0 - 1.0）
+3. 用一句话说明理由
+4. temperature=0，确保确定性
+
+## 评测任务
+
+**Skill 输出**:
+```
+{model_output}
+```
+
+**行为要求**:
+```
+{expected_behavior}
+```
+
+## 输出格式（严格 JSON）
+
+```json
+{{
+  "passed": true,
+  "confidence": 0.95,
+  "reasoning": "输出包含了所有要求的步骤"
+}}
+```"""
+
+        try:
+            # Call LLM with judge prompt — temperature=0 for deterministic results
+            response_text = self.llm_client.chat(
+                messages=[{"role": "user", "content": prompt}],
+                timeout=30,
+            )
+
+            # Parse JSON response — handle possible Markdown code block wrapping
+            response_text = response_text.strip()
+            if "```json" in response_text:
+                start = response_text.find("```json") + 7
+                end = response_text.find("```", start)
+                if end > start:
+                    response_text = response_text[start:end].strip()
+            elif response_text.startswith("```") and "```" in response_text[3:]:
+                start = 3
+                end = response_text.find("```", start)
+                if end > start:
+                    response_text = response_text[start:end].strip()
+
+            judge_data = json.loads(response_text)
+
+            return JudgeResult(
+                passed=bool(judge_data.get("passed", False)),
+                confidence=float(judge_data.get("confidence", 0.5)),
+                reasoning=str(judge_data.get("reasoning", "")),
+                judge_version="1.0",
+                judge_model="llm",
+            )
+        except Exception as e:
+            # Fallback to simplified logic on any error (network, parse, etc.)
+            passed_assertions = sum(1 for r in assertion_results if r.passed)
+            total_assertions = len(assertion_results)
+            passed_ratio = passed_assertions / total_assertions if total_assertions > 0 else 0.0
+            return JudgeResult(
+                passed=passed_ratio >= 0.5,
+                confidence=passed_ratio,
+                reasoning=f"LLM judge call failed ({e}), fallback to assertion-based: {passed_assertions}/{total_assertions} passed ({passed_ratio:.2f})",
+                judge_version="1.0",
+                judge_model="",
+            )
