@@ -45,10 +45,16 @@ class SchemaValidationResult:
         return len(self.violations) == 0
 
 
+FENCED_CODE_BLOCK_RE = re.compile(r"```[\s\S]*?```")
+
 MAX_DESCRIPTION_LENGTH = 500
 FLOW_LANGUAGE_PATTERNS = [
-    r"\bstep\s+\d+", r"\bfirst\s*[,\s]+\s*then\b", r"\bafter that\b",
-    r"\bnext\s*[,\s]+\s*you\b", r"\bworkflow\b", r"\bfollow\s+these\s+steps\b",
+    r"\bstep\s+\d+",
+    r"\bfirst\s*[,\s]+\s*then\b",
+    r"\bafter that\b",
+    r"\bnext\s*[,\s]+\s*you\b",
+    r"\bworkflow\b",
+    r"\bfollow\s+these\s+steps\b",
 ]
 
 
@@ -58,10 +64,25 @@ def _validate_schema(spec: SkillSpec, raw_content: str) -> SchemaValidationResul
     violations = []
     confidence_penalty = 0.0
 
-    is_interactive = any(m in raw_content.lower() for m in (
-        "interactive", "askuserquestion", "bypass", "dangerous_cmd",
-        "rm -f", "rm -rf", "git rm", "shell", "bash", "preamble"
-    ))
+    # Strip fenced code blocks before interactive check to avoid false positives
+    # from language markers (e.g. \`\`\`bash matching "bash") — #10
+    code_stripped_content = FENCED_CODE_BLOCK_RE.sub("", raw_content)
+
+    is_interactive = any(
+        m in code_stripped_content.lower()
+        for m in (
+            "interactive",
+            "askuserquestion",
+            "bypass",
+            "dangerous_cmd",
+            "rm -f",
+            "rm -rf",
+            "git rm",
+            "shell",
+            "bash",
+            "preamble",
+        )
+    )
     has_security_section = _section_exists(raw_content, "Security Notes")
     has_permissions_section = _section_exists(raw_content, "Permissions")
 
@@ -82,18 +103,26 @@ def _validate_schema(spec: SkillSpec, raw_content: str) -> SchemaValidationResul
         confidence_penalty += 0.10
 
     if len(spec.description) > MAX_DESCRIPTION_LENGTH:
-        violations.append(SchemaViolation(
-            "description", f"exceeds {MAX_DESCRIPTION_LENGTH} characters ({len(spec.description)})"
-        ))
+        violations.append(
+            SchemaViolation(
+                "description",
+                f"exceeds {MAX_DESCRIPTION_LENGTH} characters ({len(spec.description)})",
+            )
+        )
         confidence_penalty += 0.05
 
     if _has_flow_language(spec.description):
-        violations.append(SchemaViolation(
-            "description", "contains workflow/step-by-step language — should describe what, not how"
-        ))
+        violations.append(
+            SchemaViolation(
+                "description",
+                "contains workflow/step-by-step language — should describe what, not how",
+            )
+        )
         confidence_penalty += 0.10
 
-    return SchemaValidationResult(violations=violations, confidence_penalty=round(confidence_penalty, 2))
+    return SchemaValidationResult(
+        violations=violations, confidence_penalty=round(confidence_penalty, 2)
+    )
 
 
 def _section_exists(content: str, section_name: str) -> bool:
@@ -291,7 +320,14 @@ def _extract_anti_patterns(content: str) -> list[str]:
                 continue
             # Skip table header rows
             first = parts[0].lower()
-            if first in ("pattern", "pattern/anti-pattern", "anti-pattern", "❌ 错误", "错误", "anti-pattern/错误"):
+            if first in (
+                "pattern",
+                "pattern/anti-pattern",
+                "anti-pattern",
+                "❌ 错误",
+                "错误",
+                "anti-pattern/错误",
+            ):
                 continue
             patterns.append(parts[0])
     return patterns
@@ -328,7 +364,9 @@ def _of_parse_assertion_line(line: str) -> list[str]:
     if not m:
         return []
     raw = m.group(1)
-    return [x for x in (s.strip().strip("`").strip("'").strip() for s in raw.split(",")) if len(x) > 1]
+    return [
+        x for x in (s.strip().strip("`").strip("'").strip() for s in raw.split(",")) if len(x) > 1
+    ]
 
 
 def _of_filter_noise(outputs: list[str]) -> list[str]:
@@ -336,7 +374,8 @@ def _of_filter_noise(outputs: list[str]) -> list[str]:
     noise = {"", "-", "--", "**", "---", "..."}
     ap_assertion_re = re.compile(r"→\s*Output\s+MUST", re.IGNORECASE)
     return [
-        o for o in outputs
+        o
+        for o in outputs
         if o not in noise and not o.startswith("**") and not ap_assertion_re.search(o)
     ]
 
@@ -374,8 +413,7 @@ def _extract_triggers_from_frontmatter(content: str) -> list[str]:
         return triggers
     fm_block = fm_match.group(1)
     trigger_section = re.search(
-        r"(?:^|\n)\s*TRIGGER\s*:\s*\n((?:\s*-.*\n?)*)",
-        fm_block, re.IGNORECASE
+        r"(?:^|\n)\s*TRIGGER\s*:\s*\n((?:\s*-.*\n?)*)", fm_block, re.IGNORECASE
     )
     if trigger_section:
         for line in trigger_section.group(1).split("\n"):
@@ -404,7 +442,9 @@ def _extract_triggers(content: str, description: str, frontmatter: dict | None) 
 
     # 1. Frontmatter TRIGGER/TRIGGERS field
     if frontmatter:
-        trigger_val = frontmatter.get("triggers") or frontmatter.get("TRIGGERS") or frontmatter.get("TRIGGER")
+        trigger_val = (
+            frontmatter.get("triggers") or frontmatter.get("TRIGGERS") or frontmatter.get("TRIGGER")
+        )
         if isinstance(trigger_val, str):
             triggers.extend([t.strip() for t in trigger_val.split(",") if t.strip()])
         elif isinstance(trigger_val, list):
