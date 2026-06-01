@@ -8,7 +8,8 @@ Provider-agnostic LLM adapter layer — implements `ModelAdapter` abstract base 
 adapters/
 ├── base.py               # Abstract ModelAdapter: chat() + batch_chat() interface
 ├── anthropic_compat.py   # Anthropic Claude adapter (uses anthropic SDK)
-└── openai_compat.py      # OpenAI-compatible adapter (works with OpenAI, Azure, any OpenAI API)
+├── openai_compat.py      # OpenAI-compatible adapter (works with OpenAI, Azure, any OpenAI API)
+└── pricing.py            # Model pricing table: 17 models across 5 providers, TokenUsage dataclass
 ```
 
 ## WHERE TO LOOK

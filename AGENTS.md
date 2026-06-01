@@ -1,8 +1,10 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-05-25
+**Generated:** 2026-06-01
+**Commit:** 85466d0
+**Branch:** main
 **Project:** skill-cert — AI Skill Evaluation Engine
-**Version:** 0.1.0 (main: 33 commits since May 2026-05-01)
+**Version:** 0.1.0
 
 ## OVERVIEW
 Automated evaluation engine for AI skills (SKILL.md files). Parses arbitrary skill definitions via regex + AST (LLM fallback), generates eval tests via self-review loop (coverage ≥ 90%), executes with/without-skill baseline comparison across multiple LLM models, grades outputs via deterministic assertions + LLM-as-judge (temp=0), computes L1–L8 metrics (trigger accuracy → cost efficiency → latency), detects cross-model drift, security probes, multi-skill conflicts, reliability patterns, and maintainability scores, producing standardized PASS/FAIL verdicts.
@@ -82,7 +84,8 @@ skill-cert/
 - **Pydantic** for all data models (SkillSpec, WorkflowStep, EvalResult)
 - **Type annotations** on all function signatures
 - **ruff** for formatting and linting (replaces black+isort)
-- **pytest** for testing, test files mirror engine modules 1:1 — 402 tests, 83% coverage
+- **pytest** for testing, test files mirror engine modules 1:1 — 403 tests, 83% coverage
+- Import order: stdlib → third-party → local (no wildcard imports)
 - Prompt templates are `.md` files in `prompts/`, not Python strings
 - JSON schemas in `schemas/` validate eval and SkillSpec structures
 - Results: each skill gets 3 files — report.md, result.json, evals-cache.json
@@ -142,7 +145,7 @@ ruff check . && ruff format .
 ```
 
 ## NOTES
-- 402 tests pass, 1 skipped, 83% coverage (cli.py at 35% is the main gap)
+- 403 tests pass, 1 skipped, 83% coverage (cli.py at 35% is the main gap)
 - REQ-011 (cost evaluation) implemented — L7 metric with pricing table
 - L8 latency metrics implemented (P50/P95/P99)
 - Security probes: 19 patterns, 5 categories — integrated into eval pipeline

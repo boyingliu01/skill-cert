@@ -1,7 +1,7 @@
-# engine/ — Core Evaluation Pipeline (v2)
+# engine/ — Core Evaluation Pipeline
 
 ## OVERVIEW
-16-module evaluation pipeline: parses SKILL.md skills, validates schema, runs security probes, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L6 metrics, checks operating envelope, detects cross-model drift, integrates external tools, and produces standardized reports.
+21-module evaluation pipeline: parses SKILL.md skills, validates schema, runs security probes, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L8 metrics, checks operating envelope, detects cross-model drift, integrates external tools, runs stress/stability/reliability/maintainability/multi-skill analysis, and produces standardized reports.
 
 ## STRUCTURE
 ```
@@ -11,11 +11,16 @@ engine/
 ├── testgen.py         # EvalGenerator: generate → review → gap-fill loop until coverage ≥90%
 ├── runner.py          # Execution engine: with/without skill, concurrency, rate limiting, timeout
 ├── grader.py          # Grader: deterministic assertions + LLM-as-judge (temp=0)
-├── metrics.py         # L1-L6 calculation: trigger accuracy, delta, step adherence, stability, efficiency, trajectory quality
-├── envelope.py        # Operating envelope checker: steps/tokens/timeout/tool_calls with config-driven thresholds
-├── integrations.py    # External tool integration: Provider pattern (BaseIntegration ABC + dispatcher), ToolAvailability protocol
+├── metrics.py         # L1-L8 calculation: trigger accuracy, delta, step adherence, stability, efficiency, trajectory, cost, latency
+├── envelope.py        # Operating envelope checker: steps/tokens/timeout/tool_calls/cost_budget
+├── integrations.py    # External tool integration: Provider pattern (BaseIntegration ABC + dispatcher)
 ├── drift.py           # Cross-model drift detection: none/low/moderate/high severity
 ├── reporter.py        # Markdown + JSON report generation with verdict
+├── stability.py       # L4 stability: multi-run execution with --runs flag
+├── stress_test.py     # Concurrency stress testing: fairness, memory, scalability scoring
+├── reliability.py     # Error classification, retry stats, graceful degradation tracking
+├── maintainability.py # SKILL.md readability, completeness, freshness scoring
+├── multi_skill.py     # Multi-skill conflict: trigger overlap, prompt contamination, token overflow
 ├── replay.py          # Regression testing with historical session data
 ├── dialogue_evaluator.py  # Multi-turn skill assessment evaluator
 ├── dialogue_runner.py     # Orchestrates dialogue evaluation sessions
