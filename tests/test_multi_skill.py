@@ -1,9 +1,9 @@
 """Tests for engine/multi_skill.py — multi-skill conflict detection."""
 
 from engine.multi_skill import (
-    MultiSkillAnalyzer,
-    ConflictType,
     ConflictSeverity,
+    ConflictType,
+    MultiSkillAnalyzer,
     SkillConflict,
 )
 
@@ -473,8 +473,8 @@ class TestReporterIntegration:
         assert js["multi_skill_analysis"]["overall_risk"] == "moderate"
 
     def test_reporter_multi_skill_with_conflicts(self):
+        from engine.multi_skill import ConflictSeverity, ConflictType, SkillConflict
         from engine.reporter import Reporter
-        from engine.multi_skill import SkillConflict, ConflictType, ConflictSeverity
 
         reporter = Reporter()
         conflict = SkillConflict(

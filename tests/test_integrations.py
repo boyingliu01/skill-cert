@@ -1,11 +1,12 @@
 """Tests for engine/integrations.py — external tool integration framework."""
 import pytest
+
 from engine.integrations import (
     BaseIntegration,
-    IntegrationDispatcher,
-    ToolAvailability,
-    SkillLabIntegration,
     DeepEvalIntegration,
+    IntegrationDispatcher,
+    SkillLabIntegration,
+    ToolAvailability,
 )
 
 

@@ -1,6 +1,5 @@
 """TDD tests for P0 fix: _parse_evals_response, _parse_review_response, eval case normalization."""
 
-import pytest
 from engine.testgen import EvalGenerator
 
 

@@ -1,8 +1,7 @@
 """Stability module — multi-run execution with std dev calculation for L4."""
 
-from typing import Dict, Any, List, Callable
 import statistics
-import time
+from typing import Any
 
 
 class StabilityRunner:
@@ -13,7 +12,7 @@ class StabilityRunner:
         self.num_runs = num_runs
         self.max_concurrency = max_concurrency
 
-    def run_stability(self, evals: List[Dict[str, Any]], skill_path: str, model_adapter, with_skill: bool = True) -> Dict[str, Any]:
+    def run_stability(self, evals: list[dict[str, Any]], skill_path: str, model_adapter, with_skill: bool = True) -> dict[str, Any]:
         """Run evals N times and return pass rates + stability stats per eval."""
         all_run_results = []
         for run_idx in range(self.num_runs):
@@ -62,7 +61,7 @@ class StabilityRunner:
         }
 
 
-def calculate_l4_stability(stability_data: Dict[str, Any]) -> float:
+def calculate_l4_stability(stability_data: dict[str, Any]) -> float:
     """Calculate L4 stability score from multi-run data.
 
     Returns:

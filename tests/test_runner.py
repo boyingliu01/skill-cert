@@ -1,5 +1,6 @@
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
+
 from engine.runner import EvalRunner
 
 
@@ -8,14 +9,14 @@ class MockModelAdapter:
         self.responses = responses or []
         self.call_count = 0
         self.model_name = model_name
-    
+
     def chat(self, messages):
         if self.call_count < len(self.responses):
             response = self.responses[self.call_count]
             self.call_count += 1
             return response
         return "Default response"
-    
+
     def chat_with_usage(self, messages):
         text = self.chat(messages)
         return text, {"prompt_tokens": 0, "completion_tokens": len(text.split()), "total_tokens": len(text.split())}
@@ -23,7 +24,7 @@ class MockModelAdapter:
 
 def test_eval_runner_initialization():
     runner = EvalRunner()
-    
+
     assert runner.max_concurrency == 5
     assert runner.rate_limit_rpm == 60
     assert runner.request_timeout == 120
@@ -31,7 +32,7 @@ def test_eval_runner_initialization():
 
 def test_run_with_skill_success():
     runner = EvalRunner(max_concurrency=2, rate_limit_rpm=120, request_timeout=10)
-    
+
     evals = [
         {
             "id": 1,
@@ -42,12 +43,12 @@ def test_run_with_skill_success():
             "assertions": [{"type": "contains", "value": "test", "weight": 1}]
         }
     ]
-    
+
     skill_path = "/path/to/skill"
     mock_adapter = MockModelAdapter(["Successful response"])
-    
+
     results = runner.run_with_skill(evals, skill_path, mock_adapter)
-    
+
     assert len(results) == 1
     result = results[0]
     assert result["eval_id"] == 1
@@ -59,7 +60,7 @@ def test_run_with_skill_success():
 
 def test_run_without_skill_success():
     runner = EvalRunner(max_concurrency=2, rate_limit_rpm=120, request_timeout=10)
-    
+
     evals = [
         {
             "id": 1,
@@ -70,11 +71,11 @@ def test_run_without_skill_success():
             "assertions": [{"type": "contains", "value": "test", "weight": 1}]
         }
     ]
-    
+
     mock_adapter = MockModelAdapter(["Successful response without skill"])
-    
+
     results = runner.run_without_skill(evals, mock_adapter)
-    
+
     assert len(results) == 1
     result = results[0]
     assert result["eval_id"] == 1
@@ -86,7 +87,7 @@ def test_run_without_skill_success():
 
 def test_run_with_skill_timeout():
     runner = EvalRunner(max_concurrency=2, rate_limit_rpm=120, request_timeout=1)
-    
+
     evals = [
         {
             "id": 1,
@@ -97,19 +98,19 @@ def test_run_with_skill_timeout():
             "assertions": [{"type": "contains", "value": "test", "weight": 1}]
         }
     ]
-    
+
     skill_path = "/path/to/skill"
-    
+
     def slow_response(messages):
         time.sleep(2)
         return "Slow response"
-    
+
     mock_adapter = Mock()
     mock_adapter.chat = Mock(side_effect=slow_response)
     mock_adapter.model_name = "test-model"
-    
+
     results = runner.run_with_skill(evals, skill_path, mock_adapter)
-    
+
     assert len(results) == 1
     result = results[0]
     assert result["eval_id"] == 1
@@ -120,7 +121,7 @@ def test_run_with_skill_timeout():
 
 def test_run_without_skill_timeout():
     runner = EvalRunner(max_concurrency=2, rate_limit_rpm=120, request_timeout=1)
-    
+
     evals = [
         {
             "id": 1,
@@ -131,17 +132,17 @@ def test_run_without_skill_timeout():
             "assertions": [{"type": "contains", "value": "test", "weight": 1}]
         }
     ]
-    
+
     def slow_response(messages):
         time.sleep(2)
         return "Slow response"
-    
+
     mock_adapter = Mock()
     mock_adapter.chat = Mock(side_effect=slow_response)
     mock_adapter.model_name = "test-model"
-    
+
     results = runner.run_without_skill(evals, mock_adapter)
-    
+
     assert len(results) == 1
     result = results[0]
     assert result["eval_id"] == 1
@@ -151,7 +152,7 @@ def test_run_without_skill_timeout():
 
 def test_run_with_skill_exception():
     runner = EvalRunner(max_concurrency=2, rate_limit_rpm=120, request_timeout=10)
-    
+
     evals = [
         {
             "id": 1,
@@ -162,15 +163,15 @@ def test_run_with_skill_exception():
             "assertions": [{"type": "contains", "value": "test", "weight": 1}]
         }
     ]
-    
+
     skill_path = "/path/to/skill"
-    
+
     mock_adapter = Mock()
     mock_adapter.chat = Mock(side_effect=Exception("API Error"))
     mock_adapter.model_name = "test-model"
-    
+
     results = runner.run_with_skill(evals, skill_path, mock_adapter)
-    
+
     assert len(results) == 1
     result = results[0]
     assert result["eval_id"] == 1
@@ -179,7 +180,7 @@ def test_run_with_skill_exception():
 
 def test_run_without_skill_exception():
     runner = EvalRunner(max_concurrency=2, rate_limit_rpm=120, request_timeout=10)
-    
+
     evals = [
         {
             "id": 1,
@@ -190,13 +191,13 @@ def test_run_without_skill_exception():
             "assertions": [{"type": "contains", "value": "test", "weight": 1}]
         }
     ]
-    
+
     mock_adapter = Mock()
     mock_adapter.chat = Mock(side_effect=Exception("API Error"))
     mock_adapter.model_name = "test-model"
-    
+
     results = runner.run_without_skill(evals, mock_adapter)
-    
+
     assert len(results) == 1
     result = results[0]
     assert result["eval_id"] == 1
@@ -205,7 +206,7 @@ def test_run_without_skill_exception():
 
 def test_multiple_evals_concurrent():
     runner = EvalRunner(max_concurrency=3, rate_limit_rpm=180, request_timeout=10)
-    
+
     evals = [
         {
             "id": 1,
@@ -232,18 +233,18 @@ def test_multiple_evals_concurrent():
             "assertions": [{"type": "contains", "value": "error", "weight": 1}]
         }
     ]
-    
+
     skill_path = "/path/to/skill"
     mock_adapter = MockModelAdapter([
         "Response for eval 1",
-        "Response for eval 2", 
+        "Response for eval 2",
         "Response for eval 3"
     ])
-    
+
     results = runner.run_with_skill(evals, skill_path, mock_adapter)
-    
+
     assert len(results) == 3
-    
+
     for i, result in enumerate(results):
         assert result["eval_id"] == i + 1
         assert result["eval_name"] == f"eval-{i + 1}"

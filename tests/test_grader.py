@@ -1,17 +1,19 @@
 """Tests for engine/grader.py — evaluation grading functionality."""
 
-import pytest
 from unittest.mock import MagicMock
-from engine.grader import Grader, EvalCase, EvalAssertion, AssertionResult
+
+import pytest
+
+from engine.grader import AssertionResult, EvalAssertion, EvalCase, Grader
 
 
 class TestGrader:
     """Test the Grader class and its grading functionality."""
-    
+
     def test_grade_output_basic(self):
         """Test basic grading of a model output."""
         grader = Grader()
-        
+
         eval_case = EvalCase(
             id=1,
             name="test_case",
@@ -23,10 +25,10 @@ class TestGrader:
                 EvalAssertion(name="not_contains_bad", type="not_contains", value="bad", weight=2)
             ]
         )
-        
+
         model_output = "Hello world, this is good"
         result = grader.grade_output(eval_case, model_output)
-        
+
         assert result["eval_id"] == 1
         assert result["eval_name"] == "test_case"
         assert result["category"] == "normal"
@@ -35,11 +37,11 @@ class TestGrader:
         assert result["total_possible_score"] == 3  # Both assertions have weights 1+2
         assert result["pass_rate"] == 1.0
         assert result["final_passed"] is True
-    
+
     def test_grade_output_with_failures(self):
         """Test grading when some assertions fail."""
         grader = Grader()
-        
+
         eval_case = EvalCase(
             id=2,
             name="test_case_failure",
@@ -51,19 +53,19 @@ class TestGrader:
                 EvalAssertion(name="contains_hello", type="contains", value="helloXXX", weight=2)  # Use term that won't match
             ]
         )
-        
+
         model_output = "Goodbye, but no helloXX"
         result = grader.grade_output(eval_case, model_output)
-        
+
         assert result["total_weighted_score"] == 1  # Only first assertion passes (1*1)
         assert result["total_possible_score"] == 3  # Both assertions have weights 1+2
         assert result["pass_rate"] == 1/3
         assert result["final_passed"] is False  # Less than 50% pass rate
-    
+
     def test_grade_output_regex_assertion(self):
         """Test grading with regex assertion."""
         grader = Grader()
-        
+
         eval_case = EvalCase(
             id=3,
             name="regex_test",
@@ -74,19 +76,19 @@ class TestGrader:
                 EvalAssertion(name="phone_pattern", type="regex", value=r"\(\d{3}\) \d{3}-\d{4}", weight=1)
             ]
         )
-        
+
         model_output = "Call me at (123) 456-7890"
         result = grader.grade_output(eval_case, model_output)
-        
+
         assert result["total_weighted_score"] == 1
         assert result["total_possible_score"] == 1
         assert result["pass_rate"] == 1.0
         assert result["final_passed"] is True
-    
+
     def test_grade_output_json_valid_assertion(self):
         """Test grading with JSON validation assertion."""
         grader = Grader()
-        
+
         eval_case = EvalCase(
             id=4,
             name="json_test",
@@ -97,19 +99,19 @@ class TestGrader:
                 EvalAssertion(name="valid_json", type="json_valid", value="", weight=1)
             ]
         )
-        
+
         model_output = '{"name": "test", "value": 123}'
         result = grader.grade_output(eval_case, model_output)
-        
+
         assert result["total_weighted_score"] == 1
         assert result["total_possible_score"] == 1
         assert result["pass_rate"] == 1.0
         assert result["final_passed"] is True
-    
+
     def test_grade_output_invalid_json(self):
         """Test grading with invalid JSON."""
         grader = Grader()
-        
+
         eval_case = EvalCase(
             id=5,
             name="invalid_json_test",
@@ -120,19 +122,19 @@ class TestGrader:
                 EvalAssertion(name="valid_json", type="json_valid", value="", weight=1)
             ]
         )
-        
+
         model_output = '{"name": "test", "value": 123'  # Invalid JSON
         result = grader.grade_output(eval_case, model_output)
-        
+
         assert result["total_weighted_score"] == 0
         assert result["total_possible_score"] == 1
         assert result["pass_rate"] == 0.0
         assert result["final_passed"] is False
-    
+
     def test_grade_output_starts_with_assertion(self):
         """Test grading with starts_with assertion."""
         grader = Grader()
-        
+
         eval_case = EvalCase(
             id=6,
             name="starts_with_test",
@@ -143,19 +145,19 @@ class TestGrader:
                 EvalAssertion(name="starts_with_hello", type="starts_with", value="Hello", weight=1)
             ]
         )
-        
+
         model_output = "Hello there, nice to meet you"
         result = grader.grade_output(eval_case, model_output)
-        
+
         assert result["total_weighted_score"] == 1
         assert result["total_possible_score"] == 1
         assert result["pass_rate"] == 1.0
         assert result["final_passed"] is True
-    
+
     def test_grade_output_not_contains_assertion(self):
         """Test grading with not_contains assertion."""
         grader = Grader()
-        
+
         eval_case = EvalCase(
             id=7,
             name="not_contains_test",
@@ -166,19 +168,19 @@ class TestGrader:
                 EvalAssertion(name="no_bad_word", type="not_contains", value="bad", weight=1)
             ]
         )
-        
+
         model_output = "This is good content"
         result = grader.grade_output(eval_case, model_output)
-        
+
         assert result["total_weighted_score"] == 1
         assert result["total_possible_score"] == 1
         assert result["pass_rate"] == 1.0
         assert result["final_passed"] is True
-    
+
     def test_grade_output_with_critical_weight(self):
         """Test grading with critical weight (higher weight)."""
         grader = Grader()
-        
+
         eval_case = EvalCase(
             id=8,
             name="critical_weight_test",
@@ -190,19 +192,19 @@ class TestGrader:
                 EvalAssertion(name="normal_check", type="contains", value="thatYYY", weight=1)    # Normal - use term that won't match
             ]
         )
-        
+
         model_output = "Contains this but not thatZZZ"
         result = grader.grade_output(eval_case, model_output)
-        
+
         assert result["total_weighted_score"] == 3  # Only critical assertion passes
         assert result["total_possible_score"] == 4  # Critical(3) + Normal(1)
         assert result["pass_rate"] == 3/4
         assert result["final_passed"] is True  # More than 50% pass rate
-    
+
     def test_grade_output_empty_assertions(self):
         """Test grading with no assertions."""
         grader = Grader()
-        
+
         eval_case = EvalCase(
             id=9,
             name="empty_test",
@@ -211,19 +213,19 @@ class TestGrader:
             expected_output="",
             assertions=[]
         )
-        
+
         model_output = "Any output"
         result = grader.grade_output(eval_case, model_output)
-        
+
         assert result["total_weighted_score"] == 0
         assert result["total_possible_score"] == 0
         assert result["pass_rate"] == 0.0  # Division by zero handled
         assert result["final_passed"] is False  # No assertions to pass
-    
+
     def test_get_weight_multiplier(self):
         """Test weight multiplier calculation."""
         grader = Grader()
-        
+
         # Test different weights
         assert grader._get_weight_multiplier(1) == 1  # Normal
         assert grader._get_weight_multiplier(2) == 2  # Important
@@ -238,7 +240,7 @@ def test_grade_output_with_llm_judge():
     """Test grading with LLM judge enabled."""
     mock_llm_client = MagicMock()
     grader = Grader(llm_client=mock_llm_client)
-    
+
     eval_case = EvalCase(
         id=10,
         name="llm_judge_test",
@@ -249,10 +251,10 @@ def test_grade_output_with_llm_judge():
             EvalAssertion(name="contains_test", type="contains", value="test", weight=1)
         ]
     )
-    
+
     model_output = "This is a test output"
     result = grader.grade_output(eval_case, model_output)
-    
+
     assert result["eval_id"] == 10
     assert result["total_weighted_score"] == 1
     assert result["total_possible_score"] == 1
@@ -263,7 +265,7 @@ def test_grade_output_with_llm_judge():
 def test_grade_output_unknown_assertion_type():
     """Test grading with unknown assertion type."""
     grader = Grader()
-    
+
     eval_case = EvalCase(
         id=11,
         name="unknown_type_test",
@@ -274,10 +276,10 @@ def test_grade_output_unknown_assertion_type():
             EvalAssertion(name="unknown_type", type="unknown_type", value="test", weight=1)
         ]
     )
-    
+
     model_output = "This is a test output"
     result = grader.grade_output(eval_case, model_output)
-    
+
     # The unknown assertion should fail with low confidence
     assert result["total_weighted_score"] == 0
     assert result["total_possible_score"] == 1
@@ -290,7 +292,7 @@ def test_grade_output_unknown_assertion_type():
 def test_grade_output_invalid_regex():
     """Test grading with invalid regex assertion."""
     grader = Grader()
-    
+
     eval_case = EvalCase(
         id=12,
         name="invalid_regex_test",
@@ -301,10 +303,10 @@ def test_grade_output_invalid_regex():
             EvalAssertion(name="invalid_regex", type="regex", value="[unclosed_bracket", weight=1)
         ]
     )
-    
+
     model_output = "This is a test output"
     result = grader.grade_output(eval_case, model_output)
-    
+
     # The invalid regex should fail with low confidence
     assert result["total_weighted_score"] == 0
     assert result["total_possible_score"] == 1
@@ -317,7 +319,7 @@ def test_grade_output_invalid_regex():
 def test_llm_judge_method():
     """Test the _llm_judge method directly."""
     grader = Grader()
-    
+
     eval_case = EvalCase(
         id=13,
         name="judge_test",
@@ -326,15 +328,15 @@ def test_llm_judge_method():
         expected_output="Expected output",
         assertions=[]
     )
-    
+
     # Test with no assertions
     assertion_results = []
     judge_result = grader._llm_judge(eval_case, "model output", assertion_results)
-    
+
     assert judge_result.passed is False
     assert judge_result.confidence == 0.0
     assert "No assertions to evaluate" in judge_result.reasoning
-    
+
     # Test with some passing assertions
     assertion_results = [
         AssertionResult(
@@ -350,9 +352,9 @@ def test_llm_judge_method():
             reason="Failed"
         )
     ]
-    
+
     judge_result = grader._llm_judge(eval_case, "model output with test", assertion_results)
-    
+
     assert judge_result.passed is True  # More than 50% passed
     assert judge_result.confidence == 0.5  # 1 out of 2 passed
     assert "1/2 assertions passed" in judge_result.reasoning
@@ -361,7 +363,7 @@ def test_llm_judge_method():
 def test_llm_judge_with_low_confidence():
     """Test LLM judge with low confidence scenario."""
     grader = Grader()
-    
+
     eval_case = EvalCase(
         id=14,
         name="low_confidence_test",
@@ -372,7 +374,7 @@ def test_llm_judge_with_low_confidence():
             EvalAssertion(name="test", type="contains", value="test", weight=1)
         ]
     )
-    
+
     # Create assertion results with low confidence
     assertion_results = [
         AssertionResult(
@@ -382,9 +384,9 @@ def test_llm_judge_with_low_confidence():
             reason="Passed with low confidence"
         )
     ]
-    
+
     judge_result = grader._llm_judge(eval_case, "model output with test", assertion_results)
-    
+
     # The judge confidence is calculated based on passed ratio, not individual assertion confidence
     assert judge_result.passed is True  # Still passed since ratio is 100%
     assert judge_result.confidence == 1.0  # Because 1/1 assertions passed (100%)

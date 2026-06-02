@@ -7,7 +7,7 @@ import statistics
 import time
 import tracemalloc
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -16,7 +16,7 @@ class StressTestResult:
     model: str
     status: str = "success"
     latency: float = 0.0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -34,7 +34,7 @@ class StressTestReport:
     p95_latency: float = 0.0
     p99_latency: float = 0.0
     memory_mb_peak: float = 0.0
-    model_exec_counts: Dict[str, int] = field(default_factory=dict)
+    model_exec_counts: dict[str, int] = field(default_factory=dict)
     fairness_ratio: float = 1.0
     concurrency_actual: int = 0
     errors: list = field(default_factory=list)
@@ -44,21 +44,21 @@ class StressTestReport:
 
 class RateLimiter:
 
-    def __init__(self, rpm: int = 60, models: Optional[list] = None):
+    def __init__(self, rpm: int = 60, models: list | None = None):
         self.rpm = rpm
         self._lock = asyncio.Lock()
-        self._model_counts: Dict[str, int] = {}
-        self._per_model_rpm: Optional[Dict[str, int]] = None
+        self._model_counts: dict[str, int] = {}
+        self._per_model_rpm: dict[str, int] | None = None
         if models and rpm > 0:
             per_model = max(1, rpm // len(models))
             self._per_model_rpm = {m: per_model for m in models}
 
-    async def acquire(self, model: Optional[str] = None) -> None:
+    async def acquire(self, model: str | None = None) -> None:
         async with self._lock:
             if model and self._per_model_rpm and model in self._per_model_rpm:
                 self._model_counts[model] = self._model_counts.get(model, 0) + 1
 
-    def get_model_counts(self) -> Dict[str, int]:
+    def get_model_counts(self) -> dict[str, int]:
         return dict(self._model_counts)
 
 
@@ -69,7 +69,7 @@ class StressTester:
         concurrency: int = 5,
         rate_limit_rpm: int = 60,
         timeout_per_eval: float = 60.0,
-        models: Optional[list] = None,
+        models: list | None = None,
     ) -> None:
         self.concurrency = concurrency
         self.timeout_per_eval = timeout_per_eval
@@ -78,7 +78,7 @@ class StressTester:
 
     async def _execute_single(
         self,
-        eval_case: Dict[str, Any],
+        eval_case: dict[str, Any],
         model_adapter: Any,
         semaphore: asyncio.Semaphore,
         results: list,
@@ -140,7 +140,7 @@ class StressTester:
         self,
         eval_cases: list,
         model_adapter: Any,
-        concurrency: Optional[int] = None,
+        concurrency: int | None = None,
     ) -> StressTestReport:
         conc = concurrency or self.concurrency
         if not tracemalloc.is_tracing():
@@ -174,7 +174,7 @@ class StressTester:
         current, peak = tracemalloc.get_traced_memory()
         memory_mb_peak = peak / (1024 * 1024)
 
-        model_exec_counts: Dict[str, int] = {}
+        model_exec_counts: dict[str, int] = {}
         for r in results:
             model_exec_counts[r.model] = model_exec_counts.get(r.model, 0) + 1
 

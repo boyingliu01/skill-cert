@@ -1,6 +1,7 @@
 """TDD tests for P1: Deepen eval assertions — structural validation."""
 
 import pytest
+
 from engine.testgen import EvalGenerator
 
 
@@ -19,7 +20,7 @@ class TestMinimumEvalsHasDeepAssertions:
                 break
         else:
             pytest.skip("No eval cases in template")
-        
+
         trigger_case = next((c for c in cases if c.get("category") == "trigger" and c.get("expected_triggers", False)), None)
         if trigger_case:
             assertion_types = {a.get("type") for a in trigger_case.get("assertions", [])}
@@ -34,7 +35,7 @@ class TestMinimumEvalsHasDeepAssertions:
                 break
         else:
             pytest.skip("No eval cases in template")
-        
+
         max_weight = max(
             (a.get("weight", 0) for c in cases for a in c.get("assertions", [])),
             default=0
@@ -50,7 +51,7 @@ class TestMinimumEvalsHasDeepAssertions:
                 break
         else:
             pytest.skip("No eval cases in template")
-        
+
         for case in cases:
             n = len(case.get("assertions", []))
             assert n >= 2, f"Case {case.get('name')} has only {n} assertions, need >= 2"
@@ -74,10 +75,10 @@ class TestInitialEvalPromptDeepening:
             "examples": []
         }
         prompt = self.gen._prepare_generation_prompt(spec)
-        
+
         # Must mention regex as assertion type
         assert "regex" in prompt.lower()
-        
+
         # Must mention structural patterns like PASS/FAIL verdict
         assert "PASS" in prompt or "verdict" in prompt.lower() or "PASS_WITH_CAVEATS" in prompt
 
@@ -93,6 +94,6 @@ class TestInitialEvalPromptDeepening:
             "examples": []
         }
         prompt = self.gen._prepare_generation_prompt(spec)
-        
+
         # Must mention trigger assertion patterns
         assert "trigger" in prompt.lower()

@@ -6,9 +6,9 @@ import pytest
 
 from engine.stress_test import (
     RateLimiter,
+    StressTester,
     StressTestReport,
     StressTestResult,
-    StressTester,
     format_scalability_report,
 )
 

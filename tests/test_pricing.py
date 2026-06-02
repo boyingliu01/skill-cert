@@ -1,6 +1,7 @@
 """Tests for adapters/pricing.py — model pricing table and token→$ conversion."""
 
 import pytest
+
 from adapters.pricing import ModelPricing, get_pricing
 
 

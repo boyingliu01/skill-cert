@@ -1,6 +1,7 @@
 """Tests for L8 latency metrics."""
 
 import pytest
+
 from engine.metrics import MetricsCalculator
 
 

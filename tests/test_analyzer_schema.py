@@ -1,5 +1,10 @@
-from engine.analyzer import parse_skill_md, SkillSpec, _validate_schema, SchemaValidationResult
-from engine.analyzer import SchemaViolation
+from engine.analyzer import (
+    SchemaValidationResult,
+    SchemaViolation,
+    SkillSpec,
+    _validate_schema,
+    parse_skill_md,
+)
 
 
 class TestSchemaValidationResult:

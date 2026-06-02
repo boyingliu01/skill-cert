@@ -1,13 +1,14 @@
 """Reporting module for skill-cert engine — generates Markdown and JSON reports."""
 
-from typing import Dict, Any, Tuple, List
 from datetime import datetime, timezone
+from typing import Any
+
 from jinja2 import Environment
 
 
 class Reporter:
     """Generates Markdown and JSON reports for skill certification results."""
-    
+
     def __init__(self):
         """Initialize reporter with Jinja2 templates."""
         # Define templates inline for simplicity
@@ -188,14 +189,14 @@ For detailed results, see the JSON output.
 
         self.env = Environment()
         self.markdown_template = self.env.from_string(self.markdown_template_str)
-    
+
     def generate_report(
-        self, 
-        metrics: Dict[str, Any], 
-        drift: Dict[str, Any], 
-        config: Dict[str, Any],
-        maintainability: Dict[str, Any] | None = None,
-    ) -> Tuple[str, Dict[str, Any]]:
+        self,
+        metrics: dict[str, Any],
+        drift: dict[str, Any],
+        config: dict[str, Any],
+        maintainability: dict[str, Any] | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         """
         Generate Markdown and JSON reports from metrics and drift analysis.
         
@@ -213,12 +214,12 @@ For detailed results, see the JSON output.
         l2_score = metrics.get('l2_with_without_skill_delta', 0.0)
         l3_score = metrics.get('l3_step_adherence', 0.0)
         l4_score = metrics.get('l4_execution_stability', 0.0)
-        
+
         l1_details = metrics.get('metrics_breakdown', {}).get('l1_details', {})
         l2_details = metrics.get('metrics_breakdown', {}).get('l2_details', {})
         l3_details = metrics.get('metrics_breakdown', {}).get('l3_details', {})
         l4_details = metrics.get('metrics_breakdown', {}).get('l4_details', {})
-        
+
         # Determine verdict based on overall score and drift analysis
         # If drift analysis indicates failure, use that verdict regardless of score
         drift_verdict = drift.get('overall_verdict', 'PASS')
@@ -232,14 +233,14 @@ For detailed results, see the JSON output.
             verdict = "PASS_WITH_CAVEATS"
         else:
             verdict = "FAIL"
-        
+
         # Prepare drift data
         drift_detected = drift.get('drift_detected', False)
         highest_severity = drift.get('highest_severity', 'none')
         average_variance = drift.get('average_variance', 0.0)
         max_variance = drift.get('max_variance', 0.0)
         drift_results = drift.get('drift_results', [])  # This would come from drift analysis
-        
+
         # Calculate evaluation coverage stats
         total_evaluations = config.get('total_evaluations', 0)
         avg_pass_rate = config.get('avg_pass_rate', 0.0)
@@ -249,26 +250,26 @@ For detailed results, see the JSON output.
         important_total = config.get('important_total', 0)
         normal_passed = config.get('normal_passed', 0)
         normal_total = config.get('normal_total', 0)
-        
+
         # Cost analysis
         cost_analysis = metrics.get('l7_cost_efficiency')
-        
+
         # Latency analysis
         latency_analysis = metrics.get('l8_latency', {})
-        
+
         # Reliability analysis
         reliability = metrics.get('reliability', {})
-        
+
         # Generate improvement suggestions
         suggestions = self._generate_suggestions(
             metrics, drift, verdict, overall_score, cost_analysis, latency_analysis, reliability
         )
-        
+
         # Evaluation coverage
         _results = metrics.get('_results', [])
         total_evaluations = len(_results) or config.get('total_evaluations', 0)
         avg_pass_rate = sum(r.get('pass_rate', 0) for r in _results) / len(_results) if _results else config.get('avg_pass_rate', 0.0)
-        
+
         # Assertion breakdown from results or config fallback
         critical_passed = 0
         critical_total = 0
@@ -276,7 +277,7 @@ For detailed results, see the JSON output.
         important_total = 0
         normal_passed = 0
         normal_total = 0
-        
+
         if _results:
             for r in _results:
                 for a in r.get('grade', {}).get('assertion_results', []):
@@ -300,10 +301,10 @@ For detailed results, see the JSON output.
             important_total = config.get('important_total', 0)
             normal_passed = config.get('normal_passed', 0)
             normal_total = config.get('normal_total', 0)
-        
+
         # Create summary
         summary = self._create_summary(verdict, overall_score, l1_score, l2_score, l3_score, l4_score)
-        
+
         # Prepare config info for report
         config_info = None
         if config:
@@ -317,7 +318,7 @@ For detailed results, see the JSON output.
                 'judge_temperature': config.get('judge_temperature', 0.0),
                 'max_testgen_rounds': config.get('max_testgen_rounds', 3),
             }
-        
+
         # Prepare benchmark info
         total_tokens = config.get('total_tokens', 0)
         if not total_tokens:
@@ -332,7 +333,7 @@ For detailed results, see the JSON output.
             'test_coverage': f'{len(_results)} evals, L1-L7 metrics computed',
             'total_tokens': f'{total_eval_tokens:,}' if total_eval_tokens else 'N/A (local models)',
         }
-        
+
         # Render markdown
         markdown_report = self.markdown_template.render(
             verdict=verdict,
@@ -367,7 +368,7 @@ For detailed results, see the JSON output.
             reliability=reliability,
             maintainability=maintainability,
         )
-        
+
         # Create JSON report
         json_report = {
             "verdict": verdict,
@@ -394,7 +395,7 @@ For detailed results, see the JSON output.
             "config_summary": config_info,
             "benchmark": benchmark_info,
         }
-        
+
         if cost_analysis:
             json_report["cost_analysis"] = cost_analysis
         if latency_analysis:
@@ -403,65 +404,65 @@ For detailed results, see the JSON output.
             json_report["reliability"] = reliability
         if maintainability:
             json_report["maintainability"] = maintainability
-        
+
         return markdown_report, json_report
-    
+
     def _generate_suggestions(
         self,
-        metrics: Dict[str, Any],
-        drift: Dict[str, Any],
+        metrics: dict[str, Any],
+        drift: dict[str, Any],
         verdict: str,
         overall_score: float,
-        cost_analysis: Dict[str, Any] | None = None,
-        latency_analysis: Dict[str, Any] | None = None,
-        reliability: Dict[str, Any] | None = None,
-    ) -> List[str]:
+        cost_analysis: dict[str, Any] | None = None,
+        latency_analysis: dict[str, Any] | None = None,
+        reliability: dict[str, Any] | None = None,
+    ) -> list[str]:
         """Generate improvement suggestions based on metrics and drift analysis."""
         suggestions = []
-        
+
         # L1 suggestions
         l1_score = metrics.get('l1_trigger_accuracy', 0.0)
         if l1_score < 0.7:
             suggestions.append("Improve trigger accuracy - skill may not be properly detecting trigger conditions")
-        
+
         # L2 suggestions
         l2_score = metrics.get('l2_with_without_skill_delta', 0.0)
         if l2_score < 0.5:
             suggestions.append("Skill may not be providing sufficient value - consider enhancing core functionality")
-        
+
         # L3 suggestions
         l3_score = metrics.get('l3_step_adherence', 0.0)
         if l3_score < 0.7:
             suggestions.append("Improve adherence to expected workflow steps")
-        
+
         # L4 suggestions
         l4_score = metrics.get('l4_execution_stability', 0.0)
         if l4_score < 0.8:
             suggestions.append("Address execution instability - results vary significantly across runs")
-        
+
         # Drift suggestions
         if drift.get('drift_detected', False):
             suggestions.append(f"Address cross-model drift (highest severity: {drift.get('highest_severity', 'none')})")
-        
+
         # Overall suggestions
         if overall_score < 0.6:
             suggestions.append("Major improvements needed across multiple areas")
         elif overall_score < 0.8:
             suggestions.append("Several areas need improvement to reach optimal performance")
-        
+
         # Cost suggestions
         if cost_analysis and cost_analysis.get("cost_delta_pct", 0) > 0.5:
             suggestions.append(f"Skill increases costs by {cost_analysis['cost_delta_pct']:.0%} — consider optimizing prompt or reducing verbosity")
         if cost_analysis and cost_analysis.get("cost_efficiency", 0) < 0.1 and cost_analysis.get("cost_delta_pct", 0) > 0:
             suggestions.append("Low cost efficiency — quality gains don't justify cost increase")
-        
+
         # Latency suggestions
         if latency_analysis and latency_analysis.get("overhead_pct", 0) > 50:
             suggestions.append(f"Skill adds {latency_analysis['overhead_pct']}% latency overhead — optimize prompt or reduce steps")
         slow_count = latency_analysis.get("slow_with_skill", 0) if latency_analysis else 0
         if slow_count > 0:
             suggestions.append(f"{slow_count} requests exceeded 30s threshold — consider async processing or timeouts")
-        
+
         # Reliability suggestions
         if reliability and reliability.get("error_rate", 0) > 0.2:
             suggestions.append(f"Error rate is {reliability['error_rate']:.0%} — implement retry logic or fallback models")
@@ -473,36 +474,36 @@ For detailed results, see the JSON output.
                 suggestions.append("Timeout errors detected — increase timeout or optimize prompts")
             if "rate_limit" in cats:
                 suggestions.append("Rate limit errors detected — reduce concurrency or request rate")
-        
+
         if not suggestions:
             suggestions.append("Performance is strong across all metrics")
-        
+
         return suggestions
-    
+
     def _create_summary(self, verdict: str, overall_score: float, l1: float, l2: float, l3: float, l4: float) -> str:
         """Create executive summary based on results."""
         summary_parts = [f"This skill certification resulted in a {verdict} verdict."]
-        
+
         if overall_score >= 0.8:
             summary_parts.append("The skill performs well across all evaluation dimensions.")
         elif overall_score >= 0.6:
             summary_parts.append("The skill shows promise but needs improvements in certain areas.")
         else:
             summary_parts.append("The skill requires significant improvements before certification.")
-        
+
         summary_parts.append(
             f"L1:{l1:.0%}, L2:{l2:.0%}, L3:{l3:.0%}, L4:{l4:.0%}"
         )
-        
+
         return " ".join(summary_parts)
 
     def generate_report_with_multi_skill(
         self,
-        metrics: Dict[str, Any],
-        drift: Dict[str, Any],
-        config: Dict[str, Any],
-        multi_skill_report: Dict[str, Any],
-    ) -> Tuple[str, Dict[str, Any]]:
+        metrics: dict[str, Any],
+        drift: dict[str, Any],
+        config: dict[str, Any],
+        multi_skill_report: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]]:
         safe_metrics = {
             "overall_score": metrics.get("overall_score", 0.5),
             "l1_trigger_accuracy": metrics.get("l1_trigger_accuracy", 0.0),
@@ -533,7 +534,7 @@ For detailed results, see the JSON output.
 
         return md_report, json_report
 
-    def _build_multi_skill_section(self, report: Dict[str, Any]) -> str:
+    def _build_multi_skill_section(self, report: dict[str, Any]) -> str:
         lines = [
             "## Multi-Skill Analysis",
             "",
@@ -572,11 +573,11 @@ For detailed results, see the JSON output.
 
     def generate_report_with_stress(
         self,
-        metrics: Dict[str, Any],
-        drift: Dict[str, Any],
-        config: Dict[str, Any],
-        stress_result: Dict[str, Any],
-    ) -> Tuple[str, Dict[str, Any]]:
+        metrics: dict[str, Any],
+        drift: dict[str, Any],
+        config: dict[str, Any],
+        stress_result: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]]:
         md_report, json_report = self.generate_report(metrics, drift, config)
 
         stress_section = self._build_stress_section(stress_result)
@@ -585,7 +586,7 @@ For detailed results, see the JSON output.
         json_report["scalability"] = stress_result
         return md_report, json_report
 
-    def _build_stress_section(self, result: Dict[str, Any]) -> str:
+    def _build_stress_section(self, result: dict[str, Any]) -> str:
         verdict = result.get("verdict", "FAIL")
         score = result.get("scalability_score", 0)
         lines = [

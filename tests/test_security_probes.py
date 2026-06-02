@@ -1,4 +1,4 @@
-from engine.security_probes import SecurityScanner, SecurityFinding, SecurityReport
+from engine.security_probes import SecurityFinding, SecurityReport, SecurityScanner
 
 
 class MockPatternSet:

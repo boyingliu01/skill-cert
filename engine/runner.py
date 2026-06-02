@@ -1,22 +1,23 @@
 import logging
 import threading
-from typing import Dict, Any, List, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
-from engine.security_probes import SecurityScanner
-from engine.envelope import EnvelopeChecker
 from adapters.pricing import get_pricing
+from engine.constants import ConcurrencyLimits, SecurityLimits, TimingLimits
+from engine.envelope import EnvelopeChecker
+from engine.security_probes import SecurityScanner
 
 logger = logging.getLogger(__name__)
 
 
 class EvalRunner:
-    SECURITY_MAX_OUTPUT_LENGTH = 100000
+    SECURITY_MAX_OUTPUT_LENGTH = SecurityLimits.MAX_OUTPUT_LENGTH
 
-    def __init__(self, max_concurrency: int = 5, rate_limit_rpm: int = 60, request_timeout: int = 120,
+    def __init__(self, max_concurrency: int = ConcurrencyLimits.MAX_CONCURRENCY, rate_limit_rpm: int = TimingLimits.RATE_LIMIT_RPM, request_timeout: int = TimingLimits.REQUEST_TIMEOUT,
                  enable_security_scan: bool = True, enable_envelope: bool = True,
-                 model_name: Optional[str] = None, cost_budget: float = 0.0):
+                 model_name: str | None = None, cost_budget: float = 0.0):
         self.max_concurrency = max_concurrency
         self.rate_limit_rpm = rate_limit_rpm
         self.request_timeout = request_timeout
@@ -49,39 +50,39 @@ class EvalRunner:
                 input_text = eval_case.get("input", "") or eval_case.get("prompt", "")
                 if isinstance(input_text, dict):
                     input_text = str(input_text)
-                
+
                 if with_skill:
                     try:
-                        with open(skill_path, 'r', encoding='utf-8') as f:
+                        with open(skill_path, encoding='utf-8') as f:
                             lines = f.readlines()
                             skill_header = ''.join(lines[:20])[:1000]
-                    except (FileNotFoundError, IOError):
+                    except (OSError, FileNotFoundError):
                         skill_header = skill_path
                     skill_context = f"Skill file: {skill_path}\n{skill_header}\n\n---\nTask: {input_text}"
                     input_text = skill_context
-                
+
                 start_time = time.time()
                 messages = [{"role": "user", "content": input_text}]
-                
+
                 cls = type(model_adapter)
                 usage_method = getattr(cls, 'chat_with_usage', None)
                 is_mock = hasattr(model_adapter, '_mock_name')
                 has_usage = usage_method is not None and not is_mock
-                
+
                 if has_usage:
                     response, token_usage = model_adapter.chat_with_usage(messages)
                 else:
                     response = model_adapter.chat(messages)
                     token_usage = {
-                        "prompt_tokens": 0, 
-                        "completion_tokens": len(response.split()) if response else 0, 
+                        "prompt_tokens": 0,
+                        "completion_tokens": len(response.split()) if response else 0,
                         "total_tokens": len(response.split()) if response else 0
                     }
-                
+
                 end_time = time.time()
-                
+
                 cost = self._calc_cost(token_usage) if self.model_name else 0.0
-                
+
                 result = {
                     "eval_id": eval_case.get("id"),
                     "eval_name": eval_case.get("name"),
@@ -99,10 +100,10 @@ class EvalRunner:
                     "output_length_ok": self._check_output_length(response),
                     "cost": cost,
                 }
-                
+
                 self.total_tokens += token_usage.get("total_tokens", 0)
                 self.total_cost += cost
-                
+
                 return result
             except Exception as e:
                 logger.error(f"Error running eval {eval_case.get('id')}: {type(e).__name__}: {str(e)}")
@@ -121,10 +122,10 @@ class EvalRunner:
                     "cost": 0.0,
                 }
 
-    def run_with_skill(self, evals: List[Dict[str, Any]], skill_path: str, model_adapter) -> List[Dict[str, Any]]:
+    def run_with_skill(self, evals: list[dict[str, Any]], skill_path: str, model_adapter) -> list[dict[str, Any]]:
         results = []
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
-            futures = {executor.submit(self._run_single, ec, skill_path, model_adapter, True): i 
+            futures = {executor.submit(self._run_single, ec, skill_path, model_adapter, True): i
                       for i, ec in enumerate(evals)}
             for future in as_completed(futures):
                 idx = futures[future]
@@ -135,10 +136,10 @@ class EvalRunner:
         results.sort(key=lambda x: x[0])
         return [r for _, r in results]
 
-    def run_without_skill(self, evals: List[Dict[str, Any]], model_adapter) -> List[Dict[str, Any]]:
+    def run_without_skill(self, evals: list[dict[str, Any]], model_adapter) -> list[dict[str, Any]]:
         results = []
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
-            futures = {executor.submit(self._run_single, ec, None, model_adapter, False): i 
+            futures = {executor.submit(self._run_single, ec, None, model_adapter, False): i
                       for i, ec in enumerate(evals)}
             for future in as_completed(futures):
                 idx = futures[future]

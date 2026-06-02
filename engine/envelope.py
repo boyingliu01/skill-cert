@@ -1,3 +1,6 @@
+from engine.constants import EnvelopeDefaults
+
+
 class EnvelopeResult:
     def __init__(self, passed: bool, violations: list, details: dict | None = None):
         self.passed = passed
@@ -6,7 +9,7 @@ class EnvelopeResult:
 
 
 class EnvelopeChecker:
-    def __init__(self, max_steps: int = 20, max_tool_calls: int = 15, token_budget: int = 50000, timeout_s: int = 300, cost_budget: float = 0.0):
+    def __init__(self, max_steps: int = EnvelopeDefaults.MAX_STEPS, max_tool_calls: int = EnvelopeDefaults.MAX_TOOL_CALLS, token_budget: int = EnvelopeDefaults.MAX_TOKENS, timeout_s: int = EnvelopeDefaults.TIMEOUT_S, cost_budget: float = EnvelopeDefaults.COST_BUDGET):
         self.max_steps = max_steps
         self.max_tool_calls = max_tool_calls
         self.token_budget = token_budget

@@ -204,7 +204,7 @@ def test_full_pipeline_smoke(skill_path, output_dir):
         assert r["output"] is not None, "without-skill result missing output"
 
     # ── Phase 3: Grade Outputs ──────────────────────────────────────────
-    from engine.grader import Grader, EvalCase, EvalAssertion
+    from engine.grader import EvalAssertion, EvalCase, Grader
 
     grader = Grader(llm_client=None)  # No LLM-as-judge; deterministic only
 
@@ -360,8 +360,9 @@ def test_pipeline_rejects_nonexistent_skill():
 
 def test_pipeline_parse_minimal_skill():
     """Verify the parser works on a minimal in-memory skill file."""
-    from engine.analyzer import parse_skill_md
     import tempfile
+
+    from engine.analyzer import parse_skill_md
 
     minimal_skill = """---
 name: minimal-test

@@ -1,0 +1,11 @@
+{
+  "id": "sprint-2026-06-02-01",
+  "phase": -1,
+  "status": "running",
+  "isolation": {
+    "worktree_path": ".worktrees/sprint/sprint-2026-06-02-01",
+    "branch": "sprint/2026-06-02-01",
+    "created_from": "main",
+    "created_from_commit": "87edda1"
+  }
+}

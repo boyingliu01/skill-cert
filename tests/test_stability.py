@@ -1,6 +1,7 @@
 """Tests for engine/stability.py — multi-run L4 stability."""
 
 import pytest
+
 from engine.stability import StabilityRunner, calculate_l4_stability
 
 

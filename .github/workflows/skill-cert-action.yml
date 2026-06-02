@@ -1,0 +1,40 @@
+name: "Skill Cert Action"
+description: "Evaluate and certify AI agent skills"
+
+inputs:
+  skill-path:
+    description: "Path to SKILL.md file"
+    required: true
+  models:
+    description: "Models to evaluate with (format: name=url,key|name2=url,key)"
+    required: true
+  output-dir:
+    description: "Output directory for reports"
+    default: "./skill-cert-results"
+  mode:
+    description: "Evaluation mode (single/dialogue/replay)"
+    default: "single"
+  runs:
+    description: "Number of runs for stability analysis"
+    default: "1"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install skill-cert
+      run: pip install skill-cert
+      shell: bash
+    - name: Run evaluation
+      run: |
+        skill-cert \
+          --skill "${{ inputs.skill-path }}" \
+          --models "${{ inputs.models }}" \
+          --output "${{ inputs.output-dir }}" \
+          --mode "${{ inputs.mode }}" \
+          --runs "${{ inputs.runs }}"
+      shell: bash
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: skill-cert-results
+        path: ${{ inputs.output-dir }}

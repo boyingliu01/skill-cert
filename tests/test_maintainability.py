@@ -1,17 +1,17 @@
 """Tests for engine/maintainability.py — SKILL.md maintainability scorer."""
 
-import pytest
 import tempfile
 
+import pytest
+
 from engine.maintainability import (
-    MaintainabilityScorer,
     MaintainabilityResult,
-    readability_score,
+    MaintainabilityScorer,
     completeness_score,
     freshness_score,
+    readability_score,
     score_skill_md,
 )
-
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import json
 import logging
-from typing import Any, Dict, List
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ class HistoryReplay:
         """
         self.skill_runner = skill_runner
 
-    def load_session(self, file_path: str | Path) -> List[Dict[str, Any]]:
+    def load_session(self, file_path: str | Path) -> list[dict[str, Any]]:
         """
         Load JSONL file and parse each line as JSON.
         
@@ -28,13 +28,13 @@ class HistoryReplay:
         """
         messages = []
         file_path = Path(file_path)
-        
-        with open(file_path, 'r', encoding='utf-8') as f:
+
+        with open(file_path, encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
                     continue
-                
+
                 try:
                     message = json.loads(line)
                     if self._has_required_fields(message):
@@ -43,22 +43,22 @@ class HistoryReplay:
                         self._log_missing_fields_warning(line_num, file_path)
                 except json.JSONDecodeError as e:
                     self._log_invalid_json_warning(line_num, file_path, e)
-        
+
         return messages
-    
-    def _has_required_fields(self, message: Dict[str, Any]) -> bool:
+
+    def _has_required_fields(self, message: dict[str, Any]) -> bool:
         """Validate message has required fields."""
         return "role" in message and "content" in message
-    
+
     def _log_missing_fields_warning(self, line_num: int, file_path: str | Path) -> None:
         """Log warning when message lacks required fields."""
         logger.warning(f"Skipping line {line_num} in {file_path}: missing 'role' or 'content' key")
-    
+
     def _log_invalid_json_warning(self, line_num: int, file_path: str | Path, error: Exception) -> None:
         """Log warning when JSON parsing fails."""
         logger.warning(f"Skipping invalid JSON on line {line_num} in {file_path}: {error}")
 
-    async def replay_session(self, session: List[Dict], skill_context: str) -> List[Dict]:
+    async def replay_session(self, session: list[dict], skill_context: str) -> list[dict]:
         """
         Replay session against skill, collecting results for user messages.
         
@@ -70,37 +70,37 @@ class HistoryReplay:
             Results with user message, new response, and context length
         """
         results = []
-        
+
         for message in session:
             if message.get("role") != "user":
                 continue
-                
+
             user_content = message.get("content", "")
             eval_obj = self._create_eval_object(user_content)
-            
+
             skill_results = await self.skill_runner.run_with_skill([eval_obj], skill_context)
             new_response = self._extract_response(skill_results)
-            
+
             results.append({
                 "user_message": user_content,
                 "new_response": new_response,
                 "context_length": len(user_content)
             })
-        
+
         return results
-    
-    def _create_eval_object(self, content: str) -> Dict[str, Any]:
+
+    def _create_eval_object(self, content: str) -> dict[str, Any]:
         """Create evaluation object for skill runner."""
         return {
             "vars": {"input": content},
             "asserts": []
         }
-    
-    def _extract_response(self, skill_results: List[Any]) -> str:
+
+    def _extract_response(self, skill_results: list[Any]) -> str:
         """Extract response from skill runner results."""
         if not skill_results:
             return "No response"
-            
+
         first_result = skill_results[0]
         if hasattr(first_result, 'response'):
             return first_result.response

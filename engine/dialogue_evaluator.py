@@ -1,4 +1,5 @@
-from typing import List, Dict, Optional, Callable, Any
+from collections.abc import Callable
+from typing import Any
 
 
 class DialogueEvaluator:
@@ -6,8 +7,8 @@ class DialogueEvaluator:
     Evaluates multi-turn conversations using 5-dimension heuristic scoring
     with mock-first testing capability.
     """
-    
-    def __init__(self, judge_callback: Optional[Callable] = None):
+
+    def __init__(self, judge_callback: Callable | None = None):
         """
         Initialize the DialogueEvaluator.
         
@@ -16,7 +17,7 @@ class DialogueEvaluator:
                            (typically used for testing with mocks)
         """
         self.judge_callback = judge_callback
-    
+
     def _score_turn(self, idx: int, user_msg: dict, assistant_msg: dict, workflow_steps: list[str] | None) -> dict:
         user_content = user_msg.get('content', '')
         assistant_content = assistant_msg.get('content', '')
@@ -36,10 +37,10 @@ class DialogueEvaluator:
         return sum(r[key] for r in round_scores) / len(round_scores) if round_scores else 0.0
 
     async def evaluate_conversation(
-        self, 
-        conversation: List[Dict], 
-        workflow_steps: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        self,
+        conversation: list[dict],
+        workflow_steps: list[str] | None = None
+    ) -> dict[str, Any]:
         """
         Evaluate a multi-turn conversation across 5 dimensions.
         
@@ -77,8 +78,8 @@ class DialogueEvaluator:
                 'boundary_violations_count': self._detect_boundary_violations(conversation)
             }
         }
-    
-    def _pair_messages(self, conversation: List[Dict]) -> List[tuple]:
+
+    def _pair_messages(self, conversation: list[dict]) -> list[tuple]:
         """Pair user messages with assistant responses"""
         pairs = []
         i = 0
@@ -102,22 +103,22 @@ class DialogueEvaluator:
         """
         user_words = set(user_msg.lower().split())
         response_words = set(skill_response.lower().split())
-        
+
         overlap = len(user_words.intersection(response_words))
         max_len = max(len(user_words), 1)
-        
+
         return min(overlap / max_len, 1.0)
-    
+
     def _score_guidance_quality(self, user_msg: str, skill_response: str) -> float:
         """
         Score quality of guidance - checks for clarifying questions.
         """
         skill_response_lower = skill_response.lower()
-        
+
         # Check for clarifying questions
         has_clarifying_questions = '?' in skill_response_lower or 'could you' in skill_response_lower
         has_help_questions = 'can you elaborate' in skill_response_lower or 'what about' in skill_response_lower
-        
+
         score = 0.0
         if has_clarifying_questions or has_help_questions:
             score = 1.0
@@ -125,15 +126,15 @@ class DialogueEvaluator:
             score = 0.7
         else:
             score = 0.1  # Basic guidance is typically present
-            
+
         return score
-    
+
     def _score_workflow_adherence(
-        self, 
-        turn_idx: int, 
-        user_msg: str, 
-        skill_response: str, 
-        workflow_steps: Optional[List[str]], 
+        self,
+        turn_idx: int,
+        user_msg: str,
+        skill_response: str,
+        workflow_steps: list[str] | None,
         is_critical_turn: bool = False
     ) -> float:
         """
@@ -143,51 +144,51 @@ class DialogueEvaluator:
         if not workflow_steps:
             # If no specific steps, score basic adherence
             return 0.8  # Assume reasonably good without specific requirements
-        
+
         score = 0.0
         content_lower = skill_response.lower()
-        
+
         # Check if response content mentions steps from workflow
         for step in workflow_steps:
             if step.lower() in content_lower:
                 score += 1.0 / len(workflow_steps)
-                
+
         # Apply critical turn weight
         if is_critical_turn and score == 0:
             score *= 0.5  # Heavily penalize if first turn doesn't address workflow
-            
+
         return min(score, 1.0)
-    
+
     def _score_exception_handling(
-        self, 
-        turn_idx: int, 
-        user_msg: str, 
-        skill_response: str, 
+        self,
+        turn_idx: int,
+        user_msg: str,
+        skill_response: str,
         is_critical_turn: bool = False
     ) -> float:
         """
         Score how well exceptions or errors are handled.
         """
         content_lower = skill_response.lower()
-        
+
         # Look for error handling indicators
         has_error_indicators = any(pattern in content_lower for pattern in [
-            'error occurred', 'sorry', 'unable to', 'couldn\'t', 
+            'error occurred', 'sorry', 'unable to', 'couldn\'t',
             'problem', 'issue', 'unexpected', 'failed to'
         ])
-        
+
         # Look for recovery/action indicators
         has_recovery_indicators = any(pattern in content_lower for pattern in [
-            'however', 'instead', 'alternative', 'workaround', 
+            'however', 'instead', 'alternative', 'workaround',
             'different', 'try', 'recommendation', 'solution'
         ])
-        
+
         # Look for apology/proactive indicators
         has_apology_or_proactive = any(pattern in content_lower for pattern in [
             'apologize', 'appreciate', 'going forward', 'next time',
             'in the meantime', 'meanwhile', 'fortunately'
         ])
-        
+
         score = 0.0
         if not has_error_indicators:
             score = 1.0  # Perfect if no errors occurred
@@ -198,59 +199,59 @@ class DialogueEvaluator:
                 score = 0.6  # Partial error handling
             else:
                 score = 0.2  # Weak error handling
-        
+
         return score
-    
+
     def _score_output_quality(self, user_msg: str, skill_response: str) -> float:
         """
         Score the overall output quality of the skill response.
         """
         response_lower = skill_response.lower()
-        
+
         # Check for clarity and structure
         has_bullet_points = '*' in skill_response or '-' in skill_response and '#' in skill_response
         has_numbered_list = any(char.isdigit() and f'{char}.' in skill_response for char in '0123456789')
         has_formatted_structure = has_bullet_points or has_numbered_list or '\n\n' in skill_response
-        
+
         # Check for completeness
         word_count_ratio = min(len(skill_response.split()) / max(len(user_msg.split()), 1), 5.0) / 5.0
         completeness_factor = min(1.0, word_count_ratio + 0.5)  # Balance brevity and thoroughness
-        
+
         # Check for specific references to user content
         user_words = set(user_msg.lower().split()[:10])  # Limit to first 10 words for efficiency
         response_words = set(response_lower.split())
         reference_factor = len(user_words.intersection(response_words)) / max(len(user_words), 1)
-        
+
         # Base quality score
         quality_score = 0.5  # Base level
-        
+
         if has_formatted_structure:
             quality_score += 0.3
-            
+
         quality_score += (completeness_factor * 0.1)
         quality_score += (reference_factor * 0.1)
-        
+
         return min(quality_score, 1.0)
-    
-    async def _get_work_adherence_breakdown(self, round_scores: List[Dict], final_adherence_score: float):
+
+    async def _get_work_adherence_breakdown(self, round_scores: list[dict], final_adherence_score: float):
         """Get detailed breakdown of workflow adherence calculation"""
         if not round_scores:
             return {}
-        
+
         boundary_penalty = self._detect_boundary_violations([
             {'role': 'user', 'content': 'test msg'},
             {'role': 'assistant', 'content': 'test response'}
         ])
-        
+
         # Mean of adherence scores across rounds
         mean_adherence = sum(r.get('workflow_adherence', 0) for r in round_scores) / len(round_scores)
-        
+
         # Minimum score among critical turns (typically first turn)
         critical_scores = [r.get('workflow_adherence', 0) for r in round_scores if r.get('is_critical_turn', False)]
         critical_min = min(critical_scores) if critical_scores else 0
-        
+
         calculated_score = 0.7 * mean_adherence + 0.3 * critical_min - boundary_penalty
-        
+
         return {
             'mean_round_scores': mean_adherence,
             'critical_min': critical_min,
@@ -259,17 +260,17 @@ class DialogueEvaluator:
             'boundary_penalty': boundary_penalty,
             'calculated_score': calculated_score
         }
-    
-    def _detect_boundary_violations(self, conversation: List[Dict]) -> float:
+
+    def _detect_boundary_violations(self, conversation: list[dict]) -> float:
         """
         Detect boundary violations in conversation using heuristic checks.
         Returns penalty value (higher penalties for more serious violations).
         """
         total_penalty = 0.0
-        
+
         for msg in conversation:
             content = msg.get('content', '').lower()
-            
+
             # Check for specific violation patterns
             if any(pattern in content for pattern in [
                 'i also refactored',
@@ -285,10 +286,10 @@ class DialogueEvaluator:
                 'i added a new feature'
             ]):
                 total_penalty += 0.2  # Heavy penalty for unauthorized changes
-        
+
         return min(total_penalty, 1.0)  # Cap penalty at 1.0
-    
-    def _calculate_overall(self, round_scores: List[float], final_score_dict: Dict[str, float]) -> float:
+
+    def _calculate_overall(self, round_scores: list[float], final_score_dict: dict[str, float]) -> float:
         """
         Calculate overall score as weighted average of 5 dimensions.
         Weights: intent_recognition (0.25), guidance_quality (0.20), 
@@ -299,14 +300,14 @@ class DialogueEvaluator:
         workflow_score = final_score_dict.get('workflow_adherence', 0.0)
         exception_score = final_score_dict.get('exception_handling', 0.0)
         output_score = final_score_dict.get('output_quality', 0.0)
-        
+
         weights = [0.25, 0.20, 0.25, 0.15, 0.15]
         scores = [intent_score, guidance_score, workflow_score, exception_score, output_score]
-        
+
         overall = sum(w * s for w, s in zip(weights, scores))
         return min(max(overall, 0.0), 1.0)  # Bound between 0.0 and 1.0
-    
-    def _determine_verdict(self, round_scores: List[float], final_score: float) -> str:
+
+    def _determine_verdict(self, round_scores: list[float], final_score: float) -> str:
         """
         Determine the verdict based on final score:
         PASS if final_score >= 0.70, 

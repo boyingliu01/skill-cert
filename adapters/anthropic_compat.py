@@ -1,7 +1,9 @@
 import json
 import time
+from typing import Any
+
 import requests
-from typing import List, Dict, Any, Optional, Tuple
+
 from .base import ModelAdapter
 
 
@@ -13,7 +15,7 @@ class AnthropicCompatAdapter(ModelAdapter):
     ]
 
     def __init__(self, base_url: str, api_key: str, model: str,
-                 fallback_model: Optional[str] = None, rpm_limit: int = 60):
+                 fallback_model: str | None = None, rpm_limit: int = 60):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
         self.model = model
@@ -25,7 +27,7 @@ class AnthropicCompatAdapter(ModelAdapter):
             "anthropic-version": "2023-06-01",
         })
 
-    def chat(self, messages: List[Dict[str, str]], system: Optional[str] = None, timeout: int = 120) -> str:
+    def chat(self, messages: list[dict[str, str]], system: str | None = None, timeout: int = 120) -> str:
         formatted = [
             {"role": "user" if m["role"] == "user" else "assistant", "content": m["content"]}
             for m in messages if m["role"] in ("user", "assistant")
@@ -35,7 +37,7 @@ class AnthropicCompatAdapter(ModelAdapter):
             payload["system"] = system
         return self._request(payload)
 
-    def chat_with_usage(self, messages: List[Dict[str, str]], system: Optional[str] = None, timeout: int = 120) -> Tuple[str, Dict[str, int]]:
+    def chat_with_usage(self, messages: list[dict[str, str]], system: str | None = None, timeout: int = 120) -> tuple[str, dict[str, int]]:
         formatted = [
             {"role": "user" if m["role"] == "user" else "assistant", "content": m["content"]}
             for m in messages if m["role"] in ("user", "assistant")
@@ -45,7 +47,7 @@ class AnthropicCompatAdapter(ModelAdapter):
             payload["system"] = system
         return self._request_with_usage(payload)
 
-    def batch_chat(self, requests_list: List[Dict[str, Any]], max_concurrency: int = 5) -> List[str]:
+    def batch_chat(self, requests_list: list[dict[str, Any]], max_concurrency: int = 5) -> list[str]:
         results = []
         for req in requests_list:
             try:
@@ -54,11 +56,11 @@ class AnthropicCompatAdapter(ModelAdapter):
                 results.append(f"ERROR: {e}")
         return results
 
-    def _request(self, payload: Dict[str, Any], max_retries: int = 3) -> str:
+    def _request(self, payload: dict[str, Any], max_retries: int = 3) -> str:
         content, _ = self._request_with_usage(payload, max_retries)
         return content
 
-    def _request_with_usage(self, payload: Dict[str, Any], max_retries: int = 3) -> Tuple[str, Dict[str, int]]:
+    def _request_with_usage(self, payload: dict[str, Any], max_retries: int = 3) -> tuple[str, dict[str, int]]:
         for attempt in range(max_retries):
             try:
                 resp = self.session.post(

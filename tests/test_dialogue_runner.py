@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
+
 from engine.dialogue_runner import DialogueRunner
 
 
@@ -56,10 +58,10 @@ class TestDialogueRunner:
         """Test terminates early when 'COMPLETED:' appears"""
         # Setup simulator to return a completion message
         mock_simulator.generate_next_message.return_value = {
-            "role": "user", 
+            "role": "user",
             "content": "Tell me a joke"
         }
-        
+
         # Mock skill runner to return a message containing 'COMPLETED:'
         mock_skill_runner.run_with_skill = AsyncMock(return_value=[
             {
@@ -69,7 +71,7 @@ class TestDialogueRunner:
                 "error": None
             }
         ])
-        
+
         # Create runner with small max_turns to make sure completion signal actually stops early
         runner = DialogueRunner(
             simulator=mock_simulator,
@@ -78,11 +80,11 @@ class TestDialogueRunner:
             max_turns=10,  # Should exit early due to completion signal
             completion_signals=["COMPLETED:"]
         )
-        
+
         # Test case
         eval_case = {"id": "test1", "input": "Tell me a joke"}
         result = await runner.run_dialogue_eval(eval_case, "test_context")
-        
+
         # Assertions
         assert result["turns_completed"] == 1  # Should complete early after one turn
         assert "conversation" in result
@@ -102,7 +104,7 @@ class TestDialogueRunner:
                 "content": f"User message for turn {message_count}",
                 "timestamp": 12345
             }
-        
+
         mock_simulator.generate_next_message = mock_generate_message
         mock_skill_runner.run_with_skill = AsyncMock(return_value=[
             {
@@ -112,7 +114,7 @@ class TestDialogueRunner:
                 "error": None
             }
         ])
-        
+
         # Create runner with lower max_turns
         runner = DialogueRunner(
             simulator=mock_simulator,
@@ -121,11 +123,11 @@ class TestDialogueRunner:
             max_turns=3,  # Stop after 3 max turns
             completion_signals=["COMPLETED:"]  # No completion in responses
         )
-        
+
         # Test case
         eval_case = {"id": "test1", "input": "Tell me a joke"}
         result = await runner.run_dialogue_eval(eval_case, "test_context")
-        
+
         # Assertions
         assert result["turns_completed"] == 3  # Should have completed all max_turns
         assert "conversation" in result
@@ -142,7 +144,7 @@ class TestDialogueRunner:
             skill_runner=mock_skill_runner,
             max_turns=10
         )
-        
+
         # Test history with less than 4 messages - should return False
         short_history_3 = [
             {"role": "user", "content": "msg1"},
@@ -150,19 +152,19 @@ class TestDialogueRunner:
             {"role": "user", "content": "msg3"}
         ]
         assert runner._is_conversation_complete(short_history_3) is False
-        
+
         short_history_2 = [
             {"role": "user", "content": "msg1"},
             {"role": "assistant", "content": "msg2"}
         ]
         assert runner._is_conversation_complete(short_history_2) is False
-        
+
         empty_history = []
         assert runner._is_conversation_complete(empty_history) is False
-        
+
         single_history = [{"role": "user", "content": "msg1"}]
         assert runner._is_conversation_complete(single_history) is False
-                
+
         # Test that a history with >= 4 messages but no completion signal still returns False
         longer_history_no_completion = [
             {"role": "user", "content": "msg1"},
@@ -171,7 +173,7 @@ class TestDialogueRunner:
             {"role": "assistant", "content": "Yes, I'm continuing to help"}
         ]
         assert runner._is_conversation_complete(longer_history_no_completion) is False
-        
+
         # Test that a history with a completion signal now returns True
         longer_history_with_completion = [
             {"role": "user", "content": "msg1"},

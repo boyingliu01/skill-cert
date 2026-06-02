@@ -1,23 +1,25 @@
 import json
 import logging
-from typing import Dict, Any
 from pathlib import Path
+from typing import Any
+
+from engine.constants import CoverageThresholds, TestGenLimits
 
 logger = logging.getLogger(__name__)
 
 
 class EvalGenerator:
     def __init__(self):
-        self.max_rounds = 3
-        self.consecutive_no_improvement = 2
-        self.coverage_threshold = 0.9
-        self.degrade_threshold = 0.7
-        self.block_threshold = 0.7
-        
+        self.max_rounds = TestGenLimits.MAX_REVIEW_ROUNDS
+        self.consecutive_no_improvement = TestGenLimits.MAX_NO_IMPROVEMENT
+        self.coverage_threshold = CoverageThresholds.COVERAGE_TARGET
+        self.degrade_threshold = CoverageThresholds.COVERAGE_DEGRADE
+        self.block_threshold = CoverageThresholds.COVERAGE_BLOCK
+
         try:
             template_path = Path(__file__).parent.parent / "templates" / "minimum-evals.json"
             if template_path.exists():
-                with open(template_path, 'r', encoding='utf-8') as f:
+                with open(template_path, encoding='utf-8') as f:
                     self.minimum_evals_template = json.load(f)
             else:
                 self.minimum_evals_template = {
@@ -71,24 +73,24 @@ class EvalGenerator:
                 ]
             }
 
-    def generate_initial_evals(self, skill_spec: Dict[str, Any], model_adapter) -> Dict[str, Any]:
+    def generate_initial_evals(self, skill_spec: dict[str, Any], model_adapter) -> dict[str, Any]:
         try:
             prompt = self._prepare_generation_prompt(skill_spec)
             response = model_adapter.chat([
                 {"role": "user", "content": prompt}
             ])
             evals = self._parse_evals_response(response)
-            
+
             if not self._has_sufficient_evals(evals):
                 logger.warning("Generated evals below minimum requirement, using template")
                 return self.minimum_evals_template
-            
+
             return evals
         except Exception as e:
             logger.error(f"Failed to generate initial evals: {e}")
             return self.minimum_evals_template
 
-    def review_evals(self, evals: Dict[str, Any], review_adapter) -> Dict[str, Any]:
+    def review_evals(self, evals: dict[str, Any], review_adapter) -> dict[str, Any]:
         try:
             coverage = self._calculate_coverage(evals, review_adapter.skill_spec)
             prompt = self._prepare_review_prompt(evals, review_adapter.skill_spec, coverage)
@@ -105,7 +107,7 @@ class EvalGenerator:
                 "needs_improvement": True
             }
 
-    def fill_gaps(self, gaps: Dict[str, Any], skill_spec: Dict[str, Any], model_adapter) -> Dict[str, Any]:
+    def fill_gaps(self, gaps: dict[str, Any], skill_spec: dict[str, Any], model_adapter) -> dict[str, Any]:
         try:
             prompt = self._prepare_gap_filling_prompt(gaps, skill_spec)
             response = model_adapter.chat([
@@ -117,43 +119,43 @@ class EvalGenerator:
             logger.error(f"Failed to fill gaps: {e}")
             return {"eval_cases": []}
 
-    def generate_evals_with_convergence(self, skill_spec: Dict[str, Any], model_adapter, review_adapter) -> Dict[str, Any]:
+    def generate_evals_with_convergence(self, skill_spec: dict[str, Any], model_adapter, review_adapter) -> dict[str, Any]:
         review_adapter.skill_spec = skill_spec
-        
+
         current_evals = self.generate_initial_evals(skill_spec, model_adapter)
-        
+
         prev_coverage = 0.0
         no_improvement_count = 0
         round_num = 0
-        
+
         while round_num < self.max_rounds:
             review_result = self.review_evals(current_evals, review_adapter)
             current_coverage = review_result.get("coverage", 0.0)
-            
+
             logger.info(f"Round {round_num + 1}: Coverage = {current_coverage:.2f}")
-            
+
             if current_coverage >= self.coverage_threshold:
                 logger.info(f"Coverage target ({self.coverage_threshold}) reached at round {round_num + 1}")
                 break
-            
+
             if current_coverage <= prev_coverage:
                 no_improvement_count += 1
             else:
                 no_improvement_count = 0
-                
+
             if no_improvement_count >= self.consecutive_no_improvement:
                 logger.info(f"No improvement for {self.consecutive_no_improvement} consecutive rounds, stopping")
                 break
-            
+
             if review_result.get("needs_improvement", False):
                 supplementary_evals = self.fill_gaps(review_result, skill_spec, model_adapter)
-                
+
                 if self._has_sufficient_evals(supplementary_evals):
                     current_evals = self._merge_evals(current_evals, supplementary_evals)
-            
+
             prev_coverage = current_coverage
             round_num += 1
-        
+
         if current_coverage >= self.coverage_threshold:
             logger.info("Eval generation completed with sufficient coverage")
             return current_evals
@@ -167,7 +169,7 @@ class EvalGenerator:
             logger.error(f"Eval generation failed with insufficient coverage ({current_coverage}), below block threshold")
             return self.minimum_evals_template
 
-    def _prepare_generation_prompt(self, skill_spec: Dict[str, Any]) -> str:
+    def _prepare_generation_prompt(self, skill_spec: dict[str, Any]) -> str:
         return f"""
 Generate evaluation test cases for the following skill specification:
 
@@ -209,16 +211,16 @@ Minimum requirements:
 - Cover workflow steps, anti-patterns, and output formats mentioned in the spec
 """
 
-    def _parse_evals_response(self, response: str) -> Dict[str, Any]:
+    def _parse_evals_response(self, response: str) -> dict[str, Any]:
         try:
             cleaned = self._strip_markdown_fences(response)
             start_idx = cleaned.find('{')
             end_idx = cleaned.rfind('}') + 1
-            
+
             if start_idx != -1 and end_idx != 0:
                 json_str = cleaned[start_idx:end_idx]
                 parsed = json.loads(json_str)
-                
+
                 # Normalize to use eval_cases key
                 if "eval_cases" not in parsed:
                     for key in ["evals", "cases", "test_cases", "evaluations", "eval"]:
@@ -234,13 +236,13 @@ Minimum requirements:
                             "expected_triggers": True,
                             "assertions": [{"type": "contains", "value": "skill", "weight": 1}]
                         }]
-                
+
                 # Normalize each eval case
                 parsed["eval_cases"] = [
                     self._normalize_eval_case(c, idx)
                     for idx, c in enumerate(parsed["eval_cases"])
                 ]
-                
+
                 return parsed
             else:
                 return self.minimum_evals_template
@@ -307,7 +309,7 @@ Minimum requirements:
 
         return normalized
 
-    def _has_sufficient_evals(self, evals: Dict[str, Any]) -> bool:
+    def _has_sufficient_evals(self, evals: dict[str, Any]) -> bool:
         """Check if evals have sufficient cases."""
         eval_cases = evals.get("eval_cases", [])
         if not eval_cases:
@@ -316,11 +318,11 @@ Minimum requirements:
                 if key in evals and isinstance(evals[key], list):
                     eval_cases = evals[key]
                     break
-        
-        return len(eval_cases) >= 4
+
+        return len(eval_cases) >= TestGenLimits.MIN_EVAL_CASES
 
     @staticmethod
-    def _get_eval_cases(evals: Dict[str, Any]) -> list:
+    def _get_eval_cases(evals: dict[str, Any]) -> list:
         eval_cases = evals.get("eval_cases", [])
         if not eval_cases:
             for key in ["evals", "cases", "test_cases", "evaluations", "eval"]:
@@ -341,7 +343,7 @@ Minimum requirements:
                 covered += 1
         return covered / total
 
-    def _calculate_coverage(self, evals: Dict[str, Any], skill_spec: Dict[str, Any]) -> float:
+    def _calculate_coverage(self, evals: dict[str, Any], skill_spec: dict[str, Any]) -> float:
         eval_cases = self._get_eval_cases(evals)
         if not eval_cases:
             return 0.0
@@ -364,7 +366,7 @@ Minimum requirements:
 
         return workflow_coverage * 0.5 + anti_pattern_coverage * 0.3 + output_coverage * 0.2
 
-    def _prepare_review_prompt(self, evals: Dict[str, Any], skill_spec: Dict[str, Any], coverage: float) -> str:
+    def _prepare_review_prompt(self, evals: dict[str, Any], skill_spec: dict[str, Any], coverage: float) -> str:
         return f"""
 Review the following evaluation test cases for the skill:
 
@@ -385,22 +387,22 @@ Return a JSON object with:
 - needs_improvement: boolean indicating if more evals are needed
 """
 
-    def _parse_review_response(self, response: str, current_coverage: float) -> Dict[str, Any]:
+    def _parse_review_response(self, response: str, current_coverage: float) -> dict[str, Any]:
         try:
             start_idx = response.find('{')
             end_idx = response.rfind('}') + 1
-            
+
             if start_idx != -1 and end_idx != 0:
                 json_str = response[start_idx:end_idx]
                 parsed = json.loads(json_str)
-                
+
                 if "coverage" not in parsed:
                     parsed["coverage"] = current_coverage
                 if "gaps" not in parsed:
                     parsed["gaps"] = []
                 if "needs_improvement" not in parsed:
                     parsed["needs_improvement"] = len(parsed["gaps"]) > 0
-                
+
                 return parsed
             else:
                 return {
@@ -415,7 +417,7 @@ Return a JSON object with:
                 "needs_improvement": True
             }
 
-    def _prepare_gap_filling_prompt(self, gaps: Dict[str, Any], skill_spec: Dict[str, Any]) -> str:
+    def _prepare_gap_filling_prompt(self, gaps: dict[str, Any], skill_spec: dict[str, Any]) -> str:
         return f"""
 Based on the identified gaps, generate additional evaluation test cases to improve coverage:
 
@@ -433,7 +435,7 @@ Generate additional eval cases to address the gaps. Focus on:
 Return a JSON object with an array of eval_cases in the same format as before.
 """
 
-    def _merge_evals(self, current_evals: Dict[str, Any], supplementary_evals: Dict[str, Any]) -> Dict[str, Any]:
+    def _merge_evals(self, current_evals: dict[str, Any], supplementary_evals: dict[str, Any]) -> dict[str, Any]:
         # Create a copy of current evals
         merged = {}
         for key, value in current_evals.items():
@@ -441,21 +443,21 @@ Return a JSON object with an array of eval_cases in the same format as before.
                 merged[key] = value[:]
             else:
                 merged[key] = value
-        
+
         # Find the eval_cases key in current evals
         current_eval_cases = None
         for key in ["eval_cases", "evals", "cases", "test_cases", "evaluations", "eval"]:
             if key in merged and isinstance(merged[key], list):
                 current_eval_cases = merged[key]
                 break
-        
+
         # Find the eval_cases key in supplementary evals
         supplementary_eval_cases = None
         for key in ["eval_cases", "evals", "cases", "test_cases", "evaluations", "eval"]:
             if key in supplementary_evals and isinstance(supplementary_evals[key], list):
                 supplementary_eval_cases = supplementary_evals[key]
                 break
-        
+
         if current_eval_cases is not None and supplementary_eval_cases:
             # Assign new IDs to supplementary evals to avoid conflicts
             current_max_id = max([case.get("id", 0) for case in current_eval_cases], default=0)
@@ -463,5 +465,5 @@ Return a JSON object with an array of eval_cases in the same format as before.
                 case_copy = case.copy()
                 case_copy["id"] = current_max_id + i + 1
                 current_eval_cases.append(case_copy)
-        
+
         return merged

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Dict, Any, Tuple, Optional
+from typing import Any
 
 
 @dataclass
@@ -9,21 +9,21 @@ class TokenUsage:
     output_tokens: int = 0
     total_tokens: int = 0
 
-    def to_dict(self) -> Dict[str, int]:
+    def to_dict(self) -> dict[str, int]:
         return {"input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "total_tokens": self.total_tokens}
 
     @classmethod
-    def from_dict(cls, data: Dict[str, int]) -> "TokenUsage":
+    def from_dict(cls, data: dict[str, int]) -> "TokenUsage":
         return cls(input_tokens=data.get("input_tokens", 0), output_tokens=data.get("output_tokens", 0), total_tokens=data.get("total_tokens", 0))
 
 
 @dataclass
 class LLMResponse:
     text: str
-    token_usage: Optional[TokenUsage] = None
+    token_usage: TokenUsage | None = None
     latency_ms: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {"text": self.text, "token_usage": self.token_usage.to_dict() if self.token_usage else None, "latency_ms": self.latency_ms}
 
 
@@ -34,7 +34,7 @@ class ModelAdapter(ABC):
     """
 
     @abstractmethod
-    def chat(self, messages: List[Dict[str, str]], system: str | None = None, timeout: int = 120) -> str:
+    def chat(self, messages: list[dict[str, str]], system: str | None = None, timeout: int = 120) -> str:
         """
         Send a chat request to the model.
 
@@ -48,7 +48,7 @@ class ModelAdapter(ABC):
         """
         pass
 
-    def chat_with_usage(self, messages: List[Dict[str, str]], system: str | None = None, timeout: int = 120) -> Tuple[str, Dict[str, int]]:
+    def chat_with_usage(self, messages: list[dict[str, str]], system: str | None = None, timeout: int = 120) -> tuple[str, dict[str, int]]:
         """
         Send a chat request and return both content and token usage.
         Default fallback: uses chat() and estimates usage.
@@ -62,7 +62,7 @@ class ModelAdapter(ABC):
         return content, {"prompt_tokens": 0, "completion_tokens": estimated, "total_tokens": estimated}
 
     @abstractmethod
-    def batch_chat(self, requests: List[Dict[str, Any]], max_concurrency: int = 5) -> List[str]:
+    def batch_chat(self, requests: list[dict[str, Any]], max_concurrency: int = 5) -> list[str]:
         """
         Send multiple chat requests concurrently.
 

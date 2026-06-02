@@ -1,6 +1,5 @@
 """Model pricing table — converts token usage to $ cost."""
 
-from typing import Dict, Optional
 
 _MODEL_PRICING = {
     # Anthropic Claude family (per 1M tokens)
@@ -33,9 +32,9 @@ _MODEL_PRICING = {
 
 class ModelPricing:
     def __init__(self):
-        self.models: Dict[str, Dict[str, float]] = dict(_MODEL_PRICING)
+        self.models: dict[str, dict[str, float]] = dict(_MODEL_PRICING)
 
-    def get_model_price(self, model_name: str) -> Optional[Dict[str, float]]:
+    def get_model_price(self, model_name: str) -> dict[str, float] | None:
         return self.models.get(model_name)
 
     def add_model(self, model_name: str, input_per_m: float, output_per_m: float):
@@ -49,7 +48,7 @@ class ModelPricing:
                (completion_tokens / 1_000_000) * price["output_per_m"]
 
 
-_pricing_instance: Optional[ModelPricing] = None
+_pricing_instance: ModelPricing | None = None
 
 
 def get_pricing() -> ModelPricing:

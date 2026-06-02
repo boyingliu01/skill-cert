@@ -2,9 +2,10 @@
 
 import json
 import re
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
 from dataclasses import dataclass
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class JudgeResult(BaseModel):
@@ -30,10 +31,10 @@ class EvalCase(BaseModel):
     name: str
     category: str  # normal, boundary, failure, trigger
     prompt: str
-    expected_output: Optional[str] = None
-    files: List[str] = Field(default_factory=list)
-    assertions: List[EvalAssertion]
-    workflow_step: Optional[str] = None  # Name of the workflow step this case targets
+    expected_output: str | None = None
+    files: list[str] = Field(default_factory=list)
+    assertions: list[EvalAssertion]
+    workflow_step: str | None = None  # Name of the workflow step this case targets
 
 
 @dataclass
@@ -47,44 +48,44 @@ class AssertionResult:
 
 class Grader:
     """Evaluates model outputs against eval assertions."""
-    
+
     def __init__(self, llm_client=None):
         """Initialize grader with optional LLM client for judge mode."""
         self.llm_client = llm_client
-    
-    def grade_output(self, eval_case: EvalCase, model_output: str) -> Dict[str, Any]:
+
+    def grade_output(self, eval_case: EvalCase, model_output: str) -> dict[str, Any]:
         """Evaluate a single model output against eval case assertions."""
         results = []
         total_weighted_score = 0
         total_possible_score = 0
-        
+
         for assertion in eval_case.assertions:
             result = self._evaluate_assertion(assertion, model_output)
             results.append(result)
-            
+
             # Calculate weighted score
             weight_multiplier = self._get_weight_multiplier(assertion.weight)
             if result.passed:
                 total_weighted_score += weight_multiplier
             total_possible_score += weight_multiplier
-        
+
         # Calculate pass rate
         pass_rate = total_weighted_score / total_possible_score if total_possible_score > 0 else 0.0
-        
+
         # Determine if we need LLM-as-judge for complex behavior
         deterministic_passed_count = sum(1 for r in results if r.confidence == 1.0 and r.passed)
         deterministic_total_count = sum(1 for r in results if r.confidence == 1.0)
-        
+
         # If not all deterministic assertions passed, or if we have complex cases, use LLM judge
         use_llm_judge = (
             deterministic_total_count < len(results) or  # Some assertions are non-deterministic
             deterministic_passed_count < deterministic_total_count  # Some deterministic failed
         )
-        
+
         judge_result = None
         if use_llm_judge and self.llm_client:
             judge_result = self._llm_judge(eval_case, model_output, results)
-        
+
         return {
             "eval_id": eval_case.id,
             "eval_name": eval_case.name,
@@ -106,7 +107,7 @@ class Grader:
             "judge_result": judge_result.model_dump() if judge_result else None,
             "final_passed": judge_result.passed if judge_result and judge_result.confidence >= 0.8 else pass_rate >= 0.5
         }
-    
+
     def _evaluate_assertion(self, assertion: EvalAssertion, model_output: str) -> AssertionResult:
         """Evaluate a single assertion against model output."""
         if assertion.type == "contains":
@@ -147,19 +148,19 @@ class Grader:
             passed = False
             confidence = 0.0
             reason = f"Unknown assertion type: {assertion.type}"
-        
+
         return AssertionResult(
             assertion=assertion,
             passed=passed,
             confidence=confidence,
             reason=reason
         )
-    
+
     def _get_weight_multiplier(self, weight: int) -> int:
         """Convert weight to multiplier: 1=Normal=1, 2=Important=2, 3=Critical=3."""
         return max(1, min(3, weight))  # Clamp between 1 and 3
-    
-    def _llm_judge(self, eval_case: EvalCase, model_output: str, assertion_results: List[AssertionResult]) -> Optional[JudgeResult]:
+
+    def _llm_judge(self, eval_case: EvalCase, model_output: str, assertion_results: list[AssertionResult]) -> JudgeResult | None:
         """Use LLM as judge for complex behavior evaluation."""
         import os
 
