@@ -1,11 +1,21 @@
 {
   "id": "sprint-2026-06-02-01",
-  "phase": -1,
-  "status": "running",
+  "phase": 8,
+  "status": "completed",
   "isolation": {
     "worktree_path": ".worktrees/sprint/sprint-2026-06-02-01",
     "branch": "sprint/2026-06-02-01",
     "created_from": "main",
     "created_from_commit": "87edda1"
+  },
+  "outputs": {
+    "specification": ".sprint-state/phase-outputs/specification.yaml",
+    "mvp": "skill_cert/cli/",
+    "review_report": ".sprint-state/phase-outputs/sprint-summary.md"
+  },
+  "metrics": {
+    "tests_passed": 492,
+    "tests_failed": 0,
+    "coverage_pct": 92
   }
 }
