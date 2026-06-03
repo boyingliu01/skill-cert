@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-03
+
+Comprehensive engine optimization: coverage improvements, new metrics, security expansion, and calibration framework.
+
+### Coverage (T1-T3)
+- **metrics.py** — Coverage 79% → 100%, fixed dead code in L5/L6 detail paths
+- **reporter.py** — Coverage 80% → 100%, added suggestions/multi-skill/stress report paths
+- **dialogue_runner.py** — Coverage 82% → 100%, added exception fallback paths
+
+### LLM-as-Judge Enhancement (T4)
+- **Failure Reasons** — Structured `failure_reasons` field in JudgeResult for actionable diagnostics
+- **Position Debiasing** — Swap augmentation: evaluate both orderings, average scores to reduce bias
+
+### L3 Trajectory Quality (T5)
+- **Turn-Level Metrics** — `tool_call_accuracy` and `turn_relevance` per-turn scoring
+- **Weighted Composite** — L3 = 0.5×step_coverage + 0.3×tool_call_accuracy + 0.2×turn_relevance
+
+### L4 Multi-Trial Confidence Intervals (T6)
+- **t-Distribution** — Manual t-table + Abramowitz & Stegun approximation (no scipy dependency)
+- **Confidence Interval** — `num_trials` parameter, CI reporting, CV-based scoring
+
+### Security Probes Expansion (T7)
+- **19 → 52 Patterns** — Multi-language injection (CN/JP/ES), indirect injection, encoding bypass
+- **New Category** — PRIVILEGE_ESCALATION (sudo su, --privileged, container escape)
+- **Expanded Coverage** — Credential (kube/config, JWT, private keys), exfiltration (DNS tunnel, webhook)
+
+### Dialogue Semantic Matching (T8)
+- **SequenceMatcher** — Zero-dependency semantic similarity via `difflib.SequenceMatcher`
+- **Hybrid Scoring** — Intent recognition: 0.6×semantic + 0.4×keyword; Output quality uses semantic overlap
+
+### Cross-Model Uncertainty (T9)
+- **CMP (Cross-Model Agreement)** — Agreement rate + pairwise agreement tracking
+- **CME (Cross-Model Entropy)** — Coefficient of variation + max-min spread for pass rate uncertainty
+
+### Golden Eval Set Calibration (T10)
+- **Calibration Framework** — `GoldenEvalSet` + `CalibrationRunner` for human-anchored evaluation
+- **Metrics** — Agreement rate, FPR, FNR, Cohen's Kappa (κ) for measuring auto-vs-human alignment
+
+### Quality
+- **651 tests** (+159 from 492), 1 skipped
+- New modules: `engine/calibration.py`
+- ruff clean on all modified files
+
 ## [0.1.0] — 2026-05-14
 
 Initial release of the skill-cert evaluation engine.
