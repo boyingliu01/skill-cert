@@ -32,4 +32,4 @@ Thumbs.db
 *~
 .worktrees/
 
-.coverage
+.coverage.mypy_cache/
