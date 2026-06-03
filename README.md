@@ -1,202 +1,196 @@
-# Skill-Cert：AI Skill 评测与认证引擎
+# Skill-Cert: AI Skill Evaluation Engine
 
-> 自动评测 AI Agent Skill 的质量、效果、稳定性、安全性和成本表现。
+> Automated evaluation engine for AI agent skills (SKILL.md files).
 
-Skill-Cert 是一个面向 `SKILL.md` 的自动化评测引擎。它可以读取任意 AI Agent Skill 定义文件，自动解析技能结构，生成评测用例，执行 with-skill / without-skill 对比实验，计算 L1-L8 指标，检测跨模型漂移，并输出标准化的 PASS / PASS_WITH_CAVEATS / FAIL 判定报告。
+Skill-Cert takes any `SKILL.md` file — the instruction format used by Claude Code, Codex, OpenCode, Cursor, and other AI coding agents — and evaluates it through a rigorous automated pipeline. It parses skill structure, generates test cases, executes with-skill vs without-skill comparisons, computes L1-L8 metrics, detects cross-model drift, and produces standardized PASS / PASS_WITH_CAVEATS / FAIL verdicts.
 
-一句话概括：
+In one sentence:
 
-> Skill-Cert 让「一个 Skill 到底有没有用」从主观感觉变成可重复、可量化、可对比的评测结果。
+> Skill-Cert turns "does this skill actually work?" from a subjective feeling into repeatable, quantifiable, comparable evaluation results.
+
+[English](README.md) | [简体中文](README.zh.md)
 
 ---
 
-## 目录
+## Table of Contents
 
-- [1. 为什么需要 Skill-Cert？](#1-为什么需要-skill-cert)
-- [2. Skill-Cert 做什么？](#2-skill-cert-做什么)
-- [3. 核心思路](#3-核心思路)
-- [4. 评测流程详解](#4-评测流程详解)
-- [5. 架构设计](#5-架构设计)
-- [6. 使用方式](#6-使用方式)
-- [7. 配置说明](#7-配置说明)
-- [8. 开发指南](#8-开发指南)
-- [9. 问题和局限](#9-问题和局限)
+- [1. Why Skill-Cert?](#1-why-skill-cert)
+- [2. What It Does](#2-what-it-does)
+- [3. Core Philosophy](#3-core-philosophy)
+- [4. Evaluation Pipeline](#4-evaluation-pipeline)
+- [5. Architecture](#5-architecture)
+- [6. Usage](#6-usage)
+- [7. Configuration](#7-configuration)
+- [8. Development](#8-development)
+- [9. Limitations & Caveats](#9-limitations--caveats)
 - [10. License](#10-license)
 
 ---
 
-## 1. 为什么需要 Skill-Cert？
+## 1. Why Skill-Cert?
 
-现在很多团队都会给 AI Coding Agent 编写 Skill，例如：
+Teams write Skills for AI coding agents all the time — code review skills, security audit skills, documentation skills, debugging skills, PR workflows, browser QA, project-specific conventions.
 
-- 代码审查 Skill
-- 安全审计 Skill
-- 文档生成 Skill
-- Debug Skill
-- PR 发布 Skill
-- 浏览器 QA Skill
-- 项目特定开发规范 Skill
+But after writing a Skill, you face several problems:
 
-但 Skill 写完之后，通常会遇到几个问题：
+### 1.1 You don't know if the Skill actually works
 
-### 1.1 不知道 Skill 是否真的生效
+The Skill looks thorough on paper. But does the model trigger it in the right scenarios? Does it follow the workflow? Is the output actually better than without the Skill?
 
-一个 Skill 看起来写得很详细，但模型是否真的会在正确场景触发它？触发后是否真的遵循里面的流程？输出是否比不用 Skill 更好？
+Without evaluation, you're relying on a few manual trials. Conclusions are easily skewed by sample selection, model state, and reviewer subjectivity.
 
-如果没有评测，只能靠人工试几次，结论很容易受样例、模型状态、评审者主观判断影响。
+### 1.2 You don't know if the Skill is stable
 
-### 1.2 不知道 Skill 是否稳定
+Does the same Skill perform consistently across Claude, GPT, Qwen, DeepSeek, and Gemini? Do multiple runs produce stable results? Is the Skill only effective on one model and useless on others?
 
-同一个 Skill 在 Claude、GPT、Qwen、DeepSeek、Gemini 上是否表现一致？同一个模型多跑几次是否结果稳定？某个 Skill 是否只对一个模型有效，换模型就失效？
+These require systematic cross-model, cross-run evaluation.
 
-这些都需要跨模型、跨运行的系统化评测。
+### 1.3 You don't know if the Skill is safe
 
-### 1.3 不知道 Skill 是否安全
+A Skill is essentially high-priority operational guidance for the model. If it contains dangerous commands, credential access, prompt injection, or data exfiltration instructions, it poses a security risk.
 
-Skill 本质上是给模型的高优先级操作指导。如果 Skill 中包含危险命令、凭证访问、提示注入、外传数据指令，就可能带来安全风险。
+Skill-Cert runs security scanning before evaluation to catch risks early.
 
-Skill-Cert 在评测前加入安全扫描，提前识别风险。
+### 1.4 You don't know the cost and latency impact
 
-### 1.4 不知道 Skill 的成本和延迟影响
+Skills typically increase context length, tool calls, and reasoning steps. This may improve output quality but also increase cost and response time.
 
-Skill 通常会增加上下文长度、工具调用次数和推理步骤。这可能提升效果，也可能带来更高成本和更慢响应。
-
-Skill-Cert 会跟踪 token、成本、延迟，并评估收益是否值得。
+Skill-Cert tracks tokens, cost, and latency, and evaluates whether the benefit justifies the overhead.
 
 ---
 
-## 2. Skill-Cert 做什么？
+## 2. What It Does
 
-Skill-Cert 接收一个 `SKILL.md` 文件，执行完整评测流水线：
+Skill-Cert takes a `SKILL.md` file and runs a complete evaluation pipeline:
 
 ```
 SKILL.md
   ↓
-解析 Skill 结构
+Parse skill structure
   ↓
-安全扫描
+Security scan
   ↓
-自动生成 eval 测试
+Auto-generate eval tests
   ↓
-自审 + 补齐覆盖缺口
+Self-review + gap-fill
   ↓
-with-skill / without-skill 执行
+with-skill / without-skill execution
   ↓
-断言评分 + LLM-as-judge
+Assertion grading + LLM-as-judge
   ↓
-L1-L8 指标计算
+L1-L8 metrics calculation
   ↓
-跨模型漂移检测
+Cross-model drift detection
   ↓
-Markdown + JSON 报告
+Markdown + JSON report
 ```
 
-最终输出：
+Output:
 
-- `{skill}-report.md`：面向人的评测报告
-- `{skill}-result.json`：面向机器处理的结构化结果
-- `{skill}-evals-cache.json`：评测用例和执行缓存
+- `{skill}-report.md` — human-readable evaluation report
+- `{skill}-result.json` — machine-readable structured results
+- `{skill}-evals-cache.json` — eval cases and execution cache
 
 ---
 
-## 3. 核心思路
+## 3. Core Philosophy
 
-Skill-Cert 的核心假设是：
+Skill-Cert's core assumption:
 
-> 一个好的 Skill 不应该只「看起来合理」，它必须在真实任务中稳定提升模型表现。
+> A good Skill shouldn't just "look reasonable" — it must demonstrably improve model performance on real tasks.
 
-因此评测不是单纯检查 `SKILL.md` 文本，而是围绕四个问题展开：
+Evaluation isn't about checking the `SKILL.md` text. It's about answering four questions:
 
-| 问题 | 对应指标 |
+| Question | Metric |
 |---|---|
-| 模型知道什么时候该用这个 Skill 吗？ | L1 Trigger Accuracy |
-| 用了 Skill 之后结果真的更好吗？ | L2 Output Delta |
-| 模型是否遵守了 Skill 的流程？ | L3 Step Adherence |
-| 多次运行、多个模型下表现是否稳定？ | L4 Stability / Drift |
+| Does the model know *when* to use this Skill? | L1 Trigger Accuracy |
+| Does the Skill actually *improve* results? | L2 Output Delta |
+| Does the model *follow* the Skill's workflow? | L3 Step Adherence |
+| Are results *stable* across runs and models? | L4 Stability / Drift |
 
-在此基础上，再扩展评估效率、安全、成本、延迟、多轮对话质量等维度。
+Beyond these, we extend to efficiency, security, cost, latency, and multi-turn dialogue quality.
 
 ---
 
-## 4. 评测流程详解
+## 4. Evaluation Pipeline
 
-### Phase 0：Skill 解析
+### Phase 0: Skill Parsing
 
-实现位置：`engine/analyzer.py`，核心对象 `SkillSpec`、`WorkflowStep`，核心函数 `parse_skill_md()`。
+Implementation: `engine/analyzer.py` — `SkillSpec`, `WorkflowStep`, `parse_skill_md()`.
 
-Skill-Cert 首先读取 `SKILL.md`，提取结构化语义模型 `SkillSpec`。主要提取内容：
+Skill-Cert reads `SKILL.md` and extracts a structured semantic model (`SkillSpec`):
 
-- `name`、`description`、triggers
-- workflow steps、anti-patterns
-- output format、examples
-- content length、parse method、parse confidence
+- `name`, `description`, triggers
+- workflow steps, anti-patterns
+- output format, examples
+- content length, parse method, parse confidence
 
-解析方式：
+Parsing methods:
 
-1. YAML frontmatter 解析
-2. Markdown AST 解析（基于 `markdown-it-py`）
-3. Regex 提取关键章节
-4. 必要时 fallback 到 LLM 辅助解析
+1. YAML frontmatter extraction
+2. Markdown AST parsing (via `markdown-it-py`)
+3. Regex-based section extraction
+4. LLM-assisted fallback when needed
 
-解析后会计算 8 维置信度评分：frontmatter(0.30) + workflow(0.25) + headings(0.15) + anti-patterns(0.10) + output-format(0.08) + triggers(0.07) + examples(0.05) + bonus(0.05)。如果解析置信度过低，后续评测结果会被标记为不可靠。
+An 8-dimension confidence score is computed: frontmatter(0.30) + workflow(0.25) + headings(0.15) + anti-patterns(0.10) + output-format(0.08) + triggers(0.07) + examples(0.05) + bonus(0.05). Low confidence flags the results as unreliable.
 
-### Phase 0.5：安全扫描
+### Phase 0.5: Security Scanning
 
-实现位置：`engine/security_probes.py`，核心对象 `SecurityScanner`。
+Implementation: `engine/security_probes.py` — `SecurityScanner`.
 
-安全扫描在测试生成之前执行。它检查 5 类风险：
+Security scanning runs before test generation. It checks 5 categories:
 
-| 类别 | 含义 |
+| Category | Meaning |
 |---|---|
-| INJ | Prompt Injection / 指令注入 |
-| EXF | Data Exfiltration / 数据外传 |
-| DCMD | Dangerous Commands / 危险命令 |
-| CRD | Credential Access / 凭证访问 |
-| OBF | Obfuscation / 混淆行为 |
+| INJ | Prompt Injection |
+| EXF | Data Exfiltration |
+| DCMD | Dangerous Commands |
+| CRD | Credential Access |
+| OBF | Obfuscation |
 
-当前内置 19 个安全探测模式。扫描结果分为 PASS / WARN / BLOCK。如果出现 BLOCK 级风险，评测会直接失败，避免执行潜在危险 Skill。
+19 built-in probe patterns. Results: PASS / WARN / BLOCK. A BLOCK verdict causes immediate evaluation failure.
 
-### Phase 1：自动生成 eval 测试
+### Phase 1: Auto-Generate Eval Tests
 
-实现位置：`engine/testgen.py`，核心对象 `EvalGenerator`，fallback 模板 `templates/minimum-evals.json`。
+Implementation: `engine/testgen.py` — `EvalGenerator`, fallback: `templates/minimum-evals.json`.
 
-Skill-Cert 会根据 `SkillSpec` 自动生成评测用例。测试生成不是一次性完成，而是一个自审循环：
+Skill-Cert auto-generates evaluation test cases from `SkillSpec`. Generation is not one-shot — it's a self-review loop:
 
 ```
-生成初始测试 → 评审覆盖率 → 发现缺口 → 补充测试 → 再次评审 → 直到 coverage >= 90%
+Generate initial tests → Review coverage → Identify gaps → Fill gaps → Re-review → until coverage >= 90%
 ```
 
-覆盖范围包括：trigger cases（应该触发 / 不应该触发）、workflow step cases、anti-pattern cases、output format cases、security / robustness cases。
+Coverage includes: trigger cases (should/should-not trigger), workflow step cases, anti-pattern cases, output format cases, security/robustness cases.
 
-关键阈值：
+Key thresholds:
 
-| 阈值 | 含义 |
+| Threshold | Meaning |
 |---|---|
-| coverage target = 90% | 理想覆盖率 |
-| coverage degrade = 70% | 低于该值需要降级 |
-| coverage block = 70% | 严重不足时阻断评测 |
+| coverage target = 90% | Ideal coverage |
+| coverage degrade = 70% | Below this, degrade |
+| coverage block = 70% | Too low, block evaluation |
 
-如果自动生成失败，会使用 `minimum-evals.json` 作为保底测试集。
+If generation fails, `minimum-evals.json` is used as a fallback.
 
-### Phase 2：with-skill / without-skill 执行
+### Phase 2: With-Skill / Without-Skill Execution
 
-实现位置：`engine/runner.py`，核心对象 `EvalRunner`。
+Implementation: `engine/runner.py` — `EvalRunner`.
 
-Skill-Cert 的核心不是「只看 Skill 输出」，而是对比实验：
+The core insight: don't just look at Skill output — run a controlled experiment:
 
 ```
-同一批 eval
-  ├── without-skill：模型不加载 Skill
-  └── with-skill：模型加载 Skill
+Same eval suite
+  ├── without-skill: model without Skill loaded
+  └── with-skill: model with Skill loaded
 ```
 
-然后比较两组结果差异。这解决了一个关键问题：如果模型本来就能做好任务，那不能证明 Skill 有价值。只有 with-skill 明显优于 without-skill，才说明 Skill 真的带来了增量。
+Then compare the two sets of results. If the model can already do the task well, the Skill adds no value. Only when with-skill significantly outperforms without-skill does the Skill demonstrate real improvement.
 
-Runner 同时负责：并发执行、rate limit 控制、timeout 控制、token usage 跟踪、安全扫描接入、operating envelope 检查、部分失败时保留结果。
+The Runner handles: concurrent execution, rate limiting, timeouts, token tracking, security scanning, operating envelope checks, partial failure preservation.
 
-默认限制：
+Default limits:
 
-| 项 | 默认值 |
+| Item | Default |
 |---|---|
 | max steps | 20 |
 | max tool calls | 15 |
@@ -205,65 +199,65 @@ Runner 同时负责：并发执行、rate limit 控制、timeout 控制、token 
 | max concurrency | 5 |
 | rate limit | 60 RPM |
 
-### Phase 3：评分
+### Phase 3: Grading
 
-实现位置：`engine/grader.py`，核心对象 `Grader`、`JudgeResult`、`EvalAssertion`。
+Implementation: `engine/grader.py` — `Grader`, `JudgeResult`, `EvalAssertion`.
 
-Skill-Cert 使用两类评分方式。
+Two grading approaches:
 
-#### 确定性断言
+#### Deterministic Assertions
 
-支持 `contains`、`not_contains`、`regex`、`starts_with`、`json_valid`。断言带权重：Normal(1)、Important(2)、Critical(3)。确定性断言的优点是稳定、便宜、可重复。
+Supports `contains`, `not_contains`, `regex`, `starts_with`, `json_valid`. Weighted: Normal(1), Important(2), Critical(3). Deterministic assertions are stable, cheap, and repeatable.
 
-#### LLM-as-judge
+#### LLM-as-Judge
 
-对于复杂行为（如「是否进行了合理的架构权衡」「是否识别了隐藏风险」），确定性断言可能不够。此时 Skill-Cert 可以启用 LLM-as-judge。约束：temperature 必须为 0，只在确定性断言不足时使用，L4 稳定性计算会排除 LLM judge 以避免引入随机性。
+For complex behaviors (e.g., "did the model make a reasonable architectural trade-off?"), deterministic assertions may be insufficient. Skill-Cert can enable LLM-as-judge. Constraints: temperature must be 0, only used when deterministic checks are insufficient, L4 stability calculation excludes LLM judge results to avoid randomness.
 
-### Phase 4：L1-L8 指标计算
+### Phase 4: L1-L8 Metrics
 
-实现位置：`engine/metrics.py`，核心对象 `MetricsCalculator`。
+Implementation: `engine/metrics.py` — `MetricsCalculator`.
 
-Skill-Cert 使用 8 层指标体系：
+8-tier metric system:
 
-| 指标 | 名称 | 衡量什么 | 通过标准 |
+| Tier | Name | Measures | Threshold |
 |---|---|---|---|
-| L1 | Trigger Accuracy | 模型是否知道什么时候使用 Skill | >= 90% |
-| L2 | Output Delta | with-skill 相比 without-skill 是否提升 | >= 20% |
-| L3 | Step Adherence | 是否遵循 Skill 工作流 | >= 85% |
-| L4 | Stability | 多次执行是否稳定 | std <= 10% |
-| L5 | Step Efficiency | 是否在步骤/token/工具调用限制内 | 全部通过 |
-| L6 | Trajectory Quality | 多轮对话轨迹是否合理 | dialogue 模式 |
-| L7 | Cost Efficiency | 成本是否值得 | 低于预算 |
-| L8 | Latency | 延迟是否可接受 | 无明显慢请求 |
+| L1 | Trigger Accuracy | Does the model know when to use the Skill? | >= 90% |
+| L2 | Output Delta | Does with-skill outperform without-skill? | >= 20% |
+| L3 | Step Adherence | Does the model follow the workflow? | >= 85% |
+| L4 | Stability | Are results consistent across runs? | std <= 10% |
+| L5 | Step Efficiency | Within step/token/tool call limits? | All pass |
+| L6 | Trajectory Quality | Is multi-turn dialogue coherent? | dialogue mode |
+| L7 | Cost Efficiency | Is the cost justified? | Under budget |
+| L8 | Latency | Is latency acceptable? | No slow requests |
 
-其中 L1/L2 关注效果，L3/L4 关注可靠性，L5/L7/L8 关注效率，L6 关注多轮交互质量。
+L1/L2 measure effectiveness. L3/L4 measure reliability. L5/L7/L8 measure efficiency. L6 measures multi-turn interaction quality.
 
-### Phase 5：跨模型漂移检测
+### Phase 5: Cross-Model Drift Detection
 
-实现位置：`engine/drift.py`，核心对象 `DriftDetector`。
+Implementation: `engine/drift.py` — `DriftDetector`.
 
-Skill-Cert 会在多个模型上运行同一套 eval，比较 pass rate 差异。
+Skill-Cert runs the same eval suite across multiple models and compares pass rate variance.
 
-漂移分级：
+Drift severity:
 
-| 等级 | 方差范围 | 含义 |
+| Level | Variance | Meaning |
 |---|---|---|
-| none | <= 0.10 | 基本一致 |
-| low | <= 0.20 | 轻微差异，可接受 |
-| moderate | <= 0.35 | 明显差异，需要关注 |
-| high | > 0.35 | 不稳定，不能发布 |
+| none | <= 0.10 | Consistent |
+| low | <= 0.20 | Minor, acceptable |
+| moderate | <= 0.35 | Significant, needs attention |
+| high | > 0.35 | Unstable, cannot release |
 
-判定规则：none/low 不影响 PASS，moderate 降级为 PASS_WITH_CAVEATS，high 直接 FAIL。
+Verdict impact: none/low → no effect on PASS, moderate → downgrade to PASS_WITH_CAVEATS, high → FAIL.
 
-### Phase 6：报告生成
+### Phase 6: Report Generation
 
-实现位置：`engine/reporter.py`，核心对象 `Reporter`。
+Implementation: `engine/reporter.py` — `Reporter`.
 
-Skill-Cert 输出两类报告：
+Two output formats:
 
-**Markdown 报告**：适合人阅读，包含执行摘要、verdict、overall score、L1-L8 指标、drift 分析、security scan、cost analysis、latency analysis、improvement suggestions、config summary。
+**Markdown report**: human-readable, includes executive summary, verdict, overall score, L1-L8 metrics, drift analysis, security scan, cost analysis, latency analysis, improvement suggestions, config summary.
 
-**JSON 报告**：适合自动化系统消费，包含结构化字段：
+**JSON report**: machine-readable structured data:
 
 ```json
 {
@@ -287,96 +281,96 @@ Skill-Cert 输出两类报告：
 }
 ```
 
-### 扩展能力
+### Extended Capabilities
 
-| 能力 | 模块 | 说明 |
+| Capability | Module | Description |
 |---|---|---|
-| 多技能冲突检测 | `multi_skill.py` | trigger 重叠、prompt 干扰、token 预算溢出 |
-| 压力测试 | `stress_test.py` | 并发公平性、内存追踪、可扩展性评分 |
-| 可靠性追踪 | `reliability.py` | 错误分类、重试统计、优雅降级 |
-| 可维护性评分 | `maintainability.py` | SKILL.md 可读性、完整性、新鲜度评分 |
-| 外部集成 | `integrations.py` | SkillLab / DeepEval providers（优雅降级） |
-| 运行包络 | `envelope.py` | steps/tokens/timeout/tool_calls 限制执行 |
-| 真实 Token 追踪 | `adapters/` | TokenUsage dataclass，非近似值 |
-| 成本分析 | `adapters/pricing.py` | 17 个模型，5 个 provider 家族 |
+| Multi-Skill Conflict Detection | `multi_skill.py` | Trigger overlap, prompt contamination, token overflow |
+| Stress Testing | `stress_test.py` | Concurrency fairness, memory tracking, scalability scoring |
+| Reliability Tracking | `reliability.py` | Error classification, retry stats, graceful degradation |
+| Maintainability Scoring | `maintainability.py` | SKILL.md readability, completeness, freshness |
+| External Integrations | `integrations.py` | SkillLab / DeepEval providers (graceful degradation) |
+| Operating Envelope | `envelope.py` | Steps/tokens/timeout/tool_calls limit enforcement |
+| Real Token Tracking | `adapters/` | TokenUsage dataclass, not approximations |
+| Cost Analysis | `adapters/pricing.py` | 17 models across 5 provider families |
 
 ---
 
-## 5. 架构设计
+## 5. Architecture
 
-Skill-Cert 采用 Clean Architecture 风格，核心分层如下：
+Skill-Cert follows Clean Architecture with explicit layer boundaries:
 
 ```
-skill_cert/       Presentation 层：CLI 入口
+skill_cert/       Presentation layer: CLI entry
     ↓
-engine/           Domain 层：核心评测逻辑
+engine/           Domain layer: core evaluation logic
     ↓
-adapters/         Infrastructure 层：LLM Provider 适配
+adapters/         Infrastructure layer: LLM provider adapters
     ↓
 prompts/
 schemas/
-templates/        Support 层：提示词、Schema、模板
+templates/        Support layer: prompts, schemas, templates
 ```
 
-### 5.1 Presentation：CLI 层
+### 5.1 Presentation: CLI Layer
 
-实现位置：`skill_cert/cli.py`、`skill_cert/cli/main.py`。职责：解析命令行参数、加载配置、调用核心 pipeline、输出退出码、生成报告文件。
+Location: `skill_cert/cli.py`, `skill_cert/cli/main.py`. Responsibilities: parse CLI arguments, load configuration, invoke core pipeline, emit exit codes, generate report files.
 
-### 5.2 Domain：评测核心层
+### 5.2 Domain: Core Evaluation Layer
 
-实现位置：`engine/`。
+Location: `engine/`.
 
-| 文件 | 职责 |
+| File | Responsibility |
 |---|---|
-| `analyzer.py` | 解析 SKILL.md 为 SkillSpec |
-| `testgen.py` | 自动生成 eval 测试 |
-| `runner.py` | 执行 with-skill / without-skill |
-| `grader.py` | 对模型输出评分 |
-| `metrics.py` | 计算 L1-L8 指标 |
-| `drift.py` | 跨模型漂移检测 |
-| `reporter.py` | 生成 Markdown / JSON 报告 |
-| `security_probes.py` | 安全扫描 |
-| `envelope.py` | 运行包络检查 |
-| `config.py` | 配置加载和校验 |
-| `dialogue_evaluator.py` | 多轮对话评测 |
-| `replay.py` | 历史会话重放 |
-| `simulator.py` | 测试用 LLM 行为模拟 |
-| `multi_skill.py` | 多 Skill 冲突检测 |
-| `stress_test.py` | 压力测试 |
-| `reliability.py` | 可靠性追踪 |
-| `maintainability.py` | SKILL.md 可维护性评分 |
+| `analyzer.py` | Parse SKILL.md into SkillSpec |
+| `testgen.py` | Auto-generate eval tests |
+| `runner.py` | Execute with-skill / without-skill |
+| `grader.py` | Grade model outputs |
+| `metrics.py` | Calculate L1-L8 metrics |
+| `drift.py` | Cross-model drift detection |
+| `reporter.py` | Generate Markdown / JSON reports |
+| `security_probes.py` | Security scanning |
+| `envelope.py` | Operating envelope checks |
+| `config.py` | Configuration loading and validation |
+| `dialogue_evaluator.py` | Multi-turn dialogue evaluation |
+| `replay.py` | Historical session replay |
+| `simulator.py` | LLM behavior simulation for testing |
+| `multi_skill.py` | Multi-skill conflict detection |
+| `stress_test.py` | Stress testing |
+| `reliability.py` | Reliability tracking |
+| `maintainability.py` | SKILL.md maintainability scoring |
 
-### 5.3 Infrastructure：模型适配层
+### 5.3 Infrastructure: Model Adapter Layer
 
-实现位置：`adapters/base.py`、`adapters/anthropic_compat.py`、`adapters/openai_compat.py`、`adapters/pricing.py`。
+Location: `adapters/base.py`, `adapters/anthropic_compat.py`, `adapters/openai_compat.py`, `adapters/pricing.py`.
 
-职责：定义统一 LLM 调用协议、适配 Anthropic / OpenAI-compatible API、追踪真实 token usage、根据 pricing table 计算成本。
+Responsibilities: define unified LLM calling protocol, adapt Anthropic / OpenAI-compatible APIs, track real token usage, compute cost from pricing table.
 
-目前 pricing 支持多个模型家族：Anthropic、OpenAI、Qwen、DeepSeek、Gemini。
+Pricing supports multiple model families: Anthropic, OpenAI, Qwen, DeepSeek, Gemini.
 
-### 5.4 Support：模板和 Schema
+### 5.4 Support: Templates and Schemas
 
-实现位置：`prompts/`、`schemas/`、`templates/`。
+Location: `prompts/`, `schemas/`, `templates/`.
 
-职责：LLM judge prompt、testgen prompt、test-review prompt、test-gap prompt、eval JSON schema、SkillSpec schema、minimum eval fallback template。
+Responsibilities: LLM judge prompt, testgen prompt, test-review prompt, test-gap prompt, eval JSON schema, SkillSpec schema, minimum eval fallback template.
 
 ---
 
-## 6. 使用方式
+## 6. Usage
 
-### 6.1 安装
+### 6.1 Installation
 
 ```bash
 pip install -e .
 ```
 
-开发模式：
+Development mode:
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-### 6.2 单模型评测
+### 6.2 Single-Model Evaluation
 
 ```bash
 skill-cert --skill path/to/SKILL.md \
@@ -384,9 +378,9 @@ skill-cert --skill path/to/SKILL.md \
   --output ./results/
 ```
 
-适合快速检查 Skill 是否基本可用、本地调试、生成初步报告。
+Best for: quick check if a Skill is functional, local debugging, generating a preliminary report.
 
-### 6.3 多模型漂移检测
+### 6.3 Multi-Model Drift Detection
 
 ```bash
 skill-cert --skill path/to/SKILL.md \
@@ -394,9 +388,9 @@ skill-cert --skill path/to/SKILL.md \
   --output ./results/
 ```
 
-适合发布前验证 Skill 是否跨模型稳定、比较不同 provider 表现、发现模型依赖性。
+Best for: pre-release cross-model stability verification, comparing provider performance, discovering model dependencies.
 
-### 6.4 多轮对话模式
+### 6.4 Dialogue Mode
 
 ```bash
 skill-cert --skill path/to/SKILL.md \
@@ -404,9 +398,9 @@ skill-cert --skill path/to/SKILL.md \
   --max-turns 10
 ```
 
-适合 Orchestration Skill、Debug Skill、QA Skill、Code Review Skill 等需要多轮决策的 Agent Skill。
+Best for: Orchestration Skills, Debug Skills, QA Skills, Code Review Skills — any Skill requiring multi-turn decision-making.
 
-### 6.5 Replay 回归测试
+### 6.5 Replay Regression Testing
 
 ```bash
 skill-cert --skill path/to/SKILL.md \
@@ -414,9 +408,9 @@ skill-cert --skill path/to/SKILL.md \
   --session session.jsonl
 ```
 
-适合历史会话回放、Skill 改动前后对比、防止回归。
+Best for: historical session replay, before/after Skill change comparison, regression prevention.
 
-### 6.6 多次运行稳定性测试
+### 6.6 Multi-Run Stability Testing
 
 ```bash
 skill-cert --skill path/to/SKILL.md \
@@ -424,9 +418,9 @@ skill-cert --skill path/to/SKILL.md \
   --runs 5
 ```
 
-适合计算 L4 稳定性、检测随机波动、验证 Skill 是否可重复。
+Best for: computing L4 stability, detecting random variance, verifying Skill repeatability.
 
-### 6.7 压力测试
+### 6.7 Stress Testing
 
 ```bash
 skill-cert --skill path/to/SKILL.md \
@@ -435,35 +429,35 @@ skill-cert --skill path/to/SKILL.md \
   --stress-evals 100
 ```
 
-适合验证高并发场景下的表现、检测资源泄漏、评估可扩展性。
+Best for: validating high-concurrency behavior, detecting resource leaks, assessing scalability.
 
-### 6.8 Verdict 判定逻辑
+### 6.8 Verdict Logic
 
-| Verdict | 条件 |
+| Verdict | Conditions |
 |---|---|
 | **PASS** | L1 >= 90%, L2 >= 20%, L3 >= 85%, L4 std <= 10%, drift none/low |
-| **PASS_WITH_CAVEATS** | 核心指标通过，但 drift moderate |
-| **FAIL** | 任一核心指标不达标，或 drift high，或覆盖率 < 70% |
+| **PASS_WITH_CAVEATS** | Core metrics pass, but drift moderate |
+| **FAIL** | Any core metric fails, or drift high, or coverage < 70% |
 
 ---
 
-## 7. 配置说明
+## 7. Configuration
 
-### 7.1 环境变量
+### 7.1 Environment Variables
 
-| 变量 | 说明 |
+| Variable | Description |
 |---|---|
-| `SKILL_CERT_MODELS` | 模型配置：`name=url,key[,fallback]\|name2=url,key` |
-| `SKILL_CERT_MAX_CONCURRENCY` | 最大并发数（默认 5） |
-| `SKILL_CERT_RATE_LIMIT_RPM` | 速率限制 RPM（默认 60） |
-| `SKILL_CERT_TIMEOUT` | 超时秒数（默认 300） |
+| `SKILL_CERT_MODELS` | Model config: `name=url,key[,fallback]\|name2=url,key` |
+| `SKILL_CERT_MAX_CONCURRENCY` | Max concurrency (default: 5) |
+| `SKILL_CERT_RATE_LIMIT_RPM` | Rate limit RPM (default: 60) |
+| `SKILL_CERT_TIMEOUT` | Timeout in seconds (default: 300) |
 | `ANTHROPIC_API_KEY` | Anthropic API Key |
 | `OPENAI_API_KEY` | OpenAI-compatible API Key |
 | `OPENAI_BASE_URL` | OpenAI-compatible Base URL |
 
-### 7.2 配置文件
+### 7.2 Config File
 
-`~/.skill-cert/models.yaml`：
+`~/.skill-cert/models.yaml`:
 
 ```yaml
 models:
@@ -473,102 +467,102 @@ models:
     fallback_model: "qwen3-coder-plus"
 ```
 
-配置优先级：CLI 参数 > 环境变量 > 配置文件 > 默认值。
+Priority: CLI args > environment variables > config file > defaults.
 
 ---
 
-## 8. 开发指南
+## 8. Development
 
 ```bash
-# 安装开发依赖
+# Install dev dependencies
 pip install -e ".[dev]"
 
-# 运行所有测试
+# Run all tests
 pytest
 
-# 运行测试并查看覆盖率
+# Run with coverage
 pytest --cov=engine --cov=skill_cert --cov=adapters --cov-report=term-missing
 
-# 格式化和 lint
+# Format and lint
 ruff check . && ruff format .
 ```
 
-**项目规范：**
+**Conventions:**
 
-- Pydantic v2 用于所有数据模型
-- 所有函数签名带类型注解
-- ruff 用于 linting 和格式化
-- pytest 用于测试（测试文件与 engine/ 模块结构 1:1 对应）
-- Prompt 模板是 `.md` 文件，不是 Python 字符串
-- 无硬编码密钥，API Key 通过环境变量或配置文件提供
+- Pydantic v2 for all data models
+- Type annotations on all function signatures
+- ruff for linting and formatting
+- pytest for testing (test files mirror engine/ module structure 1:1)
+- Prompt templates are `.md` files, not Python strings
+- No hardcoded secrets — API keys via environment variables or config file
 
-**项目结构：**
+**Project structure:**
 
 ```
 skill-cert/
-├── engine/          # 核心 pipeline：parser, testgen, runner, grader, metrics, reporter, drift,
+├── engine/          # Core pipeline: parser, testgen, runner, grader, metrics, reporter, drift,
 │                    # dialogue, replay, simulator, security_probes, envelope, integrations,
 │                    # reliability, maintainability, multi_skill, stress_test, stability, config
-├── skill_cert/      # CLI 入口 (cli.py)
-├── adapters/        # LLM provider 适配器 (Anthropic, OpenAI-compatible) + pricing table
-├── prompts/         # LLM prompt 模板 (judge, dialogue, drift, testgen, test-review, test-gap)
+├── skill_cert/      # CLI entry (cli.py)
+├── adapters/        # LLM provider adapters (Anthropic, OpenAI-compatible) + pricing table
+├── prompts/         # LLM prompt templates (judge, dialogue, drift, testgen, test-review, test-gap)
 ├── schemas/         # JSON schemas (eval cases, SkillSpec)
-├── templates/       # Fallback eval 模板 (minimum-evals.json)
-├── tests/           # pytest 测试套件 — 402 个测试，与 engine/ 模块 1:1 对应
-└── results/         # 输出目录：{skill}-report.md, {skill}-result.json
+├── templates/       # Fallback eval template (minimum-evals.json)
+├── tests/           # pytest suite — 402 tests, mirrors engine/ modules 1:1
+└── results/         # Output: {skill}-report.md, {skill}-result.json
 ```
 
 ---
 
-## 9. 问题和局限
+## 9. Limitations & Caveats
 
-### 9.1 当前已知局限
+### 9.1 Known Limitations
 
-**L3 Step Adherence 粒度不足**
+**L3 Step Adherence granularity**
 
-当前 L3 只检查「步骤是否被覆盖」，不检查中间决策质量（工具调用是否正确、每轮交互是否合理）。这意味着一个 Skill 即使步骤被覆盖了，但中间过程质量差，L3 也不会反映出来。
+L3 only checks "are steps covered", not intermediate decision quality (tool call correctness, turn-level relevance). A Skill can pass L3 while producing poor intermediate decisions.
 
-**L4 稳定性需要更多采样**
+**L4 Stability needs more samples**
 
-当前单次 `--runs N` 计算 std dev。行业标准通常需要 5-10 次独立试验才能得到可靠的置信区间。单次运行的 std dev 可能不够稳定。
+Single-run `--runs N` computes std dev. Industry standard typically requires 5-10 independent trials for reliable confidence intervals.
 
-**LLM-as-judge 缺少校准**
+**LLM-as-judge lacks calibration**
 
-当前 LLM-as-judge 没有：
-- Position bias 处理（选项顺序可能影响判断）
-- 人工标注校准（golden eval set）
-- 具体失败原因（只给 binary 判断）
+Current LLM-as-judge lacks:
+- Position bias handling (option order may affect judgment)
+- Human-annotated calibration (golden eval set)
+- Specific failure reasons (binary judgment only)
 
-**Dialogue 评测依赖词重叠**
+**Dialogue evaluation relies on word overlap**
 
-多轮对话评测目前过度依赖词重叠而非语义理解，可能漏判或误判。
+Multi-turn dialogue evaluation currently over-relies on word overlap rather than semantic understanding, potentially missing or misclassifying quality issues.
 
-**安全扫描覆盖有限**
+**Security scan coverage is limited**
 
-当前 19 个安全探测模式，行业标准（如 SpecWeave）推荐 52+ 模式。可能存在未覆盖的攻击向量。
+19 probe patterns vs. industry recommendation of 52+ (e.g., SpecWeave). Some attack vectors may be uncovered.
 
-**单模型评测不够**
+**Single-model evaluation is insufficient**
 
-虽然支持多模型，但如果用户只用一个模型评测，无法检测模型依赖性。Skill 可能只对一个模型有效。
+While multi-model is supported, single-model evaluation cannot detect model dependencies. A Skill may only work on one model.
 
-### 9.2 使用注意事项
+### 9.2 Usage Notes
 
-- **评测需要 API Key**：Skill-Cert 依赖 LLM API 调用，需要配置至少一个模型的 API Key。评测过程会产生 API 费用。
-- **评测时间较长**：完整评测（含多模型、多轮对话）可能需要数十分钟到数小时，取决于 eval 数量和模型响应速度。
-- **结果受模型影响**：同一 Skill 在不同模型上结果可能不同，建议至少用 2 个不同 provider 的模型评测。
-- **评测不是 100% 准确**：自动化评测无法完全替代人工评审，尤其是复杂行为判断。建议将 Skill-Cert 作为辅助工具，结合人工评审使用。
-- **覆盖率 < 70% 会阻断**：如果 Skill 结构过于简单或模糊，可能无法生成足够测试，评测会被阻断。
-- **不要修改执行后的 eval 用例**：Phase 2 执行后 eval 用例被锁定，修改会破坏评测完整性。
+- **Requires API keys**: Skill-Cert depends on LLM API calls. At least one model's API key must be configured. Evaluation incurs API costs.
+- **Evaluation takes time**: Full evaluation (multi-model, dialogue) may take tens of minutes to hours, depending on eval count and model response speed.
+- **Results are model-dependent**: The same Skill may produce different results on different models. Use at least 2 models from different providers.
+- **Not 100% accurate**: Automated evaluation cannot fully replace human review, especially for complex behavior judgment. Use Skill-Cert as a supplement to human review.
+- **Coverage < 70% blocks evaluation**: If the Skill structure is too simple or vague, sufficient tests may not be generated, blocking evaluation.
+- **Do not modify eval cases after execution**: Eval cases are locked after Phase 2 execution. Modification breaks evaluation integrity.
 
-### 9.3 与行业对比的差距
+### 9.3 Industry Comparison Gaps
 
-| 维度 | 当前状态 | 行业参考 |
+| Dimension | Current State | Industry Reference |
 |---|---|---|
-| L1 触发粒度 | 二元触发判断 | CodeIF 的 50 子维度 |
-| L3 轨迹质量 | 缺少轮次级质量指标 | 需要 turn-level 评估 |
-| L4 统计方法 | 单次运行 std | 5-10 次试验置信区间 |
-| 不确定性检测 | 无 CMP/CME | 跨模型困惑度/熵 |
-| 校准数据集 | 无人工标注 golden set | 需要人工标注校准 |
+| L1 trigger granularity | Binary trigger judgment | CodeIF's 50 sub-dimensions |
+| L3 trajectory quality | Missing turn-level quality metrics | Turn-level evaluation needed |
+| L4 statistical method | Single-run std | 5-10 trial confidence intervals |
+| Uncertainty detection | No CMP/CME | Cross-model perplexity/entropy |
+| Calibration dataset | No human-annotated golden set | Human-annotated calibration needed |
 
 ---
 
