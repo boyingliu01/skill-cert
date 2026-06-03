@@ -95,7 +95,7 @@ class TestMetricsCalculator:
     # ── L2 Regression tests ──────────────────────────────────────
 
     def test_l2_with_greater_than_without_exact_delta(self):
-        """L2 regression: with > without produces exact positive delta."""
+        """L2 regression: with > without produces positive normalized gain."""
         calculator = MetricsCalculator()
 
         eval_results = [
@@ -109,8 +109,8 @@ class TestMetricsCalculator:
 
         # With avg: (0.85 + 0.95) / 2 = 0.90
         # Without avg: (0.50 + 0.60) / 2 = 0.55
-        # Delta: 0.90 - 0.55 = 0.35
-        assert l2_score == pytest.approx(0.35)
+        # Normalized gain: (0.90 - 0.55) / 0.55 = 0.636...
+        assert l2_score == pytest.approx(0.35 / 0.55)
 
     def test_l2_with_equal_to_without_delta_zero(self):
         """L2 regression: with == without produces delta of 0."""
@@ -128,8 +128,8 @@ class TestMetricsCalculator:
         # Both avgs are 0.70, delta = 0.0
         assert l2_score == pytest.approx(0.0)
 
-    def test_l2_with_less_than_without_returns_abs(self):
-        """L2 regression: with < without returns abs(delta) (magnitude, not negative)."""
+    def test_l2_with_less_than_without_returns_zero(self):
+        """L2 regression: with < without returns 0 (negative gain capped)."""
         calculator = MetricsCalculator()
 
         eval_results = [
@@ -143,8 +143,8 @@ class TestMetricsCalculator:
 
         # With avg: (0.40 + 0.50) / 2 = 0.45
         # Without avg: (0.80 + 0.90) / 2 = 0.85
-        # Delta: 0.45 - 0.85 = -0.40 → abs(-0.40) → min(1.0, 0.40) → max(0.0, 0.40) = 0.40
-        assert l2_score == pytest.approx(0.40)
+        # Normalized gain: (0.45 - 0.85) / 0.85 = -0.47 → capped to 0.0
+        assert l2_score == pytest.approx(0.0)
 
     def test_l2_empty_results_returns_zero(self):
         """L2 regression: empty results list returns 0.0."""
@@ -169,8 +169,8 @@ class TestMetricsCalculator:
 
         # With avg: (0.0 + 0.8) / 2 = 0.40
         # Without avg: (0.5 + 0.5) / 2 = 0.50
-        # Delta: 0.40 - 0.50 = -0.10 → abs = 0.10
-        assert l2_score == pytest.approx(0.10)
+        # Normalized gain: (0.40 - 0.50) / 0.50 = -0.20 → capped to 0.0
+        assert l2_score == pytest.approx(0.0)
 
     def test_calculate_l3_step_adherence(self):
         """Test L3 step adherence calculation."""

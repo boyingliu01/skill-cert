@@ -48,6 +48,7 @@ from .replay import run_replay_mode  # noqa: E402
 # ---------------------------------------------------------------------------
 # 2. Sub-module imports (these use from engine.xxx too, but also from ..)
 # ---------------------------------------------------------------------------
+from .setup import run_setup  # noqa: E402
 from .single import _setup_single_mode, run_single_mode  # noqa: E402
 from .stress import run_stress_mode  # noqa: E402
 
@@ -57,6 +58,7 @@ __all__ = [
     "run_replay_mode",
     "run_stress_mode",
     "run_multi_skill_mode",
+    "run_setup",
     "EXIT_PASS",
     "EXIT_ERROR",
     "EXIT_FAIL_WITH_CAVEATS",

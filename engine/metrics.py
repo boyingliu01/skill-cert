@@ -1,9 +1,21 @@
-"""Metrics module for skill-cert engine — calculates L1-L4 evaluation metrics."""
+"""Metrics module for skill-cert engine — calculates L1-L8 evaluation metrics."""
 
 from dataclasses import dataclass
 from typing import Any
 
 from engine.constants import TimingLimits
+from engine.envelope import EnvelopeChecker, EnvelopeResult
+
+
+class _DictTrace:
+    """Adapter to allow EnvelopeChecker.check() to work with dict traces."""
+
+    def __init__(self, data: dict):
+        self.steps = data.get("steps", 0)
+        self.tool_call_count = data.get("tool_calls", data.get("tool_call_count", 0))
+        self.tokens = data.get("tokens", 0)
+        self.time_ms = data.get("time_ms", 0)
+        self.cost = data.get("cost", 0.0)
 
 
 @dataclass
@@ -92,11 +104,11 @@ class MetricsCalculator:
         return passed_triggers / len(trigger_results) if trigger_results else 0.0
 
     def _calculate_l2_with_without_skill_delta(self, eval_results: list[dict[str, Any]]) -> float:
-        """L2: With/without skill delta — measures pass_rate improvement when skill is active.
+        """L2: With/without skill normalized gain.
 
-        Groups results by skill_used flag, computes average pass_rate for each group,
-        and returns the absolute delta capped to [0.0, 1.0]. When one group is missing
-        (no with-skill or no without-skill data), falls back to overall average pass_rate.
+        Formula: Δ = (with - without) / without (normalized gain)
+        When without=0, falls back to absolute delta.
+        Result capped to [0.0, 1.0].
         """
         with_skill_results = [r for r in eval_results if r.get('skill_used', True)]
         without_skill_results = [r for r in eval_results if not r.get('skill_used', True)]
@@ -110,10 +122,15 @@ class MetricsCalculator:
         with_skill_avg = sum(r.get('pass_rate', 0.0) for r in with_skill_results) / len(with_skill_results)
         without_skill_avg = sum(r.get('pass_rate', 0.0) for r in without_skill_results) / len(without_skill_results)
 
-        # Delta represents improvement when using skill
-        delta = with_skill_avg - without_skill_avg
-        # Normalize to 0-1 range (assuming max possible delta is 1.0)
-        return max(0.0, min(1.0, abs(delta)))
+        # Normalized gain: Δ = (with - without) / without
+        if without_skill_avg > 0:
+            normalized_gain = (with_skill_avg - without_skill_avg) / without_skill_avg
+        else:
+            # Fallback to absolute delta when baseline is 0
+            normalized_gain = with_skill_avg - without_skill_avg
+
+        # Cap to [0.0, 1.0] - negative gain treated as 0
+        return max(0.0, min(1.0, normalized_gain))
 
     def _calculate_l3_step_adherence(self, eval_results: list[dict[str, Any]], workflow_steps: list[str] | None = None) -> float:
         """L3: Step adherence — weighted combination of step_coverage, tool_call_accuracy, turn_relevance.
@@ -359,15 +376,28 @@ class MetricsCalculator:
             "execution_stability": stability_score
         }
 
-    def _calculate_l5_step_efficiency(self, eval_results) -> float | None:
+    def _calculate_l5_step_efficiency(self, eval_results, envelope: EnvelopeChecker | None = None) -> float | None:
+        """L5: Step efficiency — envelope check scoring.
+
+        Uses EnvelopeChecker to validate execution traces against limits.
+        Scoring: passed=1.0, 1 violation=0.7, 2+ violations=0.3
+        """
+        checker = envelope or EnvelopeChecker()
         violations = 0
         trace_found = False
         for r in eval_results:
             trace = r.get("trace")
             if trace is not None:
                 trace_found = True
-                if trace.get("violations"):
+                # Legacy format: dict with explicit "violations" list
+                if isinstance(trace, dict) and "violations" in trace:
                     violations += len(trace["violations"])
+                else:
+                    # Use EnvelopeChecker for object/dict traces
+                    trace_obj = trace if not isinstance(trace, dict) else _DictTrace(trace)
+                    result = checker.check(trace_obj)
+                    if not result.passed:
+                        violations += len(result.violations)
         if not trace_found:
             return None
         if violations == 0:

@@ -3,8 +3,37 @@
 import argparse
 import sys
 
+from importlib.metadata import version as get_version
+
+
+def _handle_setup(argv: list[str]) -> int:
+    """Handle 'skill-cert setup' subcommand.
+
+    Parses setup-specific arguments and delegates to run_setup().
+    Supports both interactive (no flags) and non-interactive modes.
+    """
+    from skill_cert.cli.setup import run_setup
+
+    setup_parser = argparse.ArgumentParser(
+        prog="skill-cert setup",
+        description="Configure LLM models for skill-cert evaluation.",
+    )
+    setup_parser.add_argument("--model-name", help="Model name (non-interactive mode)")
+    setup_parser.add_argument("--base-url", default="", help="API base URL (non-interactive mode)")
+    setup_parser.add_argument("--api-key", default="", help="API key (non-interactive mode)")
+    setup_parser.add_argument("--fallback-model", default="", help="Fallback model name")
+    setup_parser.add_argument("--skip-test", action="store_true", help="Skip connectivity test")
+
+    setup_args = setup_parser.parse_args(argv[1:])  # skip 'setup'
+    return run_setup(setup_args)
+
 
 def main():
+    # Intercept 'setup' subcommand before standard argparse
+    # (avoids 'error: the following arguments are required: --skill')
+    if len(sys.argv) > 1 and sys.argv[1] == "setup":
+        return _handle_setup(sys.argv[1:])
+
     # Lazy imports — use skill_cert.cli namespace so test patches intercept.
     from engine.constants import (  # noqa: F811
         ConcurrencyLimits,
@@ -26,13 +55,19 @@ def main():
         description="Skill-Cert: AI Skill Evaluation Engine",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
+Subcommands:
+  setup                          Configure LLM models interactively
+
 Examples:
+  skill-cert setup
+  skill-cert setup --model-name qwen3.6-plus --base-url https://api.example.com/v1 --api-key $KEY
   skill-cert --skill path/to/SKILL.md --models "claude=https://api.openai.com/v1,$KEY"
   skill-cert --skill path/to/SKILL.md --mode dialogue --max-turns 10
   skill-cert --skill path/to/SKILL.md --mode replay --session session.jsonl
   skill-cert --skill path/to/SKILL.md --models "m1=url,key|m2=url,key" --output ./results/
 """,
     )
+    parser.add_argument("--version", action="version", version=f"skill-cert {get_version('skill-cert')}")
     parser.add_argument("--skill", required=True, action="append", help="Path to SKILL.md file (can be repeated for --multi-skill)")
     parser.add_argument("--models", default="", help="Models: 'name=url,key[,fallback]|name2=url,key'")
     parser.add_argument("--output", default="./results", help="Output directory (default: ./results)")
@@ -49,6 +84,11 @@ Examples:
     parser.add_argument("--stress", action="store_true", help="Run scalability stress test")
     parser.add_argument("--stress-concurrency", type=int, default=ConcurrencyLimits.DEFAULT_STRESS_CONCURRENCY, help=f"Concurrency for stress test (default: {ConcurrencyLimits.DEFAULT_STRESS_CONCURRENCY})")
     parser.add_argument("--stress-evals", type=int, default=ConcurrencyLimits.DEFAULT_STRESS_EVALS, help=f"Number of evals for stress test (default: {ConcurrencyLimits.DEFAULT_STRESS_EVALS})")
+    # Schema & integration flags (REQ-P0-002, REQ-P0-004)
+    parser.add_argument("--strict-schema", action="store_true", help="Reject SKILL.md if required fields are missing (default: warning only)")
+    parser.add_argument("--with-skill-lab", action="store_true", help="Enable SkillLab integration for external evaluation")
+    parser.add_argument("--with-deepeval", action="store_true", help="Enable DeepEval integration for additional metrics")
+    parser.add_argument("--envelope", help="Custom envelope thresholds as JSON (e.g. '{\"max_steps\": 30}')")
 
     args = parser.parse_args()
 

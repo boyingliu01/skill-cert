@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-03
+
+Open issues resolution sprint — 9 issues fixed (3×P0 + 3×P1 + 3×P2).
+
+### CLI Enhancements
+- **#24** `--version` flag using importlib.metadata
+- **REQ-P0-002** `--strict-schema` flag — reject SKILL.md on required field violations (SchemaValidationError)
+- **REQ-P0-004** `--with-skill-lab`, `--with-deepeval` integration flags + `--envelope` custom thresholds
+
+### Metrics Improvements
+- **P1: L2 Normalized Gain** — Formula changed from `abs(with - without)` to `(with - without) / without`
+- **P1: L5 Envelope Wiring** — EnvelopeChecker now integrated into L5 step efficiency scoring
+
+### Dialogue Evaluation
+- **P1: LLM-as-Judge** — `judge_with_llm()` method with structured scoring, heuristic fallback
+- New `DialogueJudgeResult` class with per-dimension scores and reasoning
+
+### New Modules
+- **P2: Goal Change Testing** — `engine/goal_change.py` (AgentChangeBench style mid-turn adaptation)
+- **P2: Golden Dataset** — `engine/golden_dataset.py` (50+ human-anchored test cases)
+- **P2: SkillsBench Analysis** — `engine/skills_bench.py` (multi-skill cognitive overload detection)
+
 ## [0.2.0] — 2026-06-03
 
 Comprehensive engine optimization: coverage improvements, new metrics, security expansion, and calibration framework.

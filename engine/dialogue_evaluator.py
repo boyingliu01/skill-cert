@@ -3,6 +3,22 @@ from difflib import SequenceMatcher
 from typing import Any
 
 
+class DialogueJudgeResult:
+    """Result from LLM-as-Judge evaluation of dialogue."""
+
+    def __init__(
+        self,
+        score: float,
+        reasoning: str,
+        dimensions: dict[str, float] | None = None,
+        used_llm: bool = False,
+    ):
+        self.score = score
+        self.reasoning = reasoning
+        self.dimensions = dimensions or {}
+        self.used_llm = used_llm
+
+
 class DialogueEvaluator:
     """
     Evaluates multi-turn conversations using 5-dimension heuristic scoring
@@ -334,3 +350,88 @@ class DialogueEvaluator:
             return 'CAVEATS'
         else:
             return 'FAIL'
+
+    async def judge_with_llm(
+        self,
+        conversation: list[dict],
+        expected_outcomes: list[str] | None = None,
+    ) -> DialogueJudgeResult:
+        """Evaluate dialogue using LLM-as-Judge with structured scoring.
+
+        Uses judge_callback if available, otherwise falls back to heuristic.
+        Returns structured result with per-dimension scores and reasoning.
+        """
+        if not self.judge_callback:
+            # Fallback to heuristic
+            heuristic_result = await self.evaluate_conversation(conversation)
+            return DialogueJudgeResult(
+                score=heuristic_result['overall_score'],
+                reasoning="Heuristic fallback (no LLM judge configured)",
+                dimensions=heuristic_result['dimension_scores'],
+                used_llm=False,
+            )
+
+        # Build judge prompt
+        conversation_text = self._format_conversation(conversation)
+        expected_text = "\n".join(f"- {e}" for e in expected_outcomes) if expected_outcomes else "N/A"
+
+        judge_prompt = f"""Evaluate this dialogue for an AI skill assistant.
+
+## Conversation
+{conversation_text}
+
+## Expected Outcomes
+{expected_text}
+
+## Scoring Criteria
+Rate each dimension 0.0-1.0:
+- intent_recognition: Did the assistant understand user's intent?
+- guidance_quality: Did the assistant provide helpful guidance?
+- workflow_adherence: Did the assistant follow the expected workflow?
+- exception_handling: Were errors/edge cases handled gracefully?
+- output_quality: Was the response clear, structured, and complete?
+
+Respond in JSON format:
+{{"scores": {{"intent_recognition": 0.0, "guidance_quality": 0.0, "workflow_adherence": 0.0, "exception_handling": 0.0, "output_quality": 0.0}}, "reasoning": "brief explanation"}}
+"""
+
+        try:
+            result = await self.judge_callback(judge_prompt)
+            # Parse result (expect dict or JSON string)
+            if isinstance(result, str):
+                import json
+                result = json.loads(result)
+
+            scores = result.get('scores', {})
+            reasoning = result.get('reasoning', 'LLM judge completed evaluation')
+
+            # Calculate weighted overall
+            weights = {'intent_recognition': 0.25, 'guidance_quality': 0.20,
+                       'workflow_adherence': 0.25, 'exception_handling': 0.15, 'output_quality': 0.15}
+            overall = sum(scores.get(k, 0) * w for k, w in weights.items())
+
+            return DialogueJudgeResult(
+                score=min(1.0, max(0.0, overall)),
+                reasoning=reasoning,
+                dimensions=scores,
+                used_llm=True,
+            )
+        except Exception as e:
+            # Fallback on judge failure
+            heuristic_result = await self.evaluate_conversation(conversation)
+            return DialogueJudgeResult(
+                score=heuristic_result['overall_score'],
+                reasoning=f"LLM judge failed ({e}), using heuristic fallback",
+                dimensions=heuristic_result['dimension_scores'],
+                used_llm=False,
+            )
+
+    @staticmethod
+    def _format_conversation(conversation: list[dict]) -> str:
+        """Format conversation for judge prompt."""
+        lines = []
+        for msg in conversation:
+            role = msg.get('role', 'unknown').capitalize()
+            content = msg.get('content', '')
+            lines.append(f"{role}: {content}")
+        return "\n".join(lines)

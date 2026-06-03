@@ -45,6 +45,15 @@ class SchemaValidationResult:
         return len(self.violations) == 0
 
 
+class SchemaValidationError(Exception):
+    """Raised when strict schema validation fails."""
+
+    def __init__(self, violations: list[SchemaViolation]):
+        self.violations = violations
+        details = "; ".join(f"{v.field}: {v.reason}" for v in violations)
+        super().__init__(f"Schema validation failed: {details}")
+
+
 FENCED_CODE_BLOCK_RE = re.compile(r"```[\s\S]*?```")
 
 MAX_DESCRIPTION_LENGTH = 500
@@ -152,8 +161,13 @@ def _has_flow_language(text: str) -> bool:
     return False
 
 
-def parse_skill_md(file_path: str) -> dict:
-    """Parse a SKILL.md file and return structured SkillSpec as dict."""
+def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
+    """Parse a SKILL.md file and return structured SkillSpec as dict.
+
+    Args:
+        file_path: Path to SKILL.md file
+        strict_schema: If True, raise SchemaValidationError on required field violations
+    """
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError(f"SKILL.md not found: {file_path}")
@@ -205,6 +219,10 @@ def parse_skill_md(file_path: str) -> dict:
     # Step 5: Schema validation (REQ-P0-002)
     schema_result = _validate_schema(spec, content)
     spec.parse_confidence = max(0.0, spec.parse_confidence - schema_result.confidence_penalty)
+
+    # Strict mode: reject if required fields missing
+    if strict_schema and not schema_result.is_valid:
+        raise SchemaValidationError(schema_result.violations)
 
     # Step 6: Determine parse method
     if spec.parse_confidence >= 0.6 and frontmatter:
