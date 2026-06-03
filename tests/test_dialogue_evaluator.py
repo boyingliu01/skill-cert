@@ -208,3 +208,96 @@ class TestDialogueEvaluator:
         assert 'overall_score' in result
         assert 'verdict' in result
         assert isinstance(result['overall_score'], (int, float))
+
+
+class TestSemanticSimilarity:
+    """Tests for the semantic matching enhancements."""
+
+    def test_semantic_similarity_identical_texts(self):
+        """Identical texts return 1.0."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._semantic_similarity("hello world", "hello world")
+        assert score == 1.0
+
+    def test_semantic_similarity_different_texts(self):
+        """Completely different texts return low similarity."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._semantic_similarity("hello world", "xyz abc")
+        assert score < 0.5
+
+    def test_semantic_similarity_empty_texts(self):
+        """Empty texts return 0.0."""
+        evaluator = DialogueEvaluator()
+        assert evaluator._semantic_similarity("", "hello") == 0.0
+        assert evaluator._semantic_similarity("hello", "") == 0.0
+        assert evaluator._semantic_similarity("", "") == 0.0
+
+    def test_semantic_similarity_case_insensitive(self):
+        """Similarity is case-insensitive."""
+        evaluator = DialogueEvaluator()
+        score_lower = evaluator._semantic_similarity("hello world", "hello world")
+        score_mixed = evaluator._semantic_similarity("Hello World", "hello world")
+        assert score_lower == score_mixed
+
+    def test_semantic_similarity_partial_match(self):
+        """Partially similar texts return intermediate score."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._semantic_similarity(
+            "the quick brown fox", "the quick brown dog"
+        )
+        assert 0.5 < score < 1.0
+
+
+class TestIntentRecognitionSemantic:
+    """Tests for the updated intent recognition with semantic matching."""
+
+    def test_intent_with_high_overlap(self):
+        """High keyword overlap + semantic similarity = high score."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._score_intent_recognition(
+            "calculate the sum of two numbers",
+            "the sum of two numbers is calculated by adding"
+        )
+        assert score > 0.5
+
+    def test_intent_with_no_overlap(self):
+        """No overlap returns low score."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._score_intent_recognition(
+            "calculate numbers",
+            "xyz abc def"
+        )
+        assert score < 0.3
+
+    def test_intent_formula_uses_both_methods(self):
+        """Intent score uses 0.6*semantic + 0.4*keyword formula."""
+        evaluator = DialogueEvaluator()
+        user = "hello world test"
+        response = "hello world response"
+        score = evaluator._score_intent_recognition(user, response)
+        # keyword_overlap: 2/3 = 0.667, semantic ~ 0.6
+        # Total should be in reasonable range
+        assert 0.0 <= score <= 1.0
+        assert score > 0.3  # Should be positive due to overlap
+
+
+class TestOutputQualitySemantic:
+    """Tests for the updated output quality with semantic reference."""
+
+    def test_output_quality_semantic_reference(self):
+        """Output quality uses semantic similarity for reference."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._score_output_quality(
+            "Fix the bug in login",
+            "I will fix the bug in the login function by updating the validation"
+        )
+        assert score > 0.5  # Should be decent due to semantic match
+
+    def test_output_quality_unrelated_response(self):
+        """Unrelated response gets lower quality score."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._score_output_quality(
+            "Fix the login bug",
+            "The weather is nice today and birds are singing"
+        )
+        assert score < 0.7

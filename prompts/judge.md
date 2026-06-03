@@ -1,7 +1,7 @@
 ---
 name: judge
-version: 1.0.0
-updated: 2026-04-26
+version: 2.0.0
+updated: 2026-06-03
 ---
 
 # LLM-as-Judge Prompt
@@ -10,10 +10,15 @@ updated: 2026-04-26
 
 ## 评测要求
 
-1. 只回答 `true` 或 `false`
-2. 给出置信度（0.0 - 1.0）
-3. 用一句话说明理由
-4. temperature=0，确保确定性
+1. 回答 `passed`: true 或 false
+2. 给出 `confidence`（0.0 - 1.0）
+3. 用 `reasoning` 简要说明理由
+4. 对于每个未通过的断言，在 `failure_reasons` 中给出具体失败原因（含 assertion_name, failure_type, explanation）
+5. temperature=0，确保确定性
+
+## 断言列表
+
+{assertion_list}
 
 ## 评测任务
 
@@ -33,6 +38,24 @@ updated: 2026-04-26
 {
   "passed": true,
   "confidence": 0.95,
-  "reasoning": "输出包含了所有要求的步骤"
+  "reasoning": "输出包含了所有要求的步骤",
+  "failure_reasons": []
+}
+```
+
+### failure_reasons 格式示例
+
+```json
+{
+  "passed": false,
+  "confidence": 0.7,
+  "reasoning": "部分断言未通过",
+  "failure_reasons": [
+    {
+      "assertion_name": "contains_security_notes",
+      "failure_type": "missing_content",
+      "explanation": "输出中缺少安全说明章节"
+    }
+  ]
 }
 ```

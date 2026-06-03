@@ -328,3 +328,117 @@ class TestFullEvaluation:
         assert result.repetition_score == 1.0
         assert result.path_correctness_score == 1.0
         assert result.path_optimization_score == 1.0
+
+
+# ─── Test: evaluate_tool_call_correctness ───────────────────────────────────
+
+class TestToolCallCorrectness:
+
+    def test_with_expected_tools_all_match(self, evaluator: TrajectoryEvaluator):
+        """All tool calls match expected tools → 1.0."""
+        steps = [
+            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="search")),
+            TrajectoryStep(step_number=2, tool_call=ToolCall(tool_name="read")),
+        ]
+        score = evaluator.evaluate_tool_call_correctness(steps, ["search", "read"])
+        assert score == 1.0
+
+    def test_with_expected_tools_partial_match(self, evaluator: TrajectoryEvaluator):
+        """Some tool calls don't match → score < 1.0."""
+        steps = [
+            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="search")),
+            TrajectoryStep(step_number=2, tool_call=ToolCall(tool_name="unknown")),
+        ]
+        score = evaluator.evaluate_tool_call_correctness(steps, ["search"])
+        assert score == pytest.approx(0.5)
+
+    def test_without_expected_tools_uses_result(self, evaluator: TrajectoryEvaluator):
+        """Without expected_tools, checks result field."""
+        steps = [
+            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="search", result="ok")),
+            TrajectoryStep(step_number=2, tool_call=ToolCall(tool_name="write")),  # result is None
+        ]
+        score = evaluator.evaluate_tool_call_correctness(steps)
+        assert score == pytest.approx(0.5)
+
+    def test_empty_steps_returns_zero(self, evaluator: TrajectoryEvaluator):
+        """No tool calls → 0.0."""
+        steps = [TrajectoryStep(step_number=1, message="Hello")]
+        score = evaluator.evaluate_tool_call_correctness(steps)
+        assert score == 0.0
+
+    def test_empty_expected_tools_uses_result(self, evaluator: TrajectoryEvaluator):
+        """Empty expected_tools list falls back to result check."""
+        steps = [
+            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="a", result="ok")),
+        ]
+        score = evaluator.evaluate_tool_call_correctness(steps, [])
+        assert score == 1.0
+
+
+# ─── Test: turn_relevance ──────────────────────────────────────────────────
+
+class TestTurnRelevance:
+
+    def test_all_relevant_steps(self, evaluator: TrajectoryEvaluator):
+        """All steps have tool or message → 1.0."""
+        steps = [
+            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="search")),
+            TrajectoryStep(step_number=2, message="thinking"),
+        ]
+        score = evaluator._calculate_turn_relevance(steps)
+        assert score == 1.0
+
+    def test_some_irrelevant_steps(self, evaluator: TrajectoryEvaluator):
+        """Steps with neither tool nor message are irrelevant."""
+        steps = [
+            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="search")),
+            TrajectoryStep(step_number=2),  # no tool, no message
+        ]
+        score = evaluator._calculate_turn_relevance(steps)
+        assert score == pytest.approx(0.5)
+
+    def test_empty_steps_returns_zero(self, evaluator: TrajectoryEvaluator):
+        """Empty steps → 0.0."""
+        score = evaluator._calculate_turn_relevance([])
+        assert score == 0.0
+
+    def test_whitespace_only_message_is_irrelevant(self, evaluator: TrajectoryEvaluator):
+        """Whitespace-only message counts as irrelevant."""
+        steps = [
+            TrajectoryStep(step_number=1, message="   "),
+        ]
+        score = evaluator._calculate_turn_relevance(steps)
+        assert score == 0.0
+
+
+# ─── Test: TrajectoryScore new fields ─────────────────────────────────────
+
+class TestTrajectoryScoreNewFields:
+
+    def test_evaluate_populates_tool_call_accuracy(self, evaluator: TrajectoryEvaluator):
+        """evaluate() populates tool_call_accuracy_score."""
+        steps = [
+            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="search", result="ok")),
+        ]
+        result = evaluator.evaluate(steps)
+        assert result.tool_call_accuracy_score == 1.0
+
+    def test_evaluate_populates_turn_relevance(self, evaluator: TrajectoryEvaluator):
+        """evaluate() populates turn_relevance_score."""
+        steps = [
+            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="search")),
+            TrajectoryStep(step_number=2, message="hello"),
+        ]
+        result = evaluator.evaluate(steps)
+        assert result.turn_relevance_score == 1.0
+
+    def test_evaluate_with_expected_tools_accuracy(self, evaluator: TrajectoryEvaluator):
+        """evaluate() uses expected path for tool_call_accuracy."""
+        steps = [
+            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="search")),
+            TrajectoryStep(step_number=2, tool_call=ToolCall(tool_name="unknown")),
+        ]
+        expected = ExpectedPath(tool_names=["search", "read"])
+        result = evaluator.evaluate(steps, expected)
+        assert result.tool_call_accuracy_score == pytest.approx(0.5)

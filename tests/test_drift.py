@@ -262,3 +262,89 @@ class TestDriftDetector:
             DriftResult(model_a="a", model_b="c", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.4, severity="high", verdict="FAIL")
         ]
         assert detector._aggregate_verdict(results_with_fail) == "FAIL"
+
+
+class TestCrossModelUncertainty:
+    """Tests for CMP and CME metrics."""
+
+    def test_calculate_cmp_empty(self):
+        """Empty drift results → agreement_rate = 1.0."""
+        detector = DriftDetector()
+        cmp = detector.calculate_cmp([])
+        assert cmp["agreement_rate"] == 1.0
+        assert cmp["pairwise_agreements"] == []
+
+    def test_calculate_cmp_all_agree(self):
+        """All pairs have low severity → agreement_rate = 1.0."""
+        detector = DriftDetector()
+        results = [
+            DriftResult("a", "b", 0.8, 0.85, 0.05, "none", "PASS"),
+            DriftResult("a", "c", 0.8, 0.75, 0.05, "low", "PASS"),
+        ]
+        cmp = detector.calculate_cmp(results)
+        assert cmp["agreement_rate"] == 1.0
+        assert len(cmp["pairwise_agreements"]) == 2
+        assert all(p["agrees"] for p in cmp["pairwise_agreements"])
+
+    def test_calculate_cmp_partial_agreement(self):
+        """Some pairs disagree → agreement_rate < 1.0."""
+        detector = DriftDetector()
+        results = [
+            DriftResult("a", "b", 0.8, 0.85, 0.05, "none", "PASS"),
+            DriftResult("a", "c", 0.8, 0.3, 0.5, "high", "FAIL"),
+        ]
+        cmp = detector.calculate_cmp(results)
+        assert cmp["agreement_rate"] == 0.5
+
+    def test_calculate_cme_empty(self):
+        """Empty pass rates → all zeros."""
+        detector = DriftDetector()
+        cme = detector.calculate_cme([])
+        assert cme["coefficient_of_variation"] == 0.0
+        assert cme["max_min_spread"] == 0.0
+        assert cme["mean_pass_rate"] == 0.0
+
+    def test_calculate_cme_single_value(self):
+        """Single value → zero spread and CV."""
+        detector = DriftDetector()
+        cme = detector.calculate_cme([0.8])
+        assert cme["coefficient_of_variation"] == 0.0
+        assert cme["max_min_spread"] == 0.0
+        assert cme["mean_pass_rate"] == 0.8
+
+    def test_calculate_cme_uniform_values(self):
+        """All same values → zero CV and spread."""
+        detector = DriftDetector()
+        cme = detector.calculate_cme([0.8, 0.8, 0.8])
+        assert cme["coefficient_of_variation"] == 0.0
+        assert cme["max_min_spread"] == 0.0
+        assert cme["mean_pass_rate"] == 0.8
+
+    def test_calculate_cme_variable_values(self):
+        """Variable values → non-zero CV and spread."""
+        detector = DriftDetector()
+        cme = detector.calculate_cme([0.6, 0.8, 0.9])
+        assert cme["coefficient_of_variation"] > 0
+        assert cme["max_min_spread"] == 0.3
+        assert cme["mean_pass_rate"] > 0.7
+
+    def test_calculate_cme_zero_mean(self):
+        """Zero mean → CV = 0.0."""
+        detector = DriftDetector()
+        cme = detector.calculate_cme([0.0, 0.0])
+        assert cme["coefficient_of_variation"] == 0.0
+
+    def test_aggregate_report_includes_uncertainty(self):
+        """aggregate_drift_report includes cross_model_uncertainty section."""
+        detector = DriftDetector()
+        results = [
+            DriftResult("a", "b", 0.8, 0.85, 0.05, "none", "PASS"),
+            DriftResult("a", "c", 0.8, 0.6, 0.2, "low", "PASS"),
+        ]
+        report = detector.aggregate_drift_report(results)
+        assert "cross_model_uncertainty" in report
+        cmp = report["cross_model_uncertainty"]["cmp_agreement_rate"]
+        cme = report["cross_model_uncertainty"]["cme_variation"]
+        assert "agreement_rate" in cmp
+        assert "coefficient_of_variation" in cme
+        assert "max_min_spread" in cme

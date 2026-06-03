@@ -176,6 +176,14 @@ class DriftDetector:
         # Drift is considered detected if there's any moderate or high severity
         drift_detected = highest_severity in ["moderate", "high"]
 
+        # Cross-model uncertainty metrics
+        pass_rates = []
+        for r in drift_results:
+            pass_rates.extend([r.pass_rate_a, r.pass_rate_b])
+        unique_rates = list(set(pass_rates))
+        cmp = self.calculate_cmp(drift_results)
+        cme = self.calculate_cme(unique_rates)
+
         return {
             "drift_detected": drift_detected,
             "highest_severity": highest_severity,
@@ -184,6 +192,10 @@ class DriftDetector:
             "model_pairs_compared": len(drift_results),
             "severity_distribution": severity_counts,
             "overall_verdict": overall_verdict,
+            "cross_model_uncertainty": {
+                "cmp_agreement_rate": cmp,
+                "cme_variation": cme,
+            },
             "summary": f"Drift analysis completed. Highest severity: {highest_severity}. Average variance: {avg_variance:.3f}"
         }
 
@@ -202,3 +214,66 @@ class DriftDetector:
             return "PASS_WITH_CAVEATS"
         else:
             return "PASS"
+
+    def calculate_cmp(self, drift_results: list[DriftResult]) -> dict[str, Any]:
+        """Calculate Cross-Model Performance (CMP) metrics.
+
+        CMP measures agreement between models using:
+        - agreement_rate: proportion of model pairs with severity <= 'low'
+        - pairwise_agreements: list of per-pair agreement details
+
+        Returns dict with agreement_rate and pairwise details.
+        """
+        if not drift_results:
+            return {"agreement_rate": 1.0, "pairwise_agreements": []}
+
+        agreeing = sum(
+            1 for r in drift_results if r.severity in ("none", "low")
+        )
+        agreement_rate = agreeing / len(drift_results)
+
+        pairwise = []
+        for r in drift_results:
+            pairwise.append({
+                "model_a": r.model_a,
+                "model_b": r.model_b,
+                "agrees": r.severity in ("none", "low"),
+                "variance": r.variance,
+            })
+
+        return {
+            "agreement_rate": round(agreement_rate, 4),
+            "pairwise_agreements": pairwise,
+        }
+
+    def calculate_cme(self, pass_rates: list[float]) -> dict[str, Any]:
+        """Calculate Cross-Model Entropy (CME) metrics.
+
+        CME measures variability across models using:
+        - coefficient_of_variation (CV): std/mean
+        - max_min_spread: max(pass_rates) - min(pass_rates)
+        - mean_pass_rate: average of all pass rates
+
+        Returns dict with CV, spread, and mean.
+        """
+        if not pass_rates:
+            return {"coefficient_of_variation": 0.0, "max_min_spread": 0.0, "mean_pass_rate": 0.0}
+
+        n = len(pass_rates)
+        mean_pr = sum(pass_rates) / n
+        max_pr = max(pass_rates)
+        min_pr = min(pass_rates)
+        spread = max_pr - min_pr
+
+        if n < 2 or mean_pr == 0:
+            cv = 0.0
+        else:
+            variance = sum((x - mean_pr) ** 2 for x in pass_rates) / n
+            std_dev = variance ** 0.5
+            cv = std_dev / mean_pr
+
+        return {
+            "coefficient_of_variation": round(cv, 4),
+            "max_min_spread": round(spread, 4),
+            "mean_pass_rate": round(mean_pr, 4),
+        }

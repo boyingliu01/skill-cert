@@ -93,3 +93,58 @@ def test_overhead_calculation():
     without_avg = 4.0
     expected_overhead = ((with_avg - without_avg) / without_avg) * 100
     assert l8["overhead_pct"] == pytest.approx(expected_overhead, rel=0.01)
+
+
+def test_latency_only_with_skill():
+    """L8 works when only with-skill times exist."""
+    calc = MetricsCalculator()
+    results = [
+        make_result(skill_used=True, exec_time=5.0),
+        make_result(skill_used=True, exec_time=7.0),
+    ]
+    l8 = calc._calculate_l8_latency_metrics(results)
+    assert l8 is not None
+    assert "with_skill" in l8
+    assert "without_skill" not in l8
+    assert "overhead_pct" not in l8
+
+
+def test_latency_only_without_skill():
+    """L8 works when only without-skill times exist."""
+    calc = MetricsCalculator()
+    results = [
+        make_result(skill_used=False, exec_time=3.0),
+        make_result(skill_used=False, exec_time=4.0),
+    ]
+    l8 = calc._calculate_l8_latency_metrics(results)
+    assert l8 is not None
+    assert "without_skill" in l8
+    assert "with_skill" not in l8
+    assert "overhead_pct" not in l8
+
+
+def test_latency_single_time_p50_p95_p99():
+    """_compute_latency_stats with single element list."""
+    calc = MetricsCalculator()
+    stats = calc._compute_latency_stats([5.0])
+    assert stats["p50"] == 5.0
+    assert stats["p95"] == 5.0
+    assert stats["p99"] == 5.0
+    assert stats["count"] == 1
+    assert stats["min"] == 5.0
+    assert stats["max"] == 5.0
+
+
+def test_latency_zero_exec_time_ignored():
+    """Execution time of 0 is filtered out."""
+    calc = MetricsCalculator()
+    results = [
+        make_result(skill_used=True, exec_time=0),
+        make_result(skill_used=True, exec_time=5.0),
+        make_result(skill_used=False, exec_time=0),
+    ]
+    l8 = calc._calculate_l8_latency_metrics(results)
+    assert l8 is not None
+    assert "with_skill" in l8
+    assert l8["with_skill"]["count"] == 1
+    assert "without_skill" not in l8

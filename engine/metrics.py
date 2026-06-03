@@ -60,6 +60,8 @@ class MetricsCalculator:
                 "l2_details": self._get_l2_details(eval_results),
                 "l3_details": self._get_l3_details(eval_results, workflow_steps),
                 "l4_details": self._get_l4_details(eval_results),
+                "l5_details": self._get_l5_details(eval_results),
+                "l6_details": self._get_l6_details(eval_results),
                 "l8_latency_details": l8 if l8 else {},
             }
         }
@@ -114,7 +116,11 @@ class MetricsCalculator:
         return max(0.0, min(1.0, abs(delta)))
 
     def _calculate_l3_step_adherence(self, eval_results: list[dict[str, Any]], workflow_steps: list[str] | None = None) -> float:
-        """L3: Step adherence — real workflow_step coverage, fallback to pass_rate proxy."""
+        """L3: Step adherence — weighted combination of step_coverage, tool_call_accuracy, turn_relevance.
+
+        Formula: 0.5 * step_coverage + 0.3 * tool_call_accuracy + 0.2 * turn_relevance
+        Falls back to step_coverage only when turn-level data is unavailable (backward compatible).
+        """
         if not eval_results:
             return 0.0
 
@@ -122,24 +128,82 @@ class MetricsCalculator:
         if not passing_evals:
             return 0.0
 
-        # Check if workflow_step info is available on results AND total steps from spec is provided
+        # Calculate base step_coverage
+        step_coverage = self._calculate_step_coverage(passing_evals, workflow_steps)
+
+        # Check for turn-level data
+        tool_call_accuracy = self._calculate_tool_call_accuracy(passing_evals)
+        turn_relevance = self._calculate_turn_relevance(passing_evals)
+
+        if tool_call_accuracy is not None and turn_relevance is not None:
+            return 0.5 * step_coverage + 0.3 * tool_call_accuracy + 0.2 * turn_relevance
+
+        # Fallback: step_coverage only (backward compatible)
+        return step_coverage
+
+    def _calculate_step_coverage(self, passing_evals: list[dict[str, Any]], workflow_steps: list[str] | None = None) -> float:
+        """Calculate step coverage from passing evaluations."""
         has_workflow_step_info = any(r.get('workflow_step') is not None for r in passing_evals)
         if has_workflow_step_info and workflow_steps is not None:
             total_steps = len(workflow_steps)
             if total_steps == 0:
                 return 0.0
-
-            # Real step coverage: unique_covered_steps / total_workflow_steps
             covered_steps: set[str] = set()
             for r in passing_evals:
                 ws = r.get('workflow_step')
                 if ws:
                     covered_steps.add(ws)
-
             return len(covered_steps) / total_steps
         else:
-            # Fall back to pass_rate proxy (backward compatible)
             return sum(r.get('pass_rate', 0.0) for r in passing_evals) / len(passing_evals)
+
+    def _calculate_tool_call_accuracy(self, passing_evals: list[dict[str, Any]]) -> float | None:
+        """Calculate tool call accuracy from trajectory data in eval results.
+
+        Returns None if no trajectory data is available.
+        """
+        trajectory_results = [r for r in passing_evals if r.get('tool_calls') is not None]
+        if not trajectory_results:
+            return None
+
+        total_calls = 0
+        correct_calls = 0
+        for r in trajectory_results:
+            calls = r.get('tool_calls', [])
+            expected_tools = r.get('expected_tools', [])
+            for call in calls:
+                total_calls += 1
+                if expected_tools:
+                    if call.get('tool_name') in expected_tools:
+                        correct_calls += 1
+                elif call.get('success', False):
+                    correct_calls += 1
+
+        if total_calls == 0:
+            return None
+        return correct_calls / total_calls
+
+    def _calculate_turn_relevance(self, passing_evals: list[dict[str, Any]]) -> float | None:
+        """Calculate turn relevance from trajectory data in eval results.
+
+        Returns None if no trajectory data is available.
+        """
+        trajectory_results = [r for r in passing_evals if r.get('turns') is not None]
+        if not trajectory_results:
+            return None
+
+        total_turns = 0
+        relevant_turns = 0
+        for r in trajectory_results:
+            turns = r.get('turns', [])
+            for turn in turns:
+                total_turns += 1
+                if turn.get('has_tool_call') or (turn.get('message') and turn['message'].strip()):
+                    relevant_turns += 1
+
+        if total_turns == 0:
+            return None
+        return relevant_turns / total_turns
 
     def _calculate_l4_execution_stability(self, eval_results: list[dict[str, Any]]) -> float:
         """L4: Execution stability (std of pass_rate across multiple runs, using ONLY deterministic assertions)."""
@@ -218,12 +282,24 @@ class MetricsCalculator:
         total_evals = len(eval_results)
         l3_value = self._calculate_l3_step_adherence(eval_results, workflow_steps)
 
+        # Calculate sub-metrics
+        step_coverage = self._calculate_step_coverage(passing_evals, workflow_steps) if passing_evals else 0.0
+        tool_call_accuracy = self._calculate_tool_call_accuracy(passing_evals)
+        turn_relevance = self._calculate_turn_relevance(passing_evals)
+
         details: dict[str, Any] = {
             "total_evaluations": total_evals,
             "passing_evaluations": len(passing_evals),
             "step_coverage_ratio": len(passing_evals) / total_evals if total_evals > 0 else 0.0,
             "method": "pass_rate_proxy",
+            "step_coverage": step_coverage,
+            "tool_call_accuracy": tool_call_accuracy,
+            "turn_relevance": turn_relevance,
         }
+
+        if tool_call_accuracy is not None and turn_relevance is not None:
+            details["method"] = "weighted_composite"
+            details["weights"] = {"step_coverage": 0.5, "tool_call_accuracy": 0.3, "turn_relevance": 0.2}
 
         # Add workflow step coverage details when available
         has_workflow_step_info = any(r.get('workflow_step') is not None for r in passing_evals)
@@ -233,7 +309,8 @@ class MetricsCalculator:
                 ws = r.get('workflow_step')
                 if ws:
                     covered_steps.add(ws)
-            details["method"] = "workflow_step_coverage"
+            if details["method"] == "pass_rate_proxy":
+                details["method"] = "workflow_step_coverage"
             details["workflow_step_coverage"] = l3_value
             details["covered_workflow_steps"] = sorted(covered_steps)
             details["total_workflow_steps"] = len(workflow_steps)

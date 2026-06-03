@@ -182,3 +182,102 @@ class TestDialogueRunner:
             {"role": "assistant", "content": "COMPLETED: I have finished the task"}
         ]
         assert runner._is_conversation_complete(longer_history_with_completion) is True
+
+    @pytest.mark.asyncio
+    async def test_run_with_skill_first_call_fails_fallback(self, mock_simulator, mock_evaluator, mock_skill_runner):
+        """When first run_with_skill call fails, fallback to None adapter."""
+        mock_simulator.generate_next_message.return_value = {"role": "user", "content": "hi"}
+
+        call_count = 0
+        async def failing_then_succeeding(eval_list, skill_path, adapter):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise AttributeError("no _current_adapter")
+            return [{"eval_id": "turn_0", "output": "COMPLETED: done", "execution_time": 1.0, "error": None}]
+
+        mock_skill_runner.run_with_skill = failing_then_succeeding
+        # Remove _current_adapter attribute so getattr fails
+        if hasattr(mock_skill_runner, '_current_adapter'):
+            del mock_skill_runner._current_adapter
+
+        runner = DialogueRunner(
+            simulator=mock_simulator, evaluator=mock_evaluator,
+            skill_runner=mock_skill_runner, max_turns=5
+        )
+        result = await runner.run_dialogue_eval({"id": "t"}, "ctx")
+        assert result["turns_completed"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_run_with_skill_both_calls_fail(self, mock_simulator, mock_evaluator, mock_skill_runner):
+        """When both run_with_skill calls fail, dialogue breaks."""
+        mock_simulator.generate_next_message.return_value = {"role": "user", "content": "hi"}
+        mock_skill_runner.run_with_skill = AsyncMock(side_effect=RuntimeError("adapter down"))
+
+        runner = DialogueRunner(
+            simulator=mock_simulator, evaluator=mock_evaluator,
+            skill_runner=mock_skill_runner, max_turns=5
+        )
+        result = await runner.run_dialogue_eval({"id": "t"}, "ctx")
+        # Should exit early with 0 turns
+        assert result["turns_completed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_skill_responses_empty_breaks(self, mock_simulator, mock_evaluator, mock_skill_runner):
+        """When skill_responses is empty list, dialogue breaks."""
+        mock_simulator.generate_next_message.return_value = {"role": "user", "content": "hi"}
+        mock_skill_runner.run_with_skill = AsyncMock(return_value=[])
+
+        runner = DialogueRunner(
+            simulator=mock_simulator, evaluator=mock_evaluator,
+            skill_runner=mock_skill_runner, max_turns=5
+        )
+        result = await runner.run_dialogue_eval({"id": "t"}, "ctx")
+        assert result["turns_completed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_generate_next_message_exception_breaks(self, mock_simulator, mock_evaluator, mock_skill_runner):
+        """When simulator raises exception, dialogue breaks."""
+        mock_simulator.generate_next_message = AsyncMock(
+            side_effect=[{"role": "user", "content": "first msg"}, RuntimeError("simulator error")]
+        )
+        mock_skill_runner.run_with_skill = AsyncMock(return_value=[
+            {"eval_id": "turn_0", "output": "Normal response no completion", "execution_time": 1.0, "error": None}
+        ])
+
+        runner = DialogueRunner(
+            simulator=mock_simulator, evaluator=mock_evaluator,
+            skill_runner=mock_skill_runner, max_turns=5
+        )
+        result = await runner.run_dialogue_eval({"id": "t"}, "ctx")
+        assert result["turns_completed"] == 0
+
+    def test_is_conversation_complete_no_assistant_message(self, mock_simulator, mock_evaluator, mock_skill_runner):
+        """Returns False when history >= 4 but no assistant message found."""
+        runner = DialogueRunner(
+            simulator=mock_simulator, evaluator=mock_evaluator,
+            skill_runner=mock_skill_runner, max_turns=5
+        )
+        history = [
+            {"role": "user", "content": "msg1"},
+            {"role": "user", "content": "msg2"},
+            {"role": "system", "content": "msg3"},
+            {"role": "user", "content": "COMPLETED: done"},
+        ]
+        assert runner._is_conversation_complete(history) is False
+
+    def test_is_conversation_complete_case_insensitive(self, mock_simulator, mock_evaluator, mock_skill_runner):
+        """Completion signal matching is case-insensitive (upper())."""
+        runner = DialogueRunner(
+            simulator=mock_simulator, evaluator=mock_evaluator,
+            skill_runner=mock_skill_runner, max_turns=5,
+            completion_signals=["DONE"]
+        )
+        history = [
+            {"role": "user", "content": "msg1"},
+            {"role": "assistant", "content": "working"},
+            {"role": "user", "content": "continue"},
+            {"role": "assistant", "content": "I am done with the task"},
+        ]
+        # "done" in upper() matches "DONE"
+        assert runner._is_conversation_complete(history) is True

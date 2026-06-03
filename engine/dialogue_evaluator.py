@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from difflib import SequenceMatcher
 from typing import Any
 
 
@@ -96,18 +97,33 @@ class DialogueEvaluator:
                 i += 1
         return pairs
 
+    def _semantic_similarity(self, text_a: str, text_b: str) -> float:
+        """Calculate semantic similarity between two texts.
+
+        Uses difflib.SequenceMatcher for zero-dependency similarity.
+        Returns a value in [0.0, 1.0].
+        """
+        if not text_a or not text_b:
+            return 0.0
+        return SequenceMatcher(None, text_a.lower(), text_b.lower()).ratio()
+
     def _score_intent_recognition(self, user_msg: str, skill_response: str) -> float:
         """
         Score how well the skill recognizes and addresses the user's intent
-        using word overlap and keyword analysis.
+        using combined semantic similarity and keyword overlap.
+
+        Formula: 0.6 * semantic_similarity + 0.4 * keyword_overlap
         """
+        # Keyword overlap (original method)
         user_words = set(user_msg.lower().split())
         response_words = set(skill_response.lower().split())
-
         overlap = len(user_words.intersection(response_words))
-        max_len = max(len(user_words), 1)
+        keyword_overlap = min(overlap / max(len(user_words), 1), 1.0)
 
-        return min(overlap / max_len, 1.0)
+        # Semantic similarity (new method)
+        semantic_sim = self._semantic_similarity(user_msg, skill_response)
+
+        return 0.6 * semantic_sim + 0.4 * keyword_overlap
 
     def _score_guidance_quality(self, user_msg: str, skill_response: str) -> float:
         """
@@ -217,10 +233,8 @@ class DialogueEvaluator:
         word_count_ratio = min(len(skill_response.split()) / max(len(user_msg.split()), 1), 5.0) / 5.0
         completeness_factor = min(1.0, word_count_ratio + 0.5)  # Balance brevity and thoroughness
 
-        # Check for specific references to user content
-        user_words = set(user_msg.lower().split()[:10])  # Limit to first 10 words for efficiency
-        response_words = set(response_lower.split())
-        reference_factor = len(user_words.intersection(response_words)) / max(len(user_words), 1)
+        # Use semantic similarity for reference_factor (improved)
+        reference_factor = self._semantic_similarity(user_msg, skill_response)
 
         # Base quality score
         quality_score = 0.5  # Base level

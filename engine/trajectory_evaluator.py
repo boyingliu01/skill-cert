@@ -12,6 +12,7 @@ class ToolCall(BaseModel):
     tool_name: str
     params: dict[str, Any] = Field(default_factory=dict)
     timestamp: float = 0.0
+    result: str | None = None
 
 
 class TrajectoryStep(BaseModel):
@@ -40,6 +41,12 @@ class TrajectoryScore(BaseModel):
     )
     path_optimization_score: float = Field(
         ge=0.0, le=1.0, description="1.0 = no unnecessary calls"
+    )
+    tool_call_accuracy_score: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="1.0 = all tool calls correct"
+    )
+    turn_relevance_score: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="1.0 = all turns relevant"
     )
     repeated_calls: list[str] = Field(
         default_factory=list, description="List of repeated tool names"
@@ -126,6 +133,59 @@ class TrajectoryEvaluator:
         score = 1.0 - (len(unnecessary) / total)
         return max(0.0, score), unnecessary
 
+    def evaluate_tool_call_correctness(
+        self,
+        steps: list[TrajectoryStep],
+        expected_tools: list[str] | None = None,
+    ) -> float:
+        """Evaluate tool call correctness.
+
+        If expected_tools is provided, checks whether each tool call matches
+        an expected tool name. Otherwise, checks whether each tool call has
+        a non-empty result (indicating success).
+
+        Returns a score in [0.0, 1.0].
+        """
+        tool_steps = [s for s in steps if s.tool_call is not None]
+        if not tool_steps:
+            return 0.0
+
+        if expected_tools is not None and len(expected_tools) > 0:
+            expected_set = set(expected_tools)
+            correct = sum(
+                1 for s in tool_steps
+                if s.tool_call is not None and s.tool_call.tool_name in expected_set
+            )
+            return correct / len(tool_steps)
+
+        # Fallback: check if tool calls have results (success indicator)
+        with_results = sum(
+            1 for s in tool_steps
+            if s.tool_call is not None and s.tool_call.result is not None
+        )
+        return with_results / len(tool_steps)
+
+    def _calculate_turn_relevance(
+        self, steps: list[TrajectoryStep]
+    ) -> float:
+        """Calculate turn relevance score.
+
+        A turn is relevant if it either has a tool call or a non-empty message.
+        Steps with neither are considered irrelevant.
+
+        Returns a score in [0.0, 1.0].
+        """
+        if not steps:
+            return 0.0
+
+        relevant = 0
+        for step in steps:
+            if step.tool_call is not None:
+                relevant += 1
+            elif step.message and step.message.strip():
+                relevant += 1
+        return relevant / len(steps)
+
     def evaluate(
         self,
         steps: list[TrajectoryStep],
@@ -146,11 +206,18 @@ class TrajectoryEvaluator:
             rep_score * 0.4 + path_score * 0.35 + opt_score * 0.25
         )
 
+        # Turn-level metrics
+        expected_tools = expected.tool_names if expected else None
+        tca_score = self.evaluate_tool_call_correctness(steps, expected_tools)
+        turn_rel = self._calculate_turn_relevance(steps)
+
         return TrajectoryScore(
             total_score=round(total, 3),
             repetition_score=rep_score,
             path_correctness_score=path_score,
             path_optimization_score=opt_score,
+            tool_call_accuracy_score=round(tca_score, 3),
+            turn_relevance_score=round(turn_rel, 3),
             repeated_calls=repeated,
             missing_expected=missing,
             unnecessary_calls=unnecessary,

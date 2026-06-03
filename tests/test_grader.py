@@ -1,10 +1,11 @@
 """Tests for engine/grader.py — evaluation grading functionality."""
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
 
-from engine.grader import AssertionResult, EvalAssertion, EvalCase, Grader
+from engine.grader import AssertionResult, EvalAssertion, EvalCase, Grader, JudgeResult
 
 
 class TestGrader:
@@ -390,6 +391,161 @@ def test_llm_judge_with_low_confidence():
     # The judge confidence is calculated based on passed ratio, not individual assertion confidence
     assert judge_result.passed is True  # Still passed since ratio is 100%
     assert judge_result.confidence == 1.0  # Because 1/1 assertions passed (100%)
+
+
+# ── JudgeResult v2 fields ─────────────────────────────
+
+def test_judge_result_v2_fields():
+    """JudgeResult includes failure_reasons, position_sensitive, debias_runs."""
+    jr = JudgeResult(
+        passed=False,
+        confidence=0.6,
+        reasoning="Partial pass",
+        failure_reasons=[
+            {"assertion_name": "contains_x", "failure_type": "missing", "explanation": "Missing X"}
+        ],
+        position_sensitive=True,
+        debias_runs=2,
+    )
+    assert jr.failure_reasons[0]["assertion_name"] == "contains_x"
+    assert jr.position_sensitive is True
+    assert jr.debias_runs == 2
+    assert jr.judge_version == "2.0"
+
+
+def test_judge_result_defaults():
+    """JudgeResult defaults: empty failure_reasons, not sensitive, 1 debias run."""
+    jr = JudgeResult(passed=True, confidence=0.9)
+    assert jr.failure_reasons == []
+    assert jr.position_sensitive is False
+    assert jr.debias_runs == 1
+
+
+# ── _format_assertions_for_judge ──────────────────────
+
+def test_format_assertions_for_judge():
+    """_format_assertions_for_judge formats PASS/FAIL lines."""
+    grader = Grader()
+    results = [
+        AssertionResult(
+            assertion=EvalAssertion(name="check_a", type="contains", value="a", weight=3),
+            passed=True, confidence=1.0, reason="Found"
+        ),
+        AssertionResult(
+            assertion=EvalAssertion(name="check_b", type="contains", value="b", weight=1),
+            passed=False, confidence=1.0, reason="Not found"
+        ),
+    ]
+    text = grader._format_assertions_for_judge(results)
+    assert "[PASS] check_a" in text
+    assert "[FAIL] check_b" in text
+    assert "weight=3" in text
+
+
+def test_format_assertions_empty():
+    """_format_assertions_for_judge with no assertions."""
+    grader = Grader()
+    assert grader._format_assertions_for_judge([]) == "(no assertions)"
+
+
+# ── _debias_position ───────────────────────────────────
+
+def test_debias_position_agreement():
+    """Debias: when both runs agree, confidence is max."""
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = '{"passed": true, "confidence": 0.75, "reasoning": "ok", "failure_reasons": []}'
+    grader = Grader(llm_client=mock_llm)
+
+    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p", expected_output="e",
+                         assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)])
+    first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
+    assertion_results = [
+        AssertionResult(assertion=EvalAssertion(name="a", type="contains", value="x", weight=1),
+                        passed=True, confidence=1.0, reason="ok")
+    ]
+    result = grader._debias_position(eval_case, "output", assertion_results, first)
+    assert result.passed is True
+    assert result.confidence == 0.75  # max(0.7, 0.75)
+    assert result.position_sensitive is False
+    assert result.debias_runs == 2
+
+
+def test_debias_position_disagreement():
+    """Debias: when runs disagree, confidence reduced, position_sensitive=True."""
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = '{"passed": false, "confidence": 0.6, "reasoning": "no", "failure_reasons": []}'
+    grader = Grader(llm_client=mock_llm)
+
+    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p", expected_output="e",
+                         assertions=[])
+    first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
+    result = grader._debias_position(eval_case, "output", [], first)
+    assert result.passed is True  # Keep first result's verdict
+    assert result.confidence == pytest.approx(0.6 * 0.7)  # min(0.7, 0.6) * 0.7
+    assert result.position_sensitive is True
+    assert result.debias_runs == 2
+    assert "disagreement" in result.reasoning.lower()
+
+
+def test_debias_position_swap_call_fails():
+    """Debias: when swap call fails, return first result unchanged."""
+    mock_llm = MagicMock()
+    mock_llm.chat.side_effect = RuntimeError("API error")
+    grader = Grader(llm_client=mock_llm)
+
+    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p",
+                         expected_output="e", assertions=[])
+    first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
+    result = grader._debias_position(eval_case, "output", [], first)
+    assert result.passed is True
+    assert result.confidence == 0.7
+    assert result.position_sensitive is False
+    assert result.debias_runs == 1
+
+
+# ── LLM judge with failure_reasons parsing ───────────
+
+def test_llm_judge_parses_failure_reasons():
+    """LLM judge correctly parses failure_reasons from response."""
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = json.dumps({
+        "passed": False,
+        "confidence": 0.9,
+        "reasoning": "Missing section",
+        "failure_reasons": [
+            {"assertion_name": "has_security", "failure_type": "missing", "explanation": "No security section"}
+        ]
+    })
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p",
+                         expected_output="e",
+                         assertions=[EvalAssertion(name="has_security", type="contains", value="security", weight=3)])
+    assertion_results = [
+        AssertionResult(
+            assertion=EvalAssertion(name="has_security", type="contains", value="security", weight=3),
+            passed=False, confidence=1.0, reason="Not found"
+        )
+    ]
+    result = grader._llm_judge(eval_case, "no security here", assertion_results)
+    assert result.passed is False
+    assert result.confidence == 0.9
+    assert len(result.failure_reasons) == 1
+    assert result.failure_reasons[0]["assertion_name"] == "has_security"
+    assert result.judge_version == "2.0"
+
+
+def test_llm_judge_invalid_failure_reasons_type():
+    """When failure_reasons is not a list, it defaults to empty."""
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = json.dumps({
+        "passed": True, "confidence": 0.95, "reasoning": "ok",
+        "failure_reasons": "not a list"
+    })
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p",
+                         expected_output="e", assertions=[])
+    result = grader._llm_judge(eval_case, "output", [])
+    assert result.failure_reasons == []
 
 
 if __name__ == "__main__":

@@ -18,8 +18,8 @@ class TestGenLimits:
 
 class SecurityLimits:
     """Security scanning limits and counts."""
-    MAX_PATTERN_CATEGORIES = 5
-    PATTERN_COUNT = 19
+    MAX_PATTERN_CATEGORIES = 6
+    PATTERN_COUNT = 52
     MAX_OUTPUT_LENGTH = 100000
 
 
@@ -28,6 +28,8 @@ class StabilityThresholds:
     L4_STD_MAX = 0.1
     L4_PASS_THRESHOLD = 0.8
     DEFAULT_RUNS = 1
+    DEFAULT_TRIALS = 5
+    CONFIDENCE_LEVEL = 0.95
 
 
 class VerdictThresholds:

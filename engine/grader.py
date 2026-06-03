@@ -13,7 +13,10 @@ class JudgeResult(BaseModel):
     passed: bool
     confidence: float = Field(ge=0.0, le=1.0)
     reasoning: str = ""
-    judge_version: str = "1.0"
+    failure_reasons: list[dict[str, str]] = Field(default_factory=list)
+    position_sensitive: bool = False
+    debias_runs: int = 1
+    judge_version: str = "2.0"
     judge_model: str = ""
 
 
@@ -197,10 +200,15 @@ class Grader:
 
 ## 评测要求
 
-1. 只回答 `true` 或 `false`
-2. 给出置信度（0.0 - 1.0）
-3. 用一句话说明理由
-4. temperature=0，确保确定性
+1. 回答 `passed`: true 或 false
+2. 给出 `confidence`（0.0 - 1.0）
+3. 用 `reasoning` 简要说明理由
+4. 对于每个未通过的断言，在 `failure_reasons` 中给出具体失败原因
+5. temperature=0，确保确定性
+
+## 断言列表
+
+{self._format_assertions_for_judge(assertion_results)}
 
 ## 评测任务
 
@@ -220,7 +228,8 @@ class Grader:
 {{
   "passed": true,
   "confidence": 0.95,
-  "reasoning": "输出包含了所有要求的步骤"
+  "reasoning": "输出包含了所有要求的步骤",
+  "failure_reasons": []
 }}
 ```"""
 
@@ -246,13 +255,26 @@ class Grader:
 
             judge_data = json.loads(response_text)
 
-            return JudgeResult(
+            failure_reasons = judge_data.get("failure_reasons", [])
+            if not isinstance(failure_reasons, list):
+                failure_reasons = []
+
+            result = JudgeResult(
                 passed=bool(judge_data.get("passed", False)),
                 confidence=float(judge_data.get("confidence", 0.5)),
                 reasoning=str(judge_data.get("reasoning", "")),
-                judge_version="1.0",
+                failure_reasons=failure_reasons,
+                judge_version="2.0",
                 judge_model="llm",
             )
+
+            # Position debias: for borderline cases (confidence < 0.8), run swap
+            if result.confidence < 0.8 and self.llm_client:
+                result = self._debias_position(
+                    eval_case, model_output, assertion_results, result
+                )
+
+            return result
         except Exception as e:
             # Fallback to simplified logic on any error (network, parse, etc.)
             passed_assertions = sum(1 for r in assertion_results if r.passed)
@@ -262,6 +284,101 @@ class Grader:
                 passed=passed_ratio >= 0.5,
                 confidence=passed_ratio,
                 reasoning=f"LLM judge call failed ({e}), fallback to assertion-based: {passed_assertions}/{total_assertions} passed ({passed_ratio:.2f})",
-                judge_version="1.0",
+                judge_version="2.0",
                 judge_model="",
             )
+
+    def _debias_position(
+        self,
+        eval_case: EvalCase,
+        model_output: str,
+        assertion_results: list[AssertionResult],
+        first_result: JudgeResult,
+    ) -> JudgeResult:
+        """Run a second judge call with swapped positions to detect position bias.
+
+        If the two calls disagree, reduce confidence and mark position_sensitive.
+        """
+        expected_behavior = eval_case.expected_output or eval_case.prompt
+
+        # Swap: put expected_behavior as "output" and model_output as "requirement"
+        swap_prompt = f"""# LLM-as-Judge (Swap Run)
+
+你是一个严格的评测裁判。评估以下输出是否满足行为要求。
+
+## 评测要求
+1. 回答 passed: true/false, confidence: 0.0-1.0, reasoning: 简要理由
+2. 对于未通过的断言在 failure_reasons 中列出
+
+## 输出（原始行为要求）:
+```
+{expected_behavior}
+```
+
+## 行为要求（原始模型输出）:
+```
+{model_output}
+```
+
+## 输出 JSON:
+```json
+{{"passed": true, "confidence": 0.9, "reasoning": "...", "failure_reasons": []}}
+```"""
+        try:
+            swap_text = self.llm_client.chat(
+                messages=[{"role": "user", "content": swap_prompt}], timeout=30
+            )
+            swap_text = swap_text.strip()
+            if "```json" in swap_text:
+                start = swap_text.find("```json") + 7
+                end = swap_text.find("```", start)
+                if end > start:
+                    swap_text = swap_text[start:end].strip()
+            swap_data = json.loads(swap_text)
+            swap_passed = bool(swap_data.get("passed", False))
+            swap_confidence = float(swap_data.get("confidence", 0.5))
+
+            if swap_passed != first_result.passed:
+                # Disagreement → reduce confidence, mark sensitive
+                return JudgeResult(
+                    passed=first_result.passed,
+                    confidence=min(first_result.confidence, swap_confidence) * 0.7,
+                    reasoning=f"{first_result.reasoning} [Position debias: disagreement detected]",
+                    failure_reasons=first_result.failure_reasons,
+                    position_sensitive=True,
+                    debias_runs=2,
+                    judge_version="2.0",
+                    judge_model=first_result.judge_model,
+                )
+            else:
+                # Agreement → keep first result, mark as verified
+                return JudgeResult(
+                    passed=first_result.passed,
+                    confidence=max(first_result.confidence, swap_confidence),
+                    reasoning=first_result.reasoning,
+                    failure_reasons=first_result.failure_reasons,
+                    position_sensitive=False,
+                    debias_runs=2,
+                    judge_version="2.0",
+                    judge_model=first_result.judge_model,
+                )
+        except Exception:
+            # Swap call failed → return first result unchanged
+            return JudgeResult(
+                passed=first_result.passed,
+                confidence=first_result.confidence,
+                reasoning=first_result.reasoning,
+                failure_reasons=first_result.failure_reasons,
+                position_sensitive=False,
+                debias_runs=1,
+                judge_version="2.0",
+                judge_model=first_result.judge_model,
+            )
+
+    def _format_assertions_for_judge(self, assertion_results: list[AssertionResult]) -> str:
+        """Format assertion results for the judge prompt."""
+        lines = []
+        for r in assertion_results:
+            status = "PASS" if r.passed else "FAIL"
+            lines.append(f"- [{status}] {r.assertion.name} (type={r.assertion.type}, weight={r.assertion.weight}): {r.reason}")
+        return "\n".join(lines) if lines else "(no assertions)"
