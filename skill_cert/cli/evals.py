@@ -1,11 +1,16 @@
 """Eval orchestration functions for single-mode pipeline."""
 
 import json
+import logging
+from pathlib import Path
 
 from engine.constants import StabilityThresholds, VerdictThresholds
 from engine.grader import EvalAssertion, EvalCase
+from engine.token_ledger import TokenLedger
 
 from .helpers import EXIT_ERROR, EXIT_FAIL_WITH_CAVEATS, EXIT_PASS, _print_metric, _print_phase
+
+logger = logging.getLogger(__name__)
 
 
 def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path, tracker=None):
@@ -111,7 +116,10 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
         calculate_l4_stability,
     )
 
-    runner = EvalRunner(max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm, request_timeout=config.request_timeout)
+    # Create TokenLedger for per-eval token accounting
+    token_ledger = TokenLedger()
+
+    runner = EvalRunner(max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm, request_timeout=config.request_timeout, token_ledger=token_ledger)
     primary_adapter = list(adapters.values())[0]
     grader = Grader(llm_client=primary_adapter)
     tracker = ReliabilityTracker()
@@ -159,6 +167,20 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
     metrics['reliability'] = reliability_report
     metrics['_results'] = all_results
 
+    # Aggregate token data from traces via TokenLedger
+    runner.close()  # flushes token_ledger
+    all_traces = runner.get_traces()
+    if all_traces:
+        token_ledger.aggregate(all_traces)
+    token_summary = token_ledger.get_summary()
+    if token_summary["total_tokens"] > 0:
+        metrics["token_analysis"] = token_summary
+        _print_phase(4, "Token Analysis")
+        print(f"  Total tokens: {token_summary['total_tokens']:,}")
+        print(f"  Total cost: ${token_summary['total_cost']:.4f}")
+        for phase, data in token_summary.get("by_phase", {}).items():
+            print(f"  {phase}: {data['total_tokens']:,} tokens")
+
     _print_metric("L1 Trigger Accuracy", metrics.get("l1_trigger_accuracy", 0), VerdictThresholds.L1_MIN)
     _print_metric("L2 Output Delta", metrics.get("l2_with_without_skill_delta", 0), VerdictThresholds.L2_MIN)
     _print_metric("L3 Step Adherence", metrics.get("l3_step_adherence", 0), VerdictThresholds.L3_MIN)
@@ -192,16 +214,69 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
         maintainability=spec.get("maintainability"),
     )
 
+    # Build structured report (Phase 3)
+    token_analysis = metrics.get("token_analysis")
+    observability_data = {
+        "trace_count": len(all_traces),
+        "total_events": sum(len(t.events) for t in all_traces),
+        "total_duration_ms": sum(t.duration_ms for t in all_traces),
+        "total_tool_calls": sum(t.tool_call_count for t in all_traces),
+        "trace_format": getattr(args, "trace_export", "jsonl"),
+    } if all_traces else None
+
+    structured_report = reporter.build_structured_report(
+        metrics=metrics,
+        drift=drift_report,
+        config={"skill_name": skill_name, "skill_path": spec_path, "models": list(adapters.keys()), **config.model_dump()},
+        maintainability=spec.get("maintainability"),
+        token_analysis=token_analysis,
+        observability=observability_data,
+    )
+
+    # Write reports based on --format
+    report_format = getattr(args, "format", "both")
     md_path = output_dir / f"{skill_name}-report.md"
     json_path = output_dir / f"{skill_name}-result.json"
-    md_path.write_text(md_report, encoding="utf-8")
-    json_path.write_text(json.dumps(json_report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
-    print(f"  Markdown: {md_path}")
-    print(f"  JSON: {json_path}")
+
+    if report_format in ("markdown", "both"):
+        md_path.write_text(md_report, encoding="utf-8")
+        print(f"  Markdown: {md_path}")
+
+    if report_format in ("json", "both"):
+        # Use structured report JSON if available
+        json_str = reporter.generate_json_report(structured_report)
+        json_path.write_text(json_str, encoding="utf-8")
+        print(f"  JSON: {json_path}")
+
+        # Optional schema validation
+        if getattr(args, "json_schema_validate", False):
+            import json as _json
+            from pathlib import Path as _Path
+            schema_path = _Path(__file__).parent.parent.parent / "schemas" / "report.schema.json"
+            if schema_path.exists():
+                schema = _json.loads(schema_path.read_text(encoding="utf-8"))
+                # Use Pydantic for validation (no jsonschema dependency)
+                from engine.report_models import StructuredReport as SR
+                try:
+                    SR.model_validate(_json.loads(json_str))
+                    print("  Schema validation: PASS")
+                except Exception as e:
+                    print(f"  Schema validation: FAIL - {e}")
 
     evals_cache = output_dir / f"{skill_name}-evals-cache.json"
     evals_cache.write_text(json.dumps(spec["evals"], indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"  Evals cache: {evals_cache}")
+
+    # Export traces as JSONL (for observability)
+    trace_export = getattr(args, "trace_export", "jsonl")
+    if trace_export != "none" and all_traces:
+        trace_dir = Path(getattr(args, "trace_dir", None) or output_dir)
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        traces_path = trace_dir / f"{skill_name}-traces.jsonl"
+        with open(traces_path, "w", encoding="utf-8") as f:
+            for trace in all_traces:
+                f.write(trace.model_dump_json() + "\n")
+        print(f"  Traces: {traces_path} ({len(all_traces)} traces)")
 
     verdict = json_report.get("verdict", "FAIL")
     print(f"\n  Verdict: {verdict}")

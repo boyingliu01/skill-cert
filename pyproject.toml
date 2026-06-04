@@ -42,6 +42,11 @@ dev = [
     "pytest-cov>=4.1",
     "ruff>=0.1",
 ]
+otlp = [
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp>=1.20",
+]
 
 [project.scripts]
 skill-cert = "skill_cert.cli:main"

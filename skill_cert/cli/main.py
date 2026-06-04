@@ -89,6 +89,12 @@ Examples:
     parser.add_argument("--with-skill-lab", action="store_true", help="Enable SkillLab integration for external evaluation")
     parser.add_argument("--with-deepeval", action="store_true", help="Enable DeepEval integration for additional metrics")
     parser.add_argument("--envelope", help="Custom envelope thresholds as JSON (e.g. '{\"max_steps\": 30}')")
+    # Observability & structured report (Phase 2 & 3)
+    parser.add_argument("--trace-export", choices=["jsonl", "otlp", "none"], default="jsonl", help="Trace export format (default: jsonl)")
+    parser.add_argument("--trace-dir", help="Directory for trace output (default: same as --output)")
+    parser.add_argument("--otlp-endpoint", help="OTLP endpoint URL (requires --trace-export otlp)")
+    parser.add_argument("--format", choices=["markdown", "json", "both"], default="both", help="Report output format (default: both)")
+    parser.add_argument("--json-schema-validate", action="store_true", help="Validate JSON report against schema")
 
     args = parser.parse_args()
 

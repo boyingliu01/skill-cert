@@ -8,6 +8,7 @@ from adapters.pricing import get_pricing
 from engine.constants import ConcurrencyLimits, SecurityLimits, TimingLimits
 from engine.envelope import EnvelopeChecker
 from engine.security_probes import SecurityScanner
+from engine.trace_models import ExecutionTrace, TokenAccounting
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,8 @@ class EvalRunner:
 
     def __init__(self, max_concurrency: int = ConcurrencyLimits.MAX_CONCURRENCY, rate_limit_rpm: int = TimingLimits.RATE_LIMIT_RPM, request_timeout: int = TimingLimits.REQUEST_TIMEOUT,
                  enable_security_scan: bool = True, enable_envelope: bool = True,
-                 model_name: str | None = None, cost_budget: float = 0.0):
+                 model_name: str | None = None, cost_budget: float = 0.0,
+                 token_ledger: Any | None = None):
         self.max_concurrency = max_concurrency
         self.rate_limit_rpm = rate_limit_rpm
         self.request_timeout = request_timeout
@@ -34,6 +36,9 @@ class EvalRunner:
         self.scanner = SecurityScanner() if enable_security_scan else None
         self.envelope = EnvelopeChecker(timeout_s=request_timeout, cost_budget=cost_budget) if enable_envelope else None
         self._pricing = get_pricing()
+        self.token_ledger = token_ledger
+        self._traces: list[ExecutionTrace] = []
+        self._traces_lock = threading.Lock()
 
     def _wait_rate_limit(self):
         with self._rate_lock:
@@ -46,6 +51,13 @@ class EvalRunner:
     def _run_single(self, eval_case, skill_path: str, model_adapter, with_skill: bool):
         with self._semaphore:
             self._wait_rate_limit()
+            # Create ExecutionTrace for observability
+            model_name = getattr(model_adapter, 'model_name', 'unknown')
+            trace = ExecutionTrace(
+                eval_id=eval_case.get("id", 0),
+                phase="with_skill" if with_skill else "without_skill",
+                token_usage=TokenAccounting(model=model_name),
+            )
             try:
                 input_text = eval_case.get("input", "") or eval_case.get("prompt", "")
                 if isinstance(input_text, dict):
@@ -61,7 +73,8 @@ class EvalRunner:
                     skill_context = f"Skill file: {skill_path}\n{skill_header}\n\n---\nTask: {input_text}"
                     input_text = skill_context
 
-                start_time = time.time()
+                trace.start_time = time.time()
+                perf_start = time.perf_counter()
                 messages = [{"role": "user", "content": input_text}]
 
                 cls = type(model_adapter)
@@ -79,26 +92,43 @@ class EvalRunner:
                         "total_tokens": len(response.split()) if response else 0
                     }
 
+                perf_elapsed = (time.perf_counter() - perf_start) * 1000
                 end_time = time.time()
+                trace.end_time = end_time
 
+                # Record LLM call in trace (single source of truth for tokens)
+                trace.record_llm_call(
+                    model=model_name,
+                    input_tokens=token_usage.get("prompt_tokens", 0),
+                    output_tokens=token_usage.get("completion_tokens", 0),
+                    latency_ms=perf_elapsed,
+                )
                 cost = self._calc_cost(token_usage) if self.model_name else 0.0
+                trace.token_usage.cost = cost
+
+                # Store trace for later aggregation
+                with self._traces_lock:
+                    self._traces.append(trace)
+                if self.token_ledger:
+                    self.token_ledger.record_trace(trace)
 
                 result = {
                     "eval_id": eval_case.get("id"),
                     "eval_name": eval_case.get("name"),
                     "eval_category": eval_case.get("category"),
-                    "model": getattr(model_adapter, 'model_name', 'unknown'),
+                    "model": model_name,
                     "run": "with-skill" if with_skill else "without-skill",
                     "skill_used": with_skill,
                     "input": input_text,
                     "output": response,
-                    "execution_time": end_time - start_time,
+                    "execution_time": end_time - trace.start_time,
                     "error": None,
                     "tokens_used": token_usage.get("total_tokens", 0),
                     "token_breakdown": token_usage,
                     "security": self._check_security(response),
                     "output_length_ok": self._check_output_length(response),
                     "cost": cost,
+                    "trace": trace.model_dump(mode="json"),
                 }
 
                 self.total_tokens += token_usage.get("total_tokens", 0)
@@ -107,11 +137,17 @@ class EvalRunner:
                 return result
             except Exception as e:
                 logger.error(f"Error running eval {eval_case.get('id')}: {type(e).__name__}: {str(e)}")
+                trace.end_time = time.time()
+                trace.error = str(e)
+                with self._traces_lock:
+                    self._traces.append(trace)
+                if self.token_ledger:
+                    self.token_ledger.record_trace(trace)
                 return {
                     "eval_id": eval_case.get("id"),
                     "eval_name": eval_case.get("name"),
                     "eval_category": eval_case.get("category"),
-                    "model": getattr(model_adapter, 'model_name', 'unknown'),
+                    "model": model_name,
                     "run": "with-skill" if with_skill else "without-skill",
                     "skill_used": with_skill,
                     "input": eval_case.get("input") or eval_case.get("prompt"),
@@ -120,6 +156,7 @@ class EvalRunner:
                     "error": str(e),
                     "tokens_used": 0,
                     "cost": 0.0,
+                    "trace": trace.model_dump(mode="json"),
                 }
 
     def run_with_skill(self, evals: list[dict[str, Any]], skill_path: str, model_adapter) -> list[dict[str, Any]]:
@@ -175,5 +212,13 @@ class EvalRunner:
     def _check_output_length(self, output: str) -> bool:
         return len(output) <= self.SECURITY_MAX_OUTPUT_LENGTH if output else True
 
+    def get_traces(self) -> list[ExecutionTrace]:
+        """Return all collected ExecutionTrace instances."""
+        with self._traces_lock:
+            return list(self._traces)
+
     def close(self):
+        """Flush token ledger if present."""
+        if self.token_ledger:
+            self.token_ledger.flush()
         pass

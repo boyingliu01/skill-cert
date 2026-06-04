@@ -5,6 +5,17 @@ from typing import Any
 
 from jinja2 import Environment
 
+from engine.report_models import (
+    ImprovementSuggestion,
+    MetricsSection,
+    ObservabilitySection,
+    ReportMetadata,
+    StructuredReport,
+    TokenAnalysisSection,
+    TokenBreakdown,
+    VerdictSummary,
+)
+
 
 class Reporter:
     """Generates Markdown and JSON reports for skill certification results."""
@@ -570,6 +581,168 @@ For detailed results, see the JSON output.
             lines.append("")
 
         return "\n".join(lines)
+
+    # ── Structured Report Methods ─────────────────────────────
+
+    def build_structured_report(
+        self,
+        metrics: dict[str, Any],
+        drift: dict[str, Any],
+        config: dict[str, Any],
+        maintainability: dict[str, Any] | None = None,
+        token_analysis: dict[str, Any] | None = None,
+        observability: dict[str, Any] | None = None,
+    ) -> StructuredReport:
+        """Build a StructuredReport from metrics and drift analysis.
+
+        This is the canonical structured output for skill-cert evaluation.
+        """
+        # Build metadata
+        metadata = ReportMetadata(
+            skill_name=config.get("skill_name", ""),
+            skill_path=config.get("skill_path", ""),
+            models=config.get("models", []),
+            timestamp=config.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            engine_version=config.get("engine_version", "0.1.0"),
+        )
+
+        # Build verdict
+        overall_score = metrics.get("overall_score", 0.0)
+        drift_verdict = drift.get("overall_verdict", "PASS")
+        if drift_verdict == "FAIL":
+            verdict = "FAIL"
+        elif overall_score >= 0.8:
+            verdict = "PASS"
+        elif overall_score >= 0.6:
+            verdict = "PASS_WITH_CAVEATS"
+        else:
+            verdict = "FAIL"
+
+        verdict_summary = VerdictSummary(
+            verdict=verdict if verdict != "PASS_WITH_CAVEATS" else "PASS",
+            confidence=overall_score,
+            reasons=self._build_verdict_reasons(metrics, drift),
+            blocking_issues=self._build_blocking_issues(drift),
+            caveats=self._build_caveats(metrics, drift),
+        )
+
+        # Build metrics
+        metrics_breakdown = metrics.get("metrics_breakdown", {})
+        l4_details = metrics_breakdown.get("l4_details", {})
+        cost_analysis = metrics.get("cost_analysis")
+        latency_analysis = metrics.get("latency_analysis")
+
+        metrics_section = MetricsSection(
+            l1_trigger_accuracy=metrics.get("l1_trigger_accuracy", 0.0) * 100,
+            l2_output_delta=metrics.get("l2_with_without_skill_delta", 0.0),
+            l3_step_adherence=metrics.get("l3_step_adherence", 0.0) * 100,
+            l4_stability_std=l4_details.get("stdev_deterministic_pass_rate", 0.0),
+            l5_step_efficiency=metrics.get("l5_step_efficiency", 0.0) * 100 if "l5_step_efficiency" in metrics else 0.0,
+            l6_trajectory_quality=metrics.get("l6_trajectory_quality", 0.0) * 100 if "l6_trajectory_quality" in metrics else 0.0,
+            l7_cost_efficiency=cost_analysis.get("cost_efficiency", 0.0) if cost_analysis else 0.0,
+            l8_latency_p50=latency_analysis.get("with_skill", {}).get("p50", 0.0) * 1000 if latency_analysis and latency_analysis.get("with_skill") else 0.0,
+            l8_latency_p95=latency_analysis.get("with_skill", {}).get("p95", 0.0) * 1000 if latency_analysis and latency_analysis.get("with_skill") else 0.0,
+            l8_latency_p99=latency_analysis.get("with_skill", {}).get("p99", 0.0) * 1000 if latency_analysis and latency_analysis.get("with_skill") else 0.0,
+        )
+
+        # Build token analysis
+        token_section = TokenAnalysisSection()
+        if token_analysis:
+            token_section = TokenAnalysisSection(
+                total_tokens=token_analysis.get("total_tokens", 0),
+                total_cost=token_analysis.get("total_cost", 0.0),
+                by_phase={
+                    k: TokenBreakdown(**v)
+                    for k, v in token_analysis.get("by_phase", {}).items()
+                },
+                by_model={
+                    k: TokenBreakdown(**v)
+                    for k, v in token_analysis.get("by_model", {}).items()
+                },
+                by_eval=token_analysis.get("by_eval", []),
+            )
+
+        # Build observability
+        obs_section = ObservabilitySection()
+        if observability:
+            obs_section = ObservabilitySection(
+                trace_count=observability.get("trace_count", 0),
+                total_events=observability.get("total_events", 0),
+                total_duration_ms=observability.get("total_duration_ms", 0.0),
+                total_tool_calls=observability.get("total_tool_calls", 0),
+                trace_export_path=observability.get("trace_export_path", ""),
+                trace_format=observability.get("trace_format", "jsonl"),
+            )
+
+        # Build improvements
+        suggestions = self._generate_suggestions(metrics, drift, verdict, overall_score, cost_analysis, latency_analysis)
+        improvements = []
+        for s in suggestions:
+            if isinstance(s, ImprovementSuggestion):
+                improvements.append(s)
+            else:
+                # Convert string suggestions to ImprovementSuggestion
+                improvements.append(ImprovementSuggestion(
+                    category="general",
+                    priority="medium",
+                    title=s[:50] if len(s) > 50 else s,
+                    description=s,
+                ))
+
+        return StructuredReport(
+            metadata=metadata,
+            verdict=verdict_summary,
+            metrics=metrics_section,
+            token_analysis=token_section,
+            observability=obs_section,
+            improvements=improvements,
+            drift=drift,
+            extras={"raw_metrics": metrics},
+        )
+
+    def _build_verdict_reasons(self, metrics: dict[str, Any], drift: dict[str, Any]) -> list[str]:
+        """Build verdict reasons from metrics and drift."""
+        reasons = []
+        l1 = metrics.get("l1_trigger_accuracy", 0.0)
+        l2 = metrics.get("l2_with_without_skill_delta", 0.0)
+        l3 = metrics.get("l3_step_adherence", 0.0)
+        if l1 >= 0.9:
+            reasons.append(f"L1 trigger accuracy: {l1:.0%}")
+        if l2 >= 0.2:
+            reasons.append(f"L2 output delta: {l2:.1f}%")
+        if l3 >= 0.85:
+            reasons.append(f"L3 step adherence: {l3:.0%}")
+        return reasons
+
+    def _build_blocking_issues(self, drift: dict[str, Any]) -> list[str]:
+        """Build blocking issues from drift analysis."""
+        issues = []
+        if drift.get("highest_severity") == "high":
+            issues.append(f"High severity drift detected (variance: {drift.get('max_variance', 0):.3f})")
+        return issues
+
+    def _build_caveats(self, metrics: dict[str, Any], drift: dict[str, Any]) -> list[str]:
+        """Build caveats from metrics and drift."""
+        caveats = []
+        if drift.get("drift_detected"):
+            caveats.append(f"Drift detected (severity: {drift.get('highest_severity', 'none')})")
+        return caveats
+
+    def generate_json_report(self, report: StructuredReport) -> str:
+        """Generate JSON string from StructuredReport."""
+        return report.model_dump_json(indent=2)
+
+    def validate_json_report(self, json_data: dict[str, Any]) -> list[str]:
+        """Validate JSON report against schema.
+
+        Returns list of validation errors (empty if valid).
+        """
+        errors = []
+        try:
+            StructuredReport.model_validate(json_data)
+        except Exception as e:
+            errors.append(str(e))
+        return errors
 
     def generate_report_with_stress(
         self,

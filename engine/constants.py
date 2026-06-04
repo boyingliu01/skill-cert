@@ -82,3 +82,24 @@ class EnvelopeDefaults:
     MAX_TOOL_CALLS = 15
     TIMEOUT_S = 300
     COST_BUDGET = 0.0
+
+
+class ObservabilityDefaults:
+    """Default observability settings."""
+    TRACE_FORMAT = "jsonl"  # jsonl | otlp | none
+    TRACE_DIR = None  # None = same as output dir
+    OTLP_ENDPOINT = None
+
+
+class TokenBudgetDefaults:
+    """Token budget alert thresholds."""
+    WARNING_THRESHOLD = 0.8  # 80% of budget triggers warning
+    CRITICAL_THRESHOLD = 1.0  # 100% of budget triggers critical
+    DEFAULT_COST_BUDGET = 0.0  # 0 = no limit
+
+
+class ReportDefaults:
+    """Default report settings."""
+    FORMAT = "both"  # markdown | json | both
+    SCHEMA_VERSION = "1.0"
+    JSON_SCHEMA_VALIDATE = False

@@ -1,0 +1,494 @@
+{
+  "$defs": {
+    "AssertionResult": {
+      "description": "Single assertion result.",
+      "properties": {
+        "type": {
+          "default": "",
+          "title": "Type",
+          "type": "string"
+        },
+        "expected": {
+          "default": "",
+          "title": "Expected",
+          "type": "string"
+        },
+        "actual": {
+          "default": "",
+          "title": "Actual",
+          "type": "string"
+        },
+        "passed": {
+          "default": false,
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "weight": {
+          "default": 1.0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "title": "AssertionResult",
+      "type": "object"
+    },
+    "EvalDetail": {
+      "description": "Per-eval detail with assertions.",
+      "properties": {
+        "eval_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 0,
+          "title": "Eval Id"
+        },
+        "eval_name": {
+          "default": "",
+          "title": "Eval Name",
+          "type": "string"
+        },
+        "eval_category": {
+          "default": "",
+          "title": "Eval Category",
+          "type": "string"
+        },
+        "model": {
+          "default": "",
+          "title": "Model",
+          "type": "string"
+        },
+        "phase": {
+          "default": "",
+          "title": "Phase",
+          "type": "string"
+        },
+        "input": {
+          "default": "",
+          "title": "Input",
+          "type": "string"
+        },
+        "output": {
+          "default": "",
+          "title": "Output",
+          "type": "string"
+        },
+        "passed": {
+          "default": false,
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "score": {
+          "default": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "assertions": {
+          "items": {
+            "$ref": "#/$defs/AssertionResult"
+          },
+          "title": "Assertions",
+          "type": "array"
+        },
+        "execution_time": {
+          "default": 0.0,
+          "title": "Execution Time",
+          "type": "number"
+        },
+        "tokens_used": {
+          "default": 0,
+          "title": "Tokens Used",
+          "type": "integer"
+        },
+        "cost": {
+          "default": 0.0,
+          "title": "Cost",
+          "type": "number"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "title": "EvalDetail",
+      "type": "object"
+    },
+    "ImprovementSuggestion": {
+      "description": "Structured improvement suggestion.\n\n__str__() provides backward compatibility with existing reporter\nthat expects list[str] from _generate_suggestions().",
+      "properties": {
+        "category": {
+          "default": "",
+          "title": "Category",
+          "type": "string"
+        },
+        "priority": {
+          "default": "medium",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Priority",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "expected_impact": {
+          "default": "",
+          "title": "Expected Impact",
+          "type": "string"
+        }
+      },
+      "title": "ImprovementSuggestion",
+      "type": "object"
+    },
+    "MetricsSection": {
+      "description": "L1-L8 metrics section.",
+      "properties": {
+        "l1_trigger_accuracy": {
+          "default": 0.0,
+          "title": "L1 Trigger Accuracy",
+          "type": "number"
+        },
+        "l2_output_delta": {
+          "default": 0.0,
+          "title": "L2 Output Delta",
+          "type": "number"
+        },
+        "l3_step_adherence": {
+          "default": 0.0,
+          "title": "L3 Step Adherence",
+          "type": "number"
+        },
+        "l4_stability_std": {
+          "default": 0.0,
+          "title": "L4 Stability Std",
+          "type": "number"
+        },
+        "l5_step_efficiency": {
+          "default": 0.0,
+          "title": "L5 Step Efficiency",
+          "type": "number"
+        },
+        "l6_trajectory_quality": {
+          "default": 0.0,
+          "title": "L6 Trajectory Quality",
+          "type": "number"
+        },
+        "l7_cost_efficiency": {
+          "default": 0.0,
+          "title": "L7 Cost Efficiency",
+          "type": "number"
+        },
+        "l8_latency_p50": {
+          "default": 0.0,
+          "title": "L8 Latency P50",
+          "type": "number"
+        },
+        "l8_latency_p95": {
+          "default": 0.0,
+          "title": "L8 Latency P95",
+          "type": "number"
+        },
+        "l8_latency_p99": {
+          "default": 0.0,
+          "title": "L8 Latency P99",
+          "type": "number"
+        },
+        "extras": {
+          "additionalProperties": true,
+          "title": "Extras",
+          "type": "object"
+        }
+      },
+      "title": "MetricsSection",
+      "type": "object"
+    },
+    "ObservabilitySection": {
+      "description": "Observability section with trace summary.",
+      "properties": {
+        "trace_count": {
+          "default": 0,
+          "title": "Trace Count",
+          "type": "integer"
+        },
+        "total_events": {
+          "default": 0,
+          "title": "Total Events",
+          "type": "integer"
+        },
+        "total_duration_ms": {
+          "default": 0.0,
+          "title": "Total Duration Ms",
+          "type": "number"
+        },
+        "total_tool_calls": {
+          "default": 0,
+          "title": "Total Tool Calls",
+          "type": "integer"
+        },
+        "trace_export_path": {
+          "default": "",
+          "title": "Trace Export Path",
+          "type": "string"
+        },
+        "trace_format": {
+          "default": "jsonl",
+          "title": "Trace Format",
+          "type": "string"
+        }
+      },
+      "title": "ObservabilitySection",
+      "type": "object"
+    },
+    "ReportMetadata": {
+      "description": "Report metadata: skill, models, timestamp.",
+      "properties": {
+        "skill_name": {
+          "default": "",
+          "title": "Skill Name",
+          "type": "string"
+        },
+        "skill_path": {
+          "default": "",
+          "title": "Skill Path",
+          "type": "string"
+        },
+        "skill_version": {
+          "default": "",
+          "title": "Skill Version",
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Models",
+          "type": "array"
+        },
+        "timestamp": {
+          "default": "",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "engine_version": {
+          "default": "",
+          "title": "Engine Version",
+          "type": "string"
+        }
+      },
+      "title": "ReportMetadata",
+      "type": "object"
+    },
+    "TokenAnalysisSection": {
+      "description": "Token analysis section with per-phase/model/eval breakdown.",
+      "properties": {
+        "total_tokens": {
+          "default": 0,
+          "title": "Total Tokens",
+          "type": "integer"
+        },
+        "total_cost": {
+          "default": 0.0,
+          "title": "Total Cost",
+          "type": "number"
+        },
+        "by_phase": {
+          "additionalProperties": {
+            "$ref": "#/$defs/TokenBreakdown"
+          },
+          "title": "By Phase",
+          "type": "object"
+        },
+        "by_model": {
+          "additionalProperties": {
+            "$ref": "#/$defs/TokenBreakdown"
+          },
+          "title": "By Model",
+          "type": "object"
+        },
+        "by_eval": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "By Eval",
+          "type": "array"
+        },
+        "budget_utilization": {
+          "default": 0.0,
+          "title": "Budget Utilization",
+          "type": "number"
+        },
+        "alerts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Alerts",
+          "type": "array"
+        }
+      },
+      "title": "TokenAnalysisSection",
+      "type": "object"
+    },
+    "TokenBreakdown": {
+      "description": "Token breakdown for a single dimension.",
+      "properties": {
+        "input_tokens": {
+          "default": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "default": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "total_tokens": {
+          "default": 0,
+          "title": "Total Tokens",
+          "type": "integer"
+        },
+        "cost": {
+          "default": 0.0,
+          "title": "Cost",
+          "type": "number"
+        },
+        "model": {
+          "default": "",
+          "title": "Model",
+          "type": "string"
+        }
+      },
+      "title": "TokenBreakdown",
+      "type": "object"
+    },
+    "VerdictSummary": {
+      "description": "Overall verdict and reasons.",
+      "properties": {
+        "verdict": {
+          "default": "FAIL",
+          "enum": [
+            "PASS",
+            "FAIL"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "confidence": {
+          "default": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "blocking_issues": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocking Issues",
+          "type": "array"
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Caveats",
+          "type": "array"
+        }
+      },
+      "title": "VerdictSummary",
+      "type": "object"
+    }
+  },
+  "description": "Top-level structured evaluation report.\n\nThis is the canonical schema for skill-cert JSON output.",
+  "properties": {
+    "metadata": {
+      "$ref": "#/$defs/ReportMetadata"
+    },
+    "verdict": {
+      "$ref": "#/$defs/VerdictSummary"
+    },
+    "metrics": {
+      "$ref": "#/$defs/MetricsSection"
+    },
+    "eval_details": {
+      "items": {
+        "$ref": "#/$defs/EvalDetail"
+      },
+      "title": "Eval Details",
+      "type": "array"
+    },
+    "token_analysis": {
+      "$ref": "#/$defs/TokenAnalysisSection"
+    },
+    "observability": {
+      "$ref": "#/$defs/ObservabilitySection"
+    },
+    "improvements": {
+      "items": {
+        "$ref": "#/$defs/ImprovementSuggestion"
+      },
+      "title": "Improvements",
+      "type": "array"
+    },
+    "security": {
+      "additionalProperties": true,
+      "title": "Security",
+      "type": "object"
+    },
+    "drift": {
+      "additionalProperties": true,
+      "title": "Drift",
+      "type": "object"
+    },
+    "envelope": {
+      "additionalProperties": true,
+      "title": "Envelope",
+      "type": "object"
+    },
+    "reliability": {
+      "additionalProperties": true,
+      "title": "Reliability",
+      "type": "object"
+    },
+    "extras": {
+      "additionalProperties": true,
+      "title": "Extras",
+      "type": "object"
+    }
+  },
+  "title": "StructuredReport",
+  "type": "object"
+}
