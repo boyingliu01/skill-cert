@@ -6,7 +6,6 @@ from engine.metrics import MetricsCalculator
 
 
 class TestL7CostEfficiency:
-
     def test_l7_no_cost_data_returns_none(self):
         """When no cost data exists, L7 should return None."""
         calc = MetricsCalculator()

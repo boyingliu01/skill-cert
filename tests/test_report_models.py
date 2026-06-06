@@ -1,6 +1,5 @@
 """Tests for engine/report_models.py — StructuredReport and related models."""
 
-
 from engine.report_models import (
     AssertionResult,
     EvalDetail,
@@ -83,7 +82,9 @@ class TestEvalDetail:
             eval_id=1,
             eval_name="test-eval",
             assertions=[
-                AssertionResult(type="contains", expected="hello", actual="hello world", passed=True),
+                AssertionResult(
+                    type="contains", expected="hello", actual="hello world", passed=True
+                ),
                 AssertionResult(type="regex", expected=r"\d+", actual="abc", passed=False),
             ],
         )
@@ -154,7 +155,9 @@ class TestImprovementSuggestion:
     def test_backward_compat(self):
         """Test that str(suggestion) works like the old list[str] format."""
         suggestions = [
-            ImprovementSuggestion(category="general", priority="medium", title="Test", description="Test description"),
+            ImprovementSuggestion(
+                category="general", priority="medium", title="Test", description="Test description"
+            ),
         ]
         # Old code expects list[str], str() should work
         str_list = [str(s) for s in suggestions]

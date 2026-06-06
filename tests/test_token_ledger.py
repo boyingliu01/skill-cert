@@ -8,7 +8,9 @@ from engine.token_ledger import TokenLedger
 from engine.trace_models import ExecutionTrace, TokenAccounting
 
 
-def _make_trace(eval_id: int, phase: str, model: str, tokens: int, cost: float = 0.0) -> ExecutionTrace:
+def _make_trace(
+    eval_id: int, phase: str, model: str, tokens: int, cost: float = 0.0
+) -> ExecutionTrace:
     """Helper to create a trace with token usage."""
     trace = ExecutionTrace(
         eval_id=eval_id,

@@ -16,10 +16,17 @@ logger = logging.getLogger(__name__)
 class EvalRunner:
     SECURITY_MAX_OUTPUT_LENGTH = SecurityLimits.MAX_OUTPUT_LENGTH
 
-    def __init__(self, max_concurrency: int = ConcurrencyLimits.MAX_CONCURRENCY, rate_limit_rpm: int = TimingLimits.RATE_LIMIT_RPM, request_timeout: int = TimingLimits.REQUEST_TIMEOUT,
-                 enable_security_scan: bool = True, enable_envelope: bool = True,
-                 model_name: str | None = None, cost_budget: float = 0.0,
-                 token_ledger: Any | None = None):
+    def __init__(
+        self,
+        max_concurrency: int = ConcurrencyLimits.MAX_CONCURRENCY,
+        rate_limit_rpm: int = TimingLimits.RATE_LIMIT_RPM,
+        request_timeout: int = TimingLimits.REQUEST_TIMEOUT,
+        enable_security_scan: bool = True,
+        enable_envelope: bool = True,
+        model_name: str | None = None,
+        cost_budget: float = 0.0,
+        token_ledger: Any | None = None,
+    ):
         self.max_concurrency = max_concurrency
         self.rate_limit_rpm = rate_limit_rpm
         self.request_timeout = request_timeout
@@ -34,7 +41,11 @@ class EvalRunner:
         self.total_cost = 0.0
         self.token_budget = None
         self.scanner = SecurityScanner() if enable_security_scan else None
-        self.envelope = EnvelopeChecker(timeout_s=request_timeout, cost_budget=cost_budget) if enable_envelope else None
+        self.envelope = (
+            EnvelopeChecker(timeout_s=request_timeout, cost_budget=cost_budget)
+            if enable_envelope
+            else None
+        )
         self._pricing = get_pricing()
         self.token_ledger = token_ledger
         self._traces: list[ExecutionTrace] = []
@@ -52,7 +63,7 @@ class EvalRunner:
         with self._semaphore:
             self._wait_rate_limit()
             # Create ExecutionTrace for observability
-            model_name = getattr(model_adapter, 'model_name', 'unknown')
+            model_name = getattr(model_adapter, "model_name", "unknown")
             trace = ExecutionTrace(
                 eval_id=eval_case.get("id", 0),
                 phase="with_skill" if with_skill else "without_skill",
@@ -65,12 +76,14 @@ class EvalRunner:
 
                 if with_skill:
                     try:
-                        with open(skill_path, encoding='utf-8') as f:
+                        with open(skill_path, encoding="utf-8") as f:
                             lines = f.readlines()
-                            skill_header = ''.join(lines[:20])[:1000]
+                            skill_header = "".join(lines[:20])[:1000]
                     except (OSError, FileNotFoundError):
                         skill_header = skill_path
-                    skill_context = f"Skill file: {skill_path}\n{skill_header}\n\n---\nTask: {input_text}"
+                    skill_context = (
+                        f"Skill file: {skill_path}\n{skill_header}\n\n---\nTask: {input_text}"
+                    )
                     input_text = skill_context
 
                 trace.start_time = time.time()
@@ -78,8 +91,8 @@ class EvalRunner:
                 messages = [{"role": "user", "content": input_text}]
 
                 cls = type(model_adapter)
-                usage_method = getattr(cls, 'chat_with_usage', None)
-                is_mock = hasattr(model_adapter, '_mock_name')
+                usage_method = getattr(cls, "chat_with_usage", None)
+                is_mock = hasattr(model_adapter, "_mock_name")
                 has_usage = usage_method is not None and not is_mock
 
                 if has_usage:
@@ -89,7 +102,7 @@ class EvalRunner:
                     token_usage = {
                         "prompt_tokens": 0,
                         "completion_tokens": len(response.split()) if response else 0,
-                        "total_tokens": len(response.split()) if response else 0
+                        "total_tokens": len(response.split()) if response else 0,
                     }
 
                 perf_elapsed = (time.perf_counter() - perf_start) * 1000
@@ -136,7 +149,9 @@ class EvalRunner:
 
                 return result
             except Exception as e:
-                logger.error(f"Error running eval {eval_case.get('id')}: {type(e).__name__}: {str(e)}")
+                logger.error(
+                    f"Error running eval {eval_case.get('id')}: {type(e).__name__}: {str(e)}"
+                )
                 trace.end_time = time.time()
                 trace.error = str(e)
                 with self._traces_lock:
@@ -159,11 +174,15 @@ class EvalRunner:
                     "trace": trace.model_dump(mode="json"),
                 }
 
-    def run_with_skill(self, evals: list[dict[str, Any]], skill_path: str, model_adapter) -> list[dict[str, Any]]:
+    def run_with_skill(
+        self, evals: list[dict[str, Any]], skill_path: str, model_adapter
+    ) -> list[dict[str, Any]]:
         results = []
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
-            futures = {executor.submit(self._run_single, ec, skill_path, model_adapter, True): i
-                      for i, ec in enumerate(evals)}
+            futures = {
+                executor.submit(self._run_single, ec, skill_path, model_adapter, True): i
+                for i, ec in enumerate(evals)
+            }
             for future in as_completed(futures):
                 idx = futures[future]
                 try:
@@ -176,8 +195,10 @@ class EvalRunner:
     def run_without_skill(self, evals: list[dict[str, Any]], model_adapter) -> list[dict[str, Any]]:
         results = []
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
-            futures = {executor.submit(self._run_single, ec, None, model_adapter, False): i
-                      for i, ec in enumerate(evals)}
+            futures = {
+                executor.submit(self._run_single, ec, None, model_adapter, False): i
+                for i, ec in enumerate(evals)
+            }
             for future in as_completed(futures):
                 idx = futures[future]
                 try:

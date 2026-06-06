@@ -42,10 +42,12 @@ class TestSchemaViolation:
 class TestValidateSchema:
     def setup_method(self):
         import tempfile
+
         self.tmpdir = tempfile.mkdtemp()
 
     def _write_skill(self, name, content):
         import os
+
         path = os.path.join(self.tmpdir, name)
         with open(path, "w") as f:
             f.write(content)
@@ -179,11 +181,13 @@ No sensitive data.
 ## Scope
 Test scope. Does NOT modify production.
 """
-        spec = SkillSpec(name="test", description="Short desc but this step-by-step workflow will: first do X, then do Y")
+        spec = SkillSpec(
+            name="test",
+            description="Short desc but this step-by-step workflow will: first do X, then do Y",
+        )
         result = _validate_schema(spec, content)
         assert any(
-            v.field == "description" and "workflow" in v.reason.lower()
-            for v in result.violations
+            v.field == "description" and "workflow" in v.reason.lower() for v in result.violations
         )
 
     def test_validate_empty_security_notes(self):
@@ -206,8 +210,7 @@ Test scope. Does NOT modify production.
         spec = SkillSpec(name="test", description="short description")
         result = _validate_schema(spec, content)
         assert any(
-            v.field == "security_notes" and "empty" in v.reason.lower()
-            for v in result.violations
+            v.field == "security_notes" and "empty" in v.reason.lower() for v in result.violations
         )
 
     def test_validate_all_fields_present_is_valid(self):
@@ -249,7 +252,9 @@ bar
         assert result.confidence_penalty >= 0.40
 
     def test_parse_skill_md_includes_validation(self):
-        path = self._write_skill("SKILL.md", """---
+        path = self._write_skill(
+            "SKILL.md",
+            """---
 name: test-skill
 description: A test skill
 ---
@@ -262,6 +267,7 @@ No sensitive data.
 
 ## Scope
 Test scope. Does NOT modify production.
-""")
+""",
+        )
         result = parse_skill_md(path)
         assert "schema_validation" in result

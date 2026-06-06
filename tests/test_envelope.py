@@ -24,10 +24,7 @@ class TestEnvelopeResult:
     def test_multiple_violations(self):
         result = EnvelopeResult(
             passed=False,
-            violations=[
-                "max_steps exceeded: 25 > 20",
-                "token_budget exceeded: 60000 > 50000"
-            ]
+            violations=["max_steps exceeded: 25 > 20", "token_budget exceeded: 60000 > 50000"],
         )
         assert len(result.violations) == 2
 

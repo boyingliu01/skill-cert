@@ -70,11 +70,13 @@ class TestCalibrationRunner:
 
     def test_calibrate_perfect_agreement(self):
         """All auto results match human → agreement_rate = 1.0."""
-        gs = GoldenEvalSet([
-            GoldenEvalCase("1", "p", "o", True),
-            GoldenEvalCase("2", "p", "o", False),
-            GoldenEvalCase("3", "p", "o", True),
-        ])
+        gs = GoldenEvalSet(
+            [
+                GoldenEvalCase("1", "p", "o", True),
+                GoldenEvalCase("2", "p", "o", False),
+                GoldenEvalCase("3", "p", "o", True),
+            ]
+        )
         auto = [True, False, True]
         runner = CalibrationRunner()
         report = runner.calibrate(gs, auto)
@@ -90,10 +92,12 @@ class TestCalibrationRunner:
 
     def test_calibrate_all_disagree(self):
         """All auto results disagree with human → agreement_rate = 0.0."""
-        gs = GoldenEvalSet([
-            GoldenEvalCase("1", "p", "o", True),
-            GoldenEvalCase("2", "p", "o", False),
-        ])
+        gs = GoldenEvalSet(
+            [
+                GoldenEvalCase("1", "p", "o", True),
+                GoldenEvalCase("2", "p", "o", False),
+            ]
+        )
         auto = [False, True]
         runner = CalibrationRunner()
         report = runner.calibrate(gs, auto)
@@ -104,10 +108,12 @@ class TestCalibrationRunner:
 
     def test_calibrate_with_false_positives(self):
         """Auto passes when human fails → FPR > 0."""
-        gs = GoldenEvalSet([
-            GoldenEvalCase("1", "p", "o", False),  # human=fail
-            GoldenEvalCase("2", "p", "o", False),
-        ])
+        gs = GoldenEvalSet(
+            [
+                GoldenEvalCase("1", "p", "o", False),  # human=fail
+                GoldenEvalCase("2", "p", "o", False),
+            ]
+        )
         auto = [True, False]  # first is FP
         runner = CalibrationRunner()
         report = runner.calibrate(gs, auto)
@@ -117,10 +123,12 @@ class TestCalibrationRunner:
 
     def test_calibrate_with_false_negatives(self):
         """Auto fails when human passes → FNR > 0."""
-        gs = GoldenEvalSet([
-            GoldenEvalCase("1", "p", "o", True),  # human=pass
-            GoldenEvalCase("2", "p", "o", True),
-        ])
+        gs = GoldenEvalSet(
+            [
+                GoldenEvalCase("1", "p", "o", True),  # human=pass
+                GoldenEvalCase("2", "p", "o", True),
+            ]
+        )
         auto = [False, True]  # first is FN
         runner = CalibrationRunner()
         report = runner.calibrate(gs, auto)
@@ -131,12 +139,14 @@ class TestCalibrationRunner:
     def test_cohens_kappa_random(self):
         """Kappa near 0 when agreement is by chance."""
         # 50/50 agreement expected by chance
-        gs = GoldenEvalSet([
-            GoldenEvalCase("1", "p", "o", True),
-            GoldenEvalCase("2", "p", "o", False),
-            GoldenEvalCase("3", "p", "o", True),
-            GoldenEvalCase("4", "p", "o", False),
-        ])
+        gs = GoldenEvalSet(
+            [
+                GoldenEvalCase("1", "p", "o", True),
+                GoldenEvalCase("2", "p", "o", False),
+                GoldenEvalCase("3", "p", "o", True),
+                GoldenEvalCase("4", "p", "o", False),
+            ]
+        )
         auto = [True, True, False, False]  # 2 agree, 2 disagree
         runner = CalibrationRunner()
         report = runner.calibrate(gs, auto)
@@ -147,10 +157,12 @@ class TestCalibrationRunner:
 
     def test_calibrate_uses_assertion_results(self):
         """When no auto_results, uses assertion_results from cases."""
-        gs = GoldenEvalSet([
-            GoldenEvalCase("1", "p", "o", True, [{"passed": True}]),
-            GoldenEvalCase("2", "p", "o", False, [{"passed": False}]),
-        ])
+        gs = GoldenEvalSet(
+            [
+                GoldenEvalCase("1", "p", "o", True, [{"passed": True}]),
+                GoldenEvalCase("2", "p", "o", False, [{"passed": False}]),
+            ]
+        )
         runner = CalibrationRunner()
         report = runner.calibrate(gs)
 
@@ -159,10 +171,12 @@ class TestCalibrationRunner:
 
     def test_calibrate_no_grader_no_assertions(self):
         """Without grader or assertion_results, all auto=False."""
-        gs = GoldenEvalSet([
-            GoldenEvalCase("1", "p", "o", False),  # human=fail → TN
-            GoldenEvalCase("2", "p", "o", True),   # human=pass → FN
-        ])
+        gs = GoldenEvalSet(
+            [
+                GoldenEvalCase("1", "p", "o", False),  # human=fail → TN
+                GoldenEvalCase("2", "p", "o", True),  # human=pass → FN
+            ]
+        )
         runner = CalibrationRunner()
         report = runner.calibrate(gs)
 
@@ -211,6 +225,9 @@ class TestCalibrationReport:
         assert report.agreement_rate == 0.95
         assert report.total_cases == 100
         assert (
-            report.true_positives + report.true_negatives +
-            report.false_positives + report.false_negatives == 100
+            report.true_positives
+            + report.true_negatives
+            + report.false_positives
+            + report.false_negatives
+            == 100
         )

@@ -21,10 +21,19 @@ class TestMinimumEvalsHasDeepAssertions:
         else:
             pytest.skip("No eval cases in template")
 
-        trigger_case = next((c for c in cases if c.get("category") == "trigger" and c.get("expected_triggers", False)), None)
+        trigger_case = next(
+            (
+                c
+                for c in cases
+                if c.get("category") == "trigger" and c.get("expected_triggers", False)
+            ),
+            None,
+        )
         if trigger_case:
             assertion_types = {a.get("type") for a in trigger_case.get("assertions", [])}
-            assert "regex" in assertion_types, f"Trigger eval should use regex assertion, got: {assertion_types}"
+            assert "regex" in assertion_types, (
+                f"Trigger eval should use regex assertion, got: {assertion_types}"
+            )
 
     def test_template_assertion_weights_are_meanful(self):
         """At least some assertions should have weight >= 2 (important/critical)."""
@@ -37,8 +46,7 @@ class TestMinimumEvalsHasDeepAssertions:
             pytest.skip("No eval cases in template")
 
         max_weight = max(
-            (a.get("weight", 0) for c in cases for a in c.get("assertions", [])),
-            default=0
+            (a.get("weight", 0) for c in cases for a in c.get("assertions", [])), default=0
         )
         assert max_weight >= 2, f"No assertion with weight >= 2, max is {max_weight}"
 
@@ -72,7 +80,7 @@ class TestInitialEvalPromptDeepening:
             "workflow_steps": ["step 1"],
             "anti_patterns": [],
             "output_format": [],
-            "examples": []
+            "examples": [],
         }
         prompt = self.gen._prepare_generation_prompt(spec)
 
@@ -91,7 +99,7 @@ class TestInitialEvalPromptDeepening:
             "workflow_steps": ["step 1"],
             "anti_patterns": [],
             "output_format": [],
-            "examples": []
+            "examples": [],
         }
         prompt = self.gen._prepare_generation_prompt(spec)
 

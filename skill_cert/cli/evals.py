@@ -14,8 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path, tracker=None):
-    eval_cases_list = evals if isinstance(evals, list) else (
-        evals.get("eval_cases") or evals.get("evals") or evals.get("cases") or evals.get("test_cases") or []
+    eval_cases_list = (
+        evals
+        if isinstance(evals, list)
+        else (
+            evals.get("eval_cases")
+            or evals.get("evals")
+            or evals.get("cases")
+            or evals.get("test_cases")
+            or []
+        )
     )
     with_skill = runner.run_with_skill(eval_cases_list, spec_path, adapter)
     without_skill = runner.run_without_skill(eval_cases_list, adapter)
@@ -35,25 +43,27 @@ def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path, t
             )
 
     def _build_eval_case(case_dict):
-        if hasattr(case_dict, 'prompt'):
+        if hasattr(case_dict, "prompt"):
             return case_dict
         assertions = []
         for a in case_dict.get("assertions", []):
             if isinstance(a, dict):
                 w = a.get("weight", 1)
-                assertions.append(EvalAssertion(
-                    name=a.get("name", ""),
-                    type=a.get("type", "contains"),
-                    value=str(a.get("value", "")),
-                    weight=int(float(w))
-                ))
+                assertions.append(
+                    EvalAssertion(
+                        name=a.get("name", ""),
+                        type=a.get("type", "contains"),
+                        value=str(a.get("value", "")),
+                        weight=int(float(w)),
+                    )
+                )
         prompt = case_dict.get("input") or case_dict.get("prompt", "")
         return EvalCase(
             id=case_dict.get("id", 0),
             name=case_dict.get("name", ""),
             category=case_dict.get("category", "normal"),
             prompt=prompt,
-            assertions=assertions
+            assertions=assertions,
         )
 
     case_map = {c.get("id"): _build_eval_case(c) for c in eval_cases_list}
@@ -84,8 +94,16 @@ def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path, t
             if case:
                 grade = grader.grade_output(case, r.get("output") or "")
                 graded.append(_flatten_grade(r, grade, "without_skill"))
-    ws_passed = sum(1 for r in graded if r.get("mode") == "with_skill" and r.get("grade", {}).get("final_passed"))
-    wos_passed = sum(1 for r in graded if r.get("mode") == "without_skill" and r.get("grade", {}).get("final_passed"))
+    ws_passed = sum(
+        1
+        for r in graded
+        if r.get("mode") == "with_skill" and r.get("grade", {}).get("final_passed")
+    )
+    wos_passed = sum(
+        1
+        for r in graded
+        if r.get("mode") == "without_skill" and r.get("grade", {}).get("final_passed")
+    )
     return graded, ws_passed, wos_passed
 
 
@@ -96,7 +114,9 @@ def _run_all_evals(adapters, runner, grader, evals, spec_path, tracker=None):
     all_results = []
     for name, adapter in adapters.items():
         print(f"\n  Model: {name}")
-        graded, ws, wos = _run_eval_for_model(name, adapter, runner, grader, evals, spec_path, tracker)
+        graded, ws, wos = _run_eval_for_model(
+            name, adapter, runner, grader, evals, spec_path, tracker
+        )
         all_results.extend(graded)
         print(f"    With-skill passed: {ws}")
         print(f"    Without-skill passed: {wos}")
@@ -119,7 +139,12 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
     # Create TokenLedger for per-eval token accounting
     token_ledger = TokenLedger()
 
-    runner = EvalRunner(max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm, request_timeout=config.request_timeout, token_ledger=token_ledger)
+    runner = EvalRunner(
+        max_concurrency=config.max_concurrency,
+        rate_limit_rpm=config.rate_limit_rpm,
+        request_timeout=config.request_timeout,
+        token_ledger=token_ledger,
+    )
     primary_adapter = list(adapters.values())[0]
     grader = Grader(llm_client=primary_adapter)
     tracker = ReliabilityTracker()
@@ -136,7 +161,8 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
             print(f"    {cat}: {count}")
     if reliability_report["retry_stats"]["total_retries"] > 0:
         print(
-            f"  Retries: avg={reliability_report['retry_stats']['avg_retries']:.2f}, max={reliability_report['retry_stats']['max_retries']}"
+            f"  Retries: avg={reliability_report['retry_stats']['avg_retries']:.2f}, "
+            f"max={reliability_report['retry_stats']['max_retries']}"
         )
 
     _print_phase(3, "Calculate Metrics")
@@ -148,10 +174,15 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
         _print_phase(4, f"Stability Analysis ({num_runs} runs)")
         eval_cases = spec["evals"].get("eval_cases", spec["evals"].get("cases", []))
         stab_runner = StabilityRunner(
-            base_runner=EvalRunner(max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm),
-            num_runs=num_runs, max_concurrency=config.max_concurrency
+            base_runner=EvalRunner(
+                max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm
+            ),
+            num_runs=num_runs,
+            max_concurrency=config.max_concurrency,
         )
-        stability_data = stab_runner.run_stability(eval_cases, spec_path, primary_adapter, with_skill=True)
+        stability_data = stab_runner.run_stability(
+            eval_cases, spec_path, primary_adapter, with_skill=True
+        )
         l4_score = calculate_l4_stability(stability_data)
         metrics["l4_execution_stability"] = l4_score
         metrics["l4_stability_pass"] = l4_score >= StabilityThresholds.L4_PASS_THRESHOLD
@@ -164,8 +195,8 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
     if l7:
         metrics["l7_cost_efficiency"] = l7
 
-    metrics['reliability'] = reliability_report
-    metrics['_results'] = all_results
+    metrics["reliability"] = reliability_report
+    metrics["_results"] = all_results
 
     # Aggregate token data from traces via TokenLedger
     runner.close()  # flushes token_ledger
@@ -181,15 +212,29 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
         for phase, data in token_summary.get("by_phase", {}).items():
             print(f"  {phase}: {data['total_tokens']:,} tokens")
 
-    _print_metric("L1 Trigger Accuracy", metrics.get("l1_trigger_accuracy", 0), VerdictThresholds.L1_MIN)
-    _print_metric("L2 Output Delta", metrics.get("l2_with_without_skill_delta", 0), VerdictThresholds.L2_MIN)
-    _print_metric("L3 Step Adherence", metrics.get("l3_step_adherence", 0), VerdictThresholds.L3_MIN)
+    _print_metric(
+        "L1 Trigger Accuracy",
+        metrics.get("l1_trigger_accuracy", 0),
+        VerdictThresholds.L1_MIN,
+    )
+    _print_metric(
+        "L2 Output Delta",
+        metrics.get("l2_with_without_skill_delta", 0),
+        VerdictThresholds.L2_MIN,
+    )
+    _print_metric(
+        "L3 Step Adherence",
+        metrics.get("l3_step_adherence", 0),
+        VerdictThresholds.L3_MIN,
+    )
     num_runs = getattr(args, "runs", 1) or 1
     if num_runs > 1:
         stability_d = metrics.get("stability_data", {})
         l4_val = metrics.get("l4_execution_stability", 0)
         l4_pass = metrics.get("l4_stability_pass", True)
-        print(f"  L4 Stability: {l4_val * 100:.1f}% (std={stability_d.get('overall_std_dev', 0):.4f})")
+        print(
+            f"  L4 Stability: {l4_val * 100:.1f}% (std={stability_d.get('overall_std_dev', 0):.4f})"
+        )
     else:
         l4_val = metrics.get("l4_execution_stability", 0)
         l4_pass = True
@@ -200,7 +245,11 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
     drift_report = None
     if len(adapters) > 1:
         detector = DriftDetector()
-        drift_results = detector.detect_drift(spec["evals"].get("eval_cases", spec["evals"].get("cases", [])), adapters, grader)
+        drift_results = detector.detect_drift(
+            spec["evals"].get("eval_cases", spec["evals"].get("cases", [])),
+            adapters,
+            grader,
+        )
         drift_report = detector.aggregate_drift_report(drift_results)
         print(f"  Highest severity: {drift_report.get('highest_severity', 'none')}")
         print(f"  Average variance: {drift_report.get('average_variance', 0):.3f}")
@@ -210,24 +259,35 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
     _print_phase(5, "Generate Report")
     reporter = Reporter()
     md_report, json_report = reporter.generate_report(
-        metrics=metrics, drift=drift_report, config=config.model_dump(),
+        metrics=metrics,
+        drift=drift_report,
+        config=config.model_dump(),
         maintainability=spec.get("maintainability"),
     )
 
     # Build structured report (Phase 3)
     token_analysis = metrics.get("token_analysis")
-    observability_data = {
-        "trace_count": len(all_traces),
-        "total_events": sum(len(t.events) for t in all_traces),
-        "total_duration_ms": sum(t.duration_ms for t in all_traces),
-        "total_tool_calls": sum(t.tool_call_count for t in all_traces),
-        "trace_format": getattr(args, "trace_export", "jsonl"),
-    } if all_traces else None
+    observability_data = (
+        {
+            "trace_count": len(all_traces),
+            "total_events": sum(len(t.events) for t in all_traces),
+            "total_duration_ms": sum(t.duration_ms for t in all_traces),
+            "total_tool_calls": sum(t.tool_call_count for t in all_traces),
+            "trace_format": getattr(args, "trace_export", "jsonl"),
+        }
+        if all_traces
+        else None
+    )
 
     structured_report = reporter.build_structured_report(
         metrics=metrics,
         drift=drift_report,
-        config={"skill_name": skill_name, "skill_path": spec_path, "models": list(adapters.keys()), **config.model_dump()},
+        config={
+            "skill_name": skill_name,
+            "skill_path": spec_path,
+            "models": list(adapters.keys()),
+            **config.model_dump(),
+        },
         maintainability=spec.get("maintainability"),
         token_analysis=token_analysis,
         observability=observability_data,
@@ -252,6 +312,7 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
         if getattr(args, "json_schema_validate", False):
             import json as _json
             from pathlib import Path as _Path
+
             schema_path = _Path(__file__).parent.parent.parent / "schemas" / "report.schema.json"
             if schema_path.exists():
                 # Use Pydantic for validation (no jsonschema dependency)
@@ -264,7 +325,9 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
                     print(f"  Schema validation: FAIL - {e}")
 
     evals_cache = output_dir / f"{skill_name}-evals-cache.json"
-    evals_cache.write_text(json.dumps(spec["evals"], indent=2, ensure_ascii=False), encoding="utf-8")
+    evals_cache.write_text(
+        json.dumps(spec["evals"], indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     print(f"  Evals cache: {evals_cache}")
 
     # Export traces as JSONL (for observability)

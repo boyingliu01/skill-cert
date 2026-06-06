@@ -1,17 +1,21 @@
 """Round 3 Delphi Review — final position, focused on Expert B's remaining concerns."""
+
 import json
 import re
 from pathlib import Path
 
 import httpx
 
-API_KEY = "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+API_KEY = (
+    "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/"
+    "qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+)
 BASE_URL = "https://lab.iwhalecloud.com/gpt-proxy"
 
 # Read current pyproject.toml dependencies for evidence
 pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
 # Extract dependencies section
-dep_match = re.search(r'dependencies\s*=\s*\[(.*?)\]', pyproject, re.DOTALL)
+dep_match = re.search(r"dependencies\s*=\s*\[(.*?)\]", pyproject, re.DOTALL)
 CURRENT_DEPS = dep_match.group(0) if dep_match else "NOT FOUND"
 
 FIX_REPORT_R3 = f"""## Round 3 修复报告 — 针对 Expert B 剩余关切
@@ -89,7 +93,8 @@ EXPERT_B_SYSTEM_R3 = """你是一位资深实现工程师（Expert B）。
 3. Jinja2 模板测试深度不足
 4. Pydantic 性能缺乏大数据量测试
 
-现在你看到了修复报告，其中包含了 pyproject.toml 的实际依赖内容、执行流控制代码、增强的测试方案和性能基准测试。
+现在你看到了修复报告，其中包含了 pyproject.toml 的实际依赖内容、
+执行流控制代码、增强的测试方案和性能基准测试。
 
 请给出你的最终裁决。如果所有关切已解决，请批准。
 
@@ -133,9 +138,9 @@ def call_model(model, system, user):
 
 
 def main():
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("  Round 3: Expert B (Qwen3.5-122B-A10B) - Final Position...")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     try:
         review = call_model("Qwen3.5-122B-A10B", EXPERT_B_SYSTEM_R3, USER_PROMPT_R3)
         print(review)

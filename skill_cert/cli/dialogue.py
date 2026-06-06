@@ -36,7 +36,9 @@ def run_dialogue_mode(args, config) -> int:
     _print_phase(1, "Dialogue Evaluation")
     print(f"  Max turns: {max_turns}")
 
-    runner = EvalRunner(max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm)
+    runner = EvalRunner(
+        max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm
+    )
     evaluator = DialogueEvaluator(judge_callback=primary_adapter)
     simulator = UserSimulator(model_adapter=primary_adapter, skill_spec=spec)
 
@@ -54,7 +56,9 @@ def run_dialogue_mode(args, config) -> int:
     print(f"  Verdict: {results.get('verdict', 'N/A')}")
 
     result_path = output_dir / f"{skill_name}-dialogue-result.json"
-    result_path.write_text(json.dumps(results, indent=2, default=str, ensure_ascii=False), encoding="utf-8")
+    result_path.write_text(
+        json.dumps(results, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
+    )
     print(f"  Results: {result_path}")
 
     return EXIT_PASS if results.get("verdict") == "PASS" else EXIT_ERROR

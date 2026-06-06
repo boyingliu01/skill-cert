@@ -24,7 +24,11 @@ class SkillLoadResult:
     @property
     def overall_score(self) -> float:
         """Weighted overall score."""
-        return 0.4 * self.trigger_accuracy + 0.4 * self.response_quality + 0.2 * (1.0 - min(1.0, self.latency_ms / 10000))
+        return (
+            0.4 * self.trigger_accuracy
+            + 0.4 * self.response_quality
+            + 0.2 * (1.0 - min(1.0, self.latency_ms / 10000))
+        )
 
 
 @dataclass
@@ -172,11 +176,17 @@ class SkillsBenchAnalyzer:
         if count <= 3:
             return {"status": "safe", "message": f"{count} skills: within optimal range"}
         elif count <= 5:
-            return {"status": "caution", "message": f"{count} skills: approaching overload threshold"}
+            return {
+                "status": "caution",
+                "message": f"{count} skills: approaching overload threshold",
+            }
         elif count <= self.MAX_SKILLS_HARD_LIMIT:
-            return {"status": "warning", "message": f"{count} skills: may cause cognitive overload"}
+            return {
+                "status": "warning",
+                "message": f"{count} skills: may cause cognitive overload",
+            }
         else:
             return {
                 "status": "error",
-                "message": f"{count} skills: exceeds hard limit of {self.MAX_SKILLS_HARD_LIMIT}",
+                "message": (f"{count} skills: exceeds hard limit of {self.MAX_SKILLS_HARD_LIMIT}"),
             }

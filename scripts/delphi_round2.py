@@ -1,23 +1,37 @@
 """Round 2 Delphi Review — experts review fixes and decide."""
+
 import json
 from pathlib import Path
 
 import httpx
 
-API_KEY = "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+API_KEY = (
+    "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/"
+    "qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+)
 BASE_URL = "https://lab.iwhalecloud.com/gpt-proxy"
 
-ROUND1 = json.loads(Path(".sprint-state/phase-outputs/delphi-round1.json").read_text(encoding="utf-8"))
+ROUND1 = json.loads(
+    Path(".sprint-state/phase-outputs/delphi-round1.json").read_text(encoding="utf-8")
+)
 
 FIX_REPORT = r"""## 修复报告
 
 ### Critical Issues 修复
 
 #### 1. eval_details 数据映射机制（两位专家共同 Critical）
-**修复方案**：在 `_run_single_phase()` 中，在调用 `reporter.generate_report()` 之前，构建 `eval_case_meta: dict[int, dict]` 映射表：
+**修复方案**：在 `_run_single_phase()` 中，
+在调用 `reporter.generate_report()` 之前，构建
+`eval_case_meta: dict[int, dict]` 映射表：
 ```python
 eval_cases = spec["evals"].get("eval_cases", spec["evals"].get("cases", []))
-eval_case_meta = {c["id"]: {"name": c.get("name", ""), "category": c.get("category", "normal")} for c in eval_cases}
+eval_case_meta = {
+    c["id"]: {
+        "name": c.get("name", ""),
+        "category": c.get("category", "normal")
+    }
+    for c in eval_cases
+}
 ```
 然后将 `eval_case_meta` 作为新参数传入 `generate_report(..., eval_case_meta=eval_case_meta)`。
 `_build_eval_details()` 使用该映射填充 name/category，找不到时赋值 "N/A" 并记录 Warning。
@@ -25,7 +39,9 @@ eval_case_meta = {c["id"]: {"name": c.get("name", ""), "category": c.get("catego
 ### Major Concerns 处理
 
 #### 2. JSON Schema 与 Pydantic 双重维护（Expert A - Major）
-**修复方案**：采纳。`schemas/report.schema.json` 由 `StructuredReport.model_json_schema()` 自动生成。新增辅助函数：
+**修复方案**：采纳。`schemas/report.schema.json` 由
+`StructuredReport.model_json_schema()` 自动生成。
+新增辅助函数：
 ```python
 def export_report_schema() -> dict:
     from engine.report_models import StructuredReport
@@ -34,7 +50,11 @@ def export_report_schema() -> dict:
 在 Task 2 中，先编写 Pydantic 模型，再通过脚本/CLI 命令导出为静态 JSON Schema 文件。不再手写维护。
 
 #### 3. _generate_suggestions() 过渡方案（Expert A - Major）
-**修复方案**：采纳。`ImprovementSuggestion` 实现 `__str__` 方法返回 `self.text`，确保 Jinja2 模板中 `{{ suggestion }}` 仍可工作。同时在 `generate_report()` 内部做类型适配：如果调用者传入旧格式 `list[str]`，自动转换为 `ImprovementSuggestion(text=s, priority="P2", expected_impact="low")`。
+**修复方案**：采纳。`ImprovementSuggestion` 实现 `__str__` 方法
+返回 `self.text`，确保 Jinja2 模板中 `{{ suggestion }}` 仍可工作。
+同时在 `generate_report()` 内部做类型适配：
+如果调用者传入旧格式 `list[str]`，
+自动转换为 `ImprovementSuggestion(text=s, priority="P2", expected_impact="low")`。
 
 #### 4. security_scan 在 Schema 中为 optional（两位专家共同 Major）
 **修复方案**：采纳。
@@ -53,7 +73,8 @@ def test_markdown_metrics_table_structure():
 ```
 
 #### 6. Suggestion 优先级阈值提取（Expert B - Major）
-**修复方案**：采纳。将 P0/P1/P2 判定阈值提取到 `engine/constants.py` 的 `SuggestionThresholds` 类中：
+**修复方案**：采纳。将 P0/P1/P2 判定阈值提取到
+`engine/constants.py` 的 `SuggestionThresholds` 类中：
 ```python
 class SuggestionThresholds:
     P0_SCORE = 0.6
@@ -75,8 +96,12 @@ assert elapsed < 1.0  # 必须 < 1s
 ### Minor Concerns 说明
 
 1. **阈值动态注入**：已采纳，MetricLevelDetail.threshold 从 VerdictThresholds 动态读取。
-2. **Jinja2 模板外抽**：暂不采纳。当前内联方式与项目其他模板（prompts/*.md）风格不同，但外抽涉及加载路径和打包配置变更，建议作为后续独立重构。
-3. **Benchmark 覆盖率兜底**：已采纳，Jinja2 模板增加 `{% if benchmark.test_coverage_rate is defined %}` 判断。
+2. **Jinja2 模板外抽**：暂不采纳。
+当前内联方式与项目其他模板（prompts/*.md）风格不同，
+但外抽涉及加载路径和打包配置变更，
+建议作为后续独立重构。
+3. **Benchmark 覆盖率兜底**：已采纳，
+Jinja2 模板增加 `{% if benchmark.test_coverage_rate is defined %}` 判断。
 4. **依赖声明**：已确认 pyproject.toml 是唯一依赖源，CI/CD 通过 `pip install -e .` 安装。
 5. **Schema 版本**：保持 Draft-07，因 jsonschema 库对 Draft-07 支持最稳定。
 6. **错误处理粒度**：已采纳，validate_report_schema 返回人类可读错误信息。
@@ -161,9 +186,9 @@ def call_model(model, system, user):
 def main():
     results = {}
     for expert_id, model, system in EXPERTS_R2:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  Round 2: Expert {expert_id} ({model})...")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         try:
             review = call_model(model, system, USER_PROMPT_R2)
             results[expert_id] = {"model": model, "review": review}

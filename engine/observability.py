@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # ── EventBus ──────────────────────────────────────────────────
 
+
 class EventBus:
     """Lightweight pub/sub for trace events.
 
@@ -84,6 +85,7 @@ class EventBus:
 
 
 # ── TraceExporter ─────────────────────────────────────────────
+
 
 class BaseTraceExporter(ABC):
     """Abstract base for trace exporters."""

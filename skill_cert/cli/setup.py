@@ -139,7 +139,10 @@ def _setup_interactive(
     while True:
         output_fn(f"--- Model {model_num} ---")
 
-        name = _prompt_input("Model name (e.g. qwen3.6-plus, claude-sonnet-4-20250514)", input_fn=input_fn)
+        name = _prompt_input(
+            "Model name (e.g. qwen3.6-plus, claude-sonnet-4-20250514)",
+            input_fn=input_fn,
+        )
         if not name:
             output_fn("  ERROR: Model name is required")
             continue
@@ -156,7 +159,11 @@ def _setup_interactive(
             output_fn(f"  ERROR: {err}")
             continue
 
-        fallback = _prompt_input("Fallback model name (optional, press Enter to skip)", default="", input_fn=input_fn)
+        fallback = _prompt_input(
+            "Fallback model name (optional, press Enter to skip)",
+            default="",
+            input_fn=input_fn,
+        )
 
         model = ModelConfig(
             model_name=name,
@@ -186,7 +193,11 @@ def _setup_interactive(
         model_num += 1
 
         if model_num >= 2:
-            answer = input_fn("Add another model? (recommended for drift detection) [y/N]: ").strip().lower()
+            answer = (
+                input_fn("Add another model? (recommended for drift detection) [y/N]: ")
+                .strip()
+                .lower()
+            )
             if answer != "y":
                 break
 
@@ -197,7 +208,7 @@ def _setup_interactive(
     path = _write_config(models)
     output_fn(f"\nSetup complete! {len(models)} model(s) saved to {path}")
     output_fn("\nQuick start:")
-    output_fn('  skill-cert --skill path/to/SKILL.md')
+    output_fn("  skill-cert --skill path/to/SKILL.md")
     if len(models) >= 2:
         output_fn("\nDrift detection enabled (multiple models configured).")
 

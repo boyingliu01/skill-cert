@@ -34,11 +34,21 @@ def main():
     skills_to_test = [
         ("delphi-review", str(project_root / "skills" / "delphi-review" / "SKILL.md")),
         ("sprint-flow", str(project_root / "skills" / "sprint-flow" / "SKILL.md")),
-        ("test-specification-alignment", str(project_root / "skills" / "test-specification-alignment" / "SKILL.md")),
+        ("test-specification-alignment",
+         str(project_root / "skills" / "test-specification-alignment" / "SKILL.md")),
     ]
 
     # 检查 plan-eng-review
-    gstack_skill = Path.home() / ".config" / "opencode" / "skills" / "gstack" / "skills" / "plan-eng-review" / "SKILL.md"
+    gstack_skill = (
+        Path.home()
+        / ".config"
+        / "opencode"
+        / "skills"
+        / "gstack"
+        / "skills"
+        / "plan-eng-review"
+        / "SKILL.md"
+    )
     if gstack_skill.exists():
         skills_to_test.append(("plan-eng-review", str(gstack_skill)))
     else:
@@ -55,8 +65,10 @@ def main():
         try:
             spec = parse_skill_md(path)
             specs[name] = spec
-            print(f"  ✅ {name}: {spec['parse_method']}, confidence={spec['parse_confidence']:.2f}, "
-                  f"steps={len(spec['workflow_steps'])}, patterns={len(spec['anti_patterns'])}")
+            print(
+                f"  ✅ {name}: {spec['parse_method']}, confidence={spec['parse_confidence']:.2f}, "
+                f"steps={len(spec['workflow_steps'])}, patterns={len(spec['anti_patterns'])}"
+            )
         except Exception as e:
             print(f"  ❌ {name}: {e}")
 

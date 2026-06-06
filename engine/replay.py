@@ -29,7 +29,7 @@ class HistoryReplay:
         messages = []
         file_path = Path(file_path)
 
-        with open(file_path, encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
@@ -54,7 +54,9 @@ class HistoryReplay:
         """Log warning when message lacks required fields."""
         logger.warning(f"Skipping line {line_num} in {file_path}: missing 'role' or 'content' key")
 
-    def _log_invalid_json_warning(self, line_num: int, file_path: str | Path, error: Exception) -> None:
+    def _log_invalid_json_warning(
+        self, line_num: int, file_path: str | Path, error: Exception
+    ) -> None:
         """Log warning when JSON parsing fails."""
         logger.warning(f"Skipping invalid JSON on line {line_num} in {file_path}: {error}")
 
@@ -81,20 +83,19 @@ class HistoryReplay:
             skill_results = await self.skill_runner.run_with_skill([eval_obj], skill_context)
             new_response = self._extract_response(skill_results)
 
-            results.append({
-                "user_message": user_content,
-                "new_response": new_response,
-                "context_length": len(user_content)
-            })
+            results.append(
+                {
+                    "user_message": user_content,
+                    "new_response": new_response,
+                    "context_length": len(user_content),
+                }
+            )
 
         return results
 
     def _create_eval_object(self, content: str) -> dict[str, Any]:
         """Create evaluation object for skill runner."""
-        return {
-            "vars": {"input": content},
-            "asserts": []
-        }
+        return {"vars": {"input": content}, "asserts": []}
 
     def _extract_response(self, skill_results: list[Any]) -> str:
         """Extract response from skill runner results."""
@@ -102,10 +103,10 @@ class HistoryReplay:
             return "No response"
 
         first_result = skill_results[0]
-        if hasattr(first_result, 'response'):
+        if hasattr(first_result, "response"):
             return first_result.response
-        elif isinstance(first_result, dict) and 'response' in first_result:
-            return first_result['response']
+        elif isinstance(first_result, dict) and "response" in first_result:
+            return first_result["response"]
         elif isinstance(first_result, str):
             return first_result
         else:

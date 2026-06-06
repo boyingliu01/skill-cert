@@ -55,7 +55,10 @@ def run_multi_skill_mode(args, config) -> int:
     md_path = output_dir / "multi-skill-report.md"
     json_path = output_dir / "multi-skill-result.json"
     md_path.write_text(md_report, encoding="utf-8")
-    json_path.write_text(json.dumps(json_report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+    json_path.write_text(
+        json.dumps(json_report, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
     print(f"\n  Markdown: {md_path}")
     print(f"  JSON: {json_path}")
 

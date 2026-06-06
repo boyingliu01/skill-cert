@@ -1,4 +1,7 @@
-"""Multi-skill conflict detection — identifies interference when multiple skills load simultaneously."""
+"""
+Multi-skill conflict detection — identifies interference when multiple skills
+load simultaneously.
+"""
 
 from __future__ import annotations
 
@@ -90,14 +93,16 @@ class MultiSkillAnalyzer:
             all_overlaps = exact | substring
             for word in all_overlaps:
                 severity = self._trigger_severity(len(exact), len(substring))
-                conflicts.append(SkillConflict(
-                    conflict_type=ConflictType.TRIGGER_OVERLAP,
-                    severity=severity,
-                    skill_a=sa["name"],
-                    skill_b=sb["name"],
-                    trigger_word=word,
-                    description=f"Both skills trigger on '{word}'",
-                ))
+                conflicts.append(
+                    SkillConflict(
+                        conflict_type=ConflictType.TRIGGER_OVERLAP,
+                        severity=severity,
+                        skill_a=sa["name"],
+                        skill_b=sb["name"],
+                        trigger_word=word,
+                        description=f"Both skills trigger on '{word}'",
+                    )
+                )
 
         return conflicts
 
@@ -158,7 +163,9 @@ class MultiSkillAnalyzer:
 
             desc_triggers = self._description_hijack_risk(sa, sb)
             if desc_triggers:
-                reasons.append(f"skill '{sa['name']}' description mentions triggers of '{sb['name']}'")
+                reasons.append(
+                    f"skill '{sa['name']}' description mentions triggers of '{sb['name']}'"
+                )
 
             desc_similarity = self._description_similarity(sa, sb)
             if desc_similarity > 0.3:
@@ -167,14 +174,19 @@ class MultiSkillAnalyzer:
             if reasons:
                 seen_pairs.add(pair_key)
                 severity = self._contamination_severity(len(reasons), desc_similarity)
-                conflicts.append(SkillConflict(
-                    conflict_type=ConflictType.PROMPT_CONTAMINATION,
-                    severity=severity,
-                    skill_a=sa["name"],
-                    skill_b=sb["name"],
-                    description="; ".join(reasons),
-                    details={"shared_items": sorted(set(overlap_items)), "description_overlap": round(desc_similarity, 4)},
-                ))
+                conflicts.append(
+                    SkillConflict(
+                        conflict_type=ConflictType.PROMPT_CONTAMINATION,
+                        severity=severity,
+                        skill_a=sa["name"],
+                        skill_b=sb["name"],
+                        description="; ".join(reasons),
+                        details={
+                            "shared_items": sorted(set(overlap_items)),
+                            "description_overlap": round(desc_similarity, 4),
+                        },
+                    )
+                )
 
         return conflicts
 
@@ -217,14 +229,23 @@ class MultiSkillAnalyzer:
         excess = total_chars - token_budget
         severity = self._overflow_severity(excess, token_budget)
         skill_names = [s["name"] for s in self._skills]
-        return [SkillConflict(
-            conflict_type=ConflictType.TOKEN_OVERFLOW,
-            severity=severity,
-            skill_a=skill_names[0] if skill_names else "unknown",
-            skill_b=skill_names[-1] if len(skill_names) > 1 else "",
-            description=f"Combined content ({total_chars:,} chars) exceeds budget ({token_budget:,})",
-            details={"total_chars": total_chars, "budget": token_budget, "excess": excess, "skill_count": len(self._skills)},
-        )]
+        return [
+            SkillConflict(
+                conflict_type=ConflictType.TOKEN_OVERFLOW,
+                severity=severity,
+                skill_a=skill_names[0] if skill_names else "unknown",
+                skill_b=skill_names[-1] if len(skill_names) > 1 else "",
+                description=(
+                    f"Combined content ({total_chars:,} chars) exceeds budget ({token_budget:,})"
+                ),
+                details={
+                    "total_chars": total_chars,
+                    "budget": token_budget,
+                    "excess": excess,
+                    "skill_count": len(self._skills),
+                },
+            )
+        ]
 
     @staticmethod
     def _overflow_severity(excess: int, budget: int) -> ConflictSeverity:
@@ -293,7 +314,11 @@ class MultiSkillAnalyzer:
             parts.append(f"Prompt contamination risk in {len(contamination)} skill pair(s)")
         if overflow:
             o = overflow[0]
-            parts.append(f"Token overflow: {o.details.get('total_chars', 0):,} chars vs {o.details.get('budget', 0):,} budget")
+            parts.append(
+                f"Token overflow: "
+                f"{o.details.get('total_chars', 0):,} chars vs "
+                f"{o.details.get('budget', 0):,} budget"
+            )
         if not parts:
             return "No conflicts detected — skills are safe to combine."
         return "; ".join(parts)

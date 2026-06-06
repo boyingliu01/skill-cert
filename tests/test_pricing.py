@@ -52,9 +52,7 @@ class TestCalculateCost:
     def test_calculate_cost_basic(self):
         """Should calculate cost from prompt_tokens, completion_tokens, and model."""
         cost = self.pricing.calculate_cost(
-            prompt_tokens=1000,
-            completion_tokens=500,
-            model_name="qwen3.6-plus"
+            prompt_tokens=1000, completion_tokens=500, model_name="qwen3.6-plus"
         )
         assert cost > 0
         assert isinstance(cost, float)
@@ -62,24 +60,21 @@ class TestCalculateCost:
     def test_calculate_cost_zero_tokens(self):
         """Zero tokens should yield zero cost."""
         cost = self.pricing.calculate_cost(
-            prompt_tokens=0,
-            completion_tokens=0,
-            model_name="qwen3.6-plus"
+            prompt_tokens=0, completion_tokens=0, model_name="qwen3.6-plus"
         )
         assert cost == 0.0
 
     def test_calculate_cost_unknown_model(self):
         """Unknown model should return 0 cost (or a default rate)."""
         cost = self.pricing.calculate_cost(
-            prompt_tokens=1000,
-            completion_tokens=500,
-            model_name="unknown-model"
+            prompt_tokens=1000, completion_tokens=500, model_name="unknown-model"
         )
         # Should return 0 or a very small default rate
         assert cost >= 0
 
     def test_calculate_cost_formula(self):
-        """Cost = (prompt_tokens / 1_000_000) * input_rate + (completion_tokens / 1_000_000) * output_rate."""
+        """Cost formula: prompt_tokens / 1_000_000 * input_rate + """
+        """completion_tokens / 1_000_000 * output_rate."""
         # Use a known price: test with override
         pricing = ModelPricing()
         pricing.add_model("test-model", input_per_m=3.0, output_per_m=15.0)
@@ -87,7 +82,7 @@ class TestCalculateCost:
         cost = pricing.calculate_cost(
             prompt_tokens=1_000_000,  # 1M input tokens
             completion_tokens=1_000_000,  # 1M output tokens
-            model_name="test-model"
+            model_name="test-model",
         )
         # $3.00 + $15.00 = $18.00
         assert cost == pytest.approx(18.0, rel=0.001)
@@ -100,7 +95,7 @@ class TestCalculateCost:
         cost = pricing.calculate_cost(
             prompt_tokens=500_000,  # 0.5M input
             completion_tokens=250_000,  # 0.25M output
-            model_name="test-model"
+            model_name="test-model",
         )
         # $5.00 + $5.00 = $10.00
         assert cost == pytest.approx(10.0, rel=0.001)

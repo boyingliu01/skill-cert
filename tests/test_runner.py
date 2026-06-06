@@ -19,7 +19,11 @@ class MockModelAdapter:
 
     def chat_with_usage(self, messages):
         text = self.chat(messages)
-        return text, {"prompt_tokens": 0, "completion_tokens": len(text.split()), "total_tokens": len(text.split())}
+        return text, {
+            "prompt_tokens": 0,
+            "completion_tokens": len(text.split()),
+            "total_tokens": len(text.split()),
+        }
 
 
 def test_eval_runner_initialization():
@@ -40,7 +44,7 @@ def test_run_with_skill_success():
             "category": "normal",
             "input": "test input",
             "expected_triggers": True,
-            "assertions": [{"type": "contains", "value": "test", "weight": 1}]
+            "assertions": [{"type": "contains", "value": "test", "weight": 1}],
         }
     ]
 
@@ -68,7 +72,7 @@ def test_run_without_skill_success():
             "category": "normal",
             "input": "test input",
             "expected_triggers": True,
-            "assertions": [{"type": "contains", "value": "test", "weight": 1}]
+            "assertions": [{"type": "contains", "value": "test", "weight": 1}],
         }
     ]
 
@@ -95,7 +99,7 @@ def test_run_with_skill_timeout():
             "category": "normal",
             "input": "test input",
             "expected_triggers": True,
-            "assertions": [{"type": "contains", "value": "test", "weight": 1}]
+            "assertions": [{"type": "contains", "value": "test", "weight": 1}],
         }
     ]
 
@@ -129,7 +133,7 @@ def test_run_without_skill_timeout():
             "category": "normal",
             "input": "test input",
             "expected_triggers": True,
-            "assertions": [{"type": "contains", "value": "test", "weight": 1}]
+            "assertions": [{"type": "contains", "value": "test", "weight": 1}],
         }
     ]
 
@@ -160,7 +164,7 @@ def test_run_with_skill_exception():
             "category": "normal",
             "input": "test input",
             "expected_triggers": True,
-            "assertions": [{"type": "contains", "value": "test", "weight": 1}]
+            "assertions": [{"type": "contains", "value": "test", "weight": 1}],
         }
     ]
 
@@ -188,7 +192,7 @@ def test_run_without_skill_exception():
             "category": "normal",
             "input": "test input",
             "expected_triggers": True,
-            "assertions": [{"type": "contains", "value": "test", "weight": 1}]
+            "assertions": [{"type": "contains", "value": "test", "weight": 1}],
         }
     ]
 
@@ -214,7 +218,7 @@ def test_multiple_evals_concurrent():
             "category": "normal",
             "input": "input 1",
             "expected_triggers": True,
-            "assertions": [{"type": "contains", "value": "test", "weight": 1}]
+            "assertions": [{"type": "contains", "value": "test", "weight": 1}],
         },
         {
             "id": 2,
@@ -222,7 +226,7 @@ def test_multiple_evals_concurrent():
             "category": "boundary",
             "input": "input 2",
             "expected_triggers": False,
-            "assertions": [{"type": "not_contains", "value": "test", "weight": 1}]
+            "assertions": [{"type": "not_contains", "value": "test", "weight": 1}],
         },
         {
             "id": 3,
@@ -230,16 +234,14 @@ def test_multiple_evals_concurrent():
             "category": "failure",
             "input": "input 3",
             "expected_triggers": True,
-            "assertions": [{"type": "contains", "value": "error", "weight": 1}]
-        }
+            "assertions": [{"type": "contains", "value": "error", "weight": 1}],
+        },
     ]
 
     skill_path = "/path/to/skill"
-    mock_adapter = MockModelAdapter([
-        "Response for eval 1",
-        "Response for eval 2",
-        "Response for eval 3"
-    ])
+    mock_adapter = MockModelAdapter(
+        ["Response for eval 1", "Response for eval 2", "Response for eval 3"]
+    )
 
     results = runner.run_with_skill(evals, skill_path, mock_adapter)
 

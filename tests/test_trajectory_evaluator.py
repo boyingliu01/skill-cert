@@ -12,6 +12,7 @@ from engine.trajectory_evaluator import (
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def evaluator() -> TrajectoryEvaluator:
     return TrajectoryEvaluator()
@@ -71,17 +72,19 @@ def mixed_message_and_tool_steps() -> list[TrajectoryStep]:
 
 # ─── Test: detect_repetition ────────────────────────────────────────────────
 
-class TestDetectRepetition:
 
-    def test_no_repetition(self, evaluator: TrajectoryEvaluator,
-                           all_unique_steps: list[TrajectoryStep]):
+class TestDetectRepetition:
+    def test_no_repetition(
+        self, evaluator: TrajectoryEvaluator, all_unique_steps: list[TrajectoryStep]
+    ):
         """All different tool calls → repetition_score == 1.0."""
         score, repeated = evaluator.detect_repetition(all_unique_steps)
         assert score == 1.0
         assert repeated == []
 
-    def test_with_repetition(self, evaluator: TrajectoryEvaluator,
-                             repeated_steps: list[TrajectoryStep]):
+    def test_with_repetition(
+        self, evaluator: TrajectoryEvaluator, repeated_steps: list[TrajectoryStep]
+    ):
         """3 steps, 2 with same tool+params → repetition_score < 1.0."""
         score, repeated = evaluator.detect_repetition(repeated_steps)
         assert score < 1.0
@@ -118,7 +121,8 @@ class TestDetectRepetition:
         assert len(repeated) >= 2
 
     def test_same_tool_different_params_no_repetition(
-        self, evaluator: TrajectoryEvaluator,
+        self,
+        evaluator: TrajectoryEvaluator,
     ):
         """Same tool called with different params should not count as repetition."""
         steps = [
@@ -130,7 +134,8 @@ class TestDetectRepetition:
         assert repeated == []
 
     def test_repetition_with_mixed_messages(
-        self, evaluator: TrajectoryEvaluator,
+        self,
+        evaluator: TrajectoryEvaluator,
         mixed_message_and_tool_steps: list[TrajectoryStep],
     ):
         """Repetition detection works with messages interleaved."""
@@ -141,28 +146,36 @@ class TestDetectRepetition:
 
 # ─── Test: verify_path_correctness ──────────────────────────────────────────
 
-class TestVerifyPathCorrectness:
 
-    def test_path_perfect_match(self, evaluator: TrajectoryEvaluator,
-                                all_unique_steps: list[TrajectoryStep]):
+class TestVerifyPathCorrectness:
+    def test_path_perfect_match(
+        self, evaluator: TrajectoryEvaluator, all_unique_steps: list[TrajectoryStep]
+    ):
         """Steps match expected path exactly → path_correctness_score == 1.0."""
         expected = ExpectedPath(tool_names=["read_file", "write_file", "run_command"])
         score, missing = evaluator.verify_path_correctness(all_unique_steps, expected)
         assert score == 1.0
         assert missing == []
 
-    def test_path_partial_match(self, evaluator: TrajectoryEvaluator,
-                                all_unique_steps: list[TrajectoryStep]):
+    def test_path_partial_match(
+        self, evaluator: TrajectoryEvaluator, all_unique_steps: list[TrajectoryStep]
+    ):
         """Some tools missing → score < 1.0."""
-        expected = ExpectedPath(tool_names=[
-            "read_file", "write_file", "run_command", "deploy",
-        ])
+        expected = ExpectedPath(
+            tool_names=[
+                "read_file",
+                "write_file",
+                "run_command",
+                "deploy",
+            ]
+        )
         score, missing = evaluator.verify_path_correctness(all_unique_steps, expected)
         assert score < 1.0
         assert "deploy" in missing
 
-    def test_path_empty_expected(self, evaluator: TrajectoryEvaluator,
-                                 all_unique_steps: list[TrajectoryStep]):
+    def test_path_empty_expected(
+        self, evaluator: TrajectoryEvaluator, all_unique_steps: list[TrajectoryStep]
+    ):
         """No expected path → score 1.0."""
         expected = ExpectedPath(tool_names=[])
         score, missing = evaluator.verify_path_correctness(all_unique_steps, expected)
@@ -205,10 +218,11 @@ class TestVerifyPathCorrectness:
 
 # ─── Test: assess_optimization ──────────────────────────────────────────────
 
-class TestAssessOptimization:
 
-    def test_no_unnecessary_calls(self, evaluator: TrajectoryEvaluator,
-                                  all_unique_steps: list[TrajectoryStep]):
+class TestAssessOptimization:
+    def test_no_unnecessary_calls(
+        self, evaluator: TrajectoryEvaluator, all_unique_steps: list[TrajectoryStep]
+    ):
         """All unique calls → optimization_score == 1.0."""
         score, unnecessary = evaluator.assess_optimization(all_unique_steps)
         assert score == 1.0
@@ -235,7 +249,8 @@ class TestAssessOptimization:
         assert unnecessary == []
 
     def test_non_consecutive_duplicate_not_unnecessary(
-        self, evaluator: TrajectoryEvaluator,
+        self,
+        evaluator: TrajectoryEvaluator,
     ):
         """Same tool called non-consecutively with different stuff between — not unnecessary."""
         steps = [
@@ -250,12 +265,14 @@ class TestAssessOptimization:
 
 # ─── Test: full evaluate ────────────────────────────────────────────────────
 
-class TestFullEvaluation:
 
+class TestFullEvaluation:
     def test_full_evaluation(self, evaluator: TrajectoryEvaluator):
         """Complete evaluate() with expected path → total_score computed correctly."""
         steps = [
-            TrajectoryStep(step_number=1, tool_call=ToolCall(tool_name="search", params={"q": "test"})),
+            TrajectoryStep(
+                step_number=1, tool_call=ToolCall(tool_name="search", params={"q": "test"})
+            ),
             TrajectoryStep(step_number=2, tool_call=ToolCall(tool_name="read", params={"f": "a"})),
             TrajectoryStep(step_number=3, tool_call=ToolCall(tool_name="read", params={"f": "a"})),
         ]
@@ -294,7 +311,9 @@ class TestFullEvaluation:
         ]
         for steps in test_cases:
             result = evaluator.evaluate(steps)
-            assert 0.0 <= result.total_score <= 1.0, f"total_score out of range: {result.total_score}"
+            assert 0.0 <= result.total_score <= 1.0, (
+                f"total_score out of range: {result.total_score}"
+            )
             assert 0.0 <= result.repetition_score <= 1.0
             assert 0.0 <= result.path_correctness_score <= 1.0
             assert 0.0 <= result.path_optimization_score <= 1.0
@@ -316,8 +335,9 @@ class TestFullEvaluation:
         assert result.repetition_score == pytest.approx(0.5, abs=0.01)
         assert result.path_correctness_score == 1.0
 
-    def test_result_model_fields(self, evaluator: TrajectoryEvaluator,
-                                 all_unique_steps: list[TrajectoryStep]):
+    def test_result_model_fields(
+        self, evaluator: TrajectoryEvaluator, all_unique_steps: list[TrajectoryStep]
+    ):
         """Verify TrajectoryScore model fields are populated correctly."""
         result = evaluator.evaluate(all_unique_steps)
         assert isinstance(result.repeated_calls, list)
@@ -332,8 +352,8 @@ class TestFullEvaluation:
 
 # ─── Test: evaluate_tool_call_correctness ───────────────────────────────────
 
-class TestToolCallCorrectness:
 
+class TestToolCallCorrectness:
     def test_with_expected_tools_all_match(self, evaluator: TrajectoryEvaluator):
         """All tool calls match expected tools → 1.0."""
         steps = [
@@ -378,8 +398,8 @@ class TestToolCallCorrectness:
 
 # ─── Test: turn_relevance ──────────────────────────────────────────────────
 
-class TestTurnRelevance:
 
+class TestTurnRelevance:
     def test_all_relevant_steps(self, evaluator: TrajectoryEvaluator):
         """All steps have tool or message → 1.0."""
         steps = [
@@ -414,8 +434,8 @@ class TestTurnRelevance:
 
 # ─── Test: TrajectoryScore new fields ─────────────────────────────────────
 
-class TestTrajectoryScoreNewFields:
 
+class TestTrajectoryScoreNewFields:
     def test_evaluate_populates_tool_call_accuracy(self, evaluator: TrajectoryEvaluator):
         """evaluate() populates tool_call_accuracy_score."""
         steps = [

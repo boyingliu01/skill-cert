@@ -15,9 +15,9 @@ def _create_adapter(model_config: ModelConfig, rpm_limit: int = TimingLimits.RAT
 
 
 def _print_phase(phase: int, name: str) -> None:
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Phase {phase}: {name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def _print_metric(label: str, value: float, threshold: float | None = None) -> None:

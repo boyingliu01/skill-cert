@@ -43,7 +43,6 @@ class StressTestReport:
 
 
 class RateLimiter:
-
     def __init__(self, rpm: int = 60, models: list | None = None):
         self.rpm = rpm
         self._lock = asyncio.Lock()
@@ -63,7 +62,6 @@ class RateLimiter:
 
 
 class StressTester:
-
     def __init__(
         self,
         concurrency: int = 5,
@@ -149,9 +147,7 @@ class StressTester:
         semaphore = asyncio.Semaphore(conc)
         results: list[StressTestResult] = []
         tasks = [
-            asyncio.create_task(
-                self._execute_single(case, model_adapter, semaphore, results)
-            )
+            asyncio.create_task(self._execute_single(case, model_adapter, semaphore, results))
             for case in eval_cases
         ]
 

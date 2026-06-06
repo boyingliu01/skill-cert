@@ -36,12 +36,14 @@ def _make_eval_results(eval_id, pass_rate, no_error=True):
 
 class TestStabilityRunner:
     def test_single_run(self):
-        mock = MockRunner({
-            0: [
-                _make_eval_results(1, 0.9),
-                _make_eval_results(2, 0.8),
-            ]
-        })
+        mock = MockRunner(
+            {
+                0: [
+                    _make_eval_results(1, 0.9),
+                    _make_eval_results(2, 0.8),
+                ]
+            }
+        )
         runner = StabilityRunner(base_runner=mock, num_runs=1)
         evals = [{"id": 1}, {"id": 2}]
         result = runner.run_stability(evals, "skill_path", "adapter")
@@ -51,11 +53,13 @@ class TestStabilityRunner:
         assert result["per_eval_stability"][2]["mean_pass_rate"] == pytest.approx(0.8)
 
     def test_multi_run_stability(self):
-        mock = MockRunner({
-            0: [_make_eval_results(1, 0.9)],
-            1: [_make_eval_results(1, 0.9)],
-            2: [_make_eval_results(1, 0.9)],
-        })
+        mock = MockRunner(
+            {
+                0: [_make_eval_results(1, 0.9)],
+                1: [_make_eval_results(1, 0.9)],
+                2: [_make_eval_results(1, 0.9)],
+            }
+        )
         runner = StabilityRunner(base_runner=mock, num_runs=3)
         evals = [{"id": 1}]
         result = runner.run_stability(evals, "skill_path", "adapter")
@@ -67,11 +71,13 @@ class TestStabilityRunner:
         assert stability["runs_completed"] == 3
 
     def test_multi_run_variance(self):
-        mock = MockRunner({
-            0: [_make_eval_results(1, 0.8)],
-            1: [_make_eval_results(1, 0.9)],
-            2: [_make_eval_results(1, 0.7)],
-        })
+        mock = MockRunner(
+            {
+                0: [_make_eval_results(1, 0.8)],
+                1: [_make_eval_results(1, 0.9)],
+                2: [_make_eval_results(1, 0.7)],
+            }
+        )
         runner = StabilityRunner(base_runner=mock, num_runs=3)
         evals = [{"id": 1}]
         result = runner.run_stability(evals, "skill_path", "adapter")
@@ -82,10 +88,12 @@ class TestStabilityRunner:
         assert stability["runs_completed"] == 3
 
     def test_error_treated_as_zero_pass_rate(self):
-        mock = MockRunner({
-            0: [_make_eval_results(1, 0.9)],
-            1: [_make_eval_results(1, 0.9, no_error=False)],
-        })
+        mock = MockRunner(
+            {
+                0: [_make_eval_results(1, 0.9)],
+                1: [_make_eval_results(1, 0.9, no_error=False)],
+            }
+        )
         runner = StabilityRunner(base_runner=mock, num_runs=2)
         evals = [{"id": 1}]
         result = runner.run_stability(evals, "skill_path", "adapter")
@@ -203,22 +211,26 @@ class TestConfidenceInterval:
 class TestStabilityRunnerNewFields:
     def test_num_trials_overrides_num_runs(self):
         """num_trials parameter takes precedence over num_runs."""
-        mock = MockRunner({
-            0: [_make_eval_results(1, 0.9)],
-            1: [_make_eval_results(1, 0.85)],
-            2: [_make_eval_results(1, 0.95)],
-        })
+        mock = MockRunner(
+            {
+                0: [_make_eval_results(1, 0.9)],
+                1: [_make_eval_results(1, 0.85)],
+                2: [_make_eval_results(1, 0.95)],
+            }
+        )
         runner = StabilityRunner(base_runner=mock, num_runs=10, num_trials=3)
         result = runner.run_stability([{"id": 1}], "skill", "adapter")
         assert result["runs_completed"] == 3
 
     def test_per_eval_has_ci_and_cv(self):
         """Per-eval stability includes confidence_interval and coefficient_of_variation."""
-        mock = MockRunner({
-            0: [_make_eval_results(1, 0.8)],
-            1: [_make_eval_results(1, 0.9)],
-            2: [_make_eval_results(1, 0.85)],
-        })
+        mock = MockRunner(
+            {
+                0: [_make_eval_results(1, 0.8)],
+                1: [_make_eval_results(1, 0.9)],
+                2: [_make_eval_results(1, 0.85)],
+            }
+        )
         runner = StabilityRunner(base_runner=mock, num_runs=3)
         result = runner.run_stability([{"id": 1}], "skill", "adapter")
         per_eval = result["per_eval_stability"][1]
@@ -229,12 +241,13 @@ class TestStabilityRunnerNewFields:
 
     def test_overall_has_ci_and_cv(self):
         """Overall stability includes confidence_interval and coefficient_of_variation."""
-        mock = MockRunner({
-            0: [_make_eval_results(1, 0.8), _make_eval_results(2, 0.9)],
-            1: [_make_eval_results(1, 0.85), _make_eval_results(2, 0.88)],
-        })
+        mock = MockRunner(
+            {
+                0: [_make_eval_results(1, 0.8), _make_eval_results(2, 0.9)],
+                1: [_make_eval_results(1, 0.85), _make_eval_results(2, 0.88)],
+            }
+        )
         runner = StabilityRunner(base_runner=mock, num_runs=2)
         result = runner.run_stability([{"id": 1}, {"id": 2}], "skill", "adapter")
         assert "confidence_interval" in result
         assert "coefficient_of_variation" in result
-

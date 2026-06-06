@@ -75,16 +75,12 @@ def completeness_score(content: str) -> dict:
     if not isinstance(fm, dict):
         fm = None
 
-    has_name = bool(
-        (fm and fm.get("name")) or re.search(r"^#\s+\S", content, re.MULTILINE)
-    )
+    has_name = bool((fm and fm.get("name")) or re.search(r"^#\s+\S", content, re.MULTILINE))
     has_description = bool(fm and fm.get("description"))
     has_triggers = bool(_has_section(content, r"Triggers|TRIGGERS?|触发")) or bool(
         fm and (fm.get("triggers") or fm.get("TRIGGERS") or fm.get("TRIGGER"))
     )
-    has_workflow = bool(
-        _has_section(content, r"Workflow|Process|Flow|流程|步骤")
-    )
+    has_workflow = bool(_has_section(content, r"Workflow|Process|Flow|流程|步骤"))
     has_anti_patterns = bool(_has_section(content, r"Anti-Patterns|反模式"))
 
     checks = [has_name, has_description, has_triggers, has_workflow, has_anti_patterns]
@@ -189,6 +185,7 @@ class MaintainabilityScorer:
 
     def score_file(self, path: str) -> MaintainabilityResult:
         from pathlib import Path as _Path
+
         file_path = _Path(path)
         if not file_path.exists():
             raise FileNotFoundError(f"SKILL.md not found: {path}")
@@ -207,9 +204,7 @@ class MaintainabilityScorer:
         w = self.weights
         total_weight = sum(w.values())
         total = (
-            r_pct * w["readability"]
-            + c_pct * w["completeness"]
-            + f_pct * w["freshness"]
+            r_pct * w["readability"] + c_pct * w["completeness"] + f_pct * w["freshness"]
         ) / total_weight
         total = round(total, 1)
 
@@ -247,6 +242,6 @@ def _extract_frontmatter(content: str) -> dict | None:
 
 
 def _has_section(content: str, pattern: str) -> bool:
-    return bool(re.search(
-        rf"^##\s+[^#\n]*{pattern}[^#\n]*$", content, re.MULTILINE | re.IGNORECASE
-    ))
+    return bool(
+        re.search(rf"^##\s+[^#\n]*{pattern}[^#\n]*$", content, re.MULTILINE | re.IGNORECASE)
+    )

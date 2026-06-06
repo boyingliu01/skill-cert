@@ -10,6 +10,7 @@ from engine.grader import EvalCase, Grader
 @dataclass
 class DriftResult:
     """Result of drift detection analysis."""
+
     model_a: str
     model_b: str
     pass_rate_a: float
@@ -27,10 +28,7 @@ class DriftDetector:
         pass
 
     def detect_drift(
-        self,
-        eval_cases: list[EvalCase],
-        model_adapters: dict[str, Any],
-        grader: Grader
+        self, eval_cases: list[EvalCase], model_adapters: dict[str, Any], grader: Grader
     ) -> list[DriftResult]:
         """
         Run same evals across multiple models and detect drift.
@@ -53,22 +51,33 @@ class DriftDetector:
             eval_results = []
 
             for eval_case in eval_cases:
-                prompt = eval_case.get("prompt") if isinstance(eval_case, dict) else getattr(eval_case, 'prompt', '')
+                prompt = (
+                    eval_case.get("prompt")
+                    if isinstance(eval_case, dict)
+                    else getattr(eval_case, "prompt", "")
+                )
                 if not prompt:
-                    prompt = eval_case.get("input", "") if isinstance(eval_case, dict) else getattr(eval_case, 'input', '')
+                    prompt = (
+                        eval_case.get("input", "")
+                        if isinstance(eval_case, dict)
+                        else getattr(eval_case, "input", "")
+                    )
                 model_output = adapter.chat([{"role": "user", "content": prompt}])
 
                 if isinstance(eval_case, dict):
                     from engine.grader import EvalAssertion, EvalCase
+
                     assertions = []
                     for a in eval_case.get("assertions", []):
                         if isinstance(a, dict):
-                            assertions.append(EvalAssertion(
-                                name=a.get("name", ""),
-                                type=a.get("type", "contains"),
-                                value=a.get("value", ""),
-                                weight=int(float(a.get("weight", 1)))
-                            ))
+                            assertions.append(
+                                EvalAssertion(
+                                    name=a.get("name", ""),
+                                    type=a.get("type", "contains"),
+                                    value=a.get("value", ""),
+                                    weight=int(float(a.get("weight", 1))),
+                                )
+                            )
                         elif isinstance(a, EvalAssertion):
                             assertions.append(a)
                     case = EvalCase(
@@ -76,7 +85,7 @@ class DriftDetector:
                         name=eval_case.get("name", ""),
                         category=eval_case.get("category", "normal"),
                         prompt=prompt,
-                        assertions=assertions
+                        assertions=assertions,
                     )
                     grade_result = grader.grade_output(case, model_output)
                 else:
@@ -85,14 +94,11 @@ class DriftDetector:
 
             # Calculate pass rate for this model
             if eval_results:
-                total_pass_rate = sum(r['pass_rate'] for r in eval_results) / len(eval_results)
+                total_pass_rate = sum(r["pass_rate"] for r in eval_results) / len(eval_results)
             else:
                 total_pass_rate = 0.0
 
-            model_eval_results[model_name] = {
-                'results': eval_results,
-                'pass_rate': total_pass_rate
-            }
+            model_eval_results[model_name] = {"results": eval_results, "pass_rate": total_pass_rate}
 
         # Compare pass rates between all pairs of models
         for i in range(len(model_names)):
@@ -100,8 +106,8 @@ class DriftDetector:
                 model_a = model_names[i]
                 model_b = model_names[j]
 
-                pass_rate_a = model_eval_results[model_a]['pass_rate']
-                pass_rate_b = model_eval_results[model_b]['pass_rate']
+                pass_rate_a = model_eval_results[model_a]["pass_rate"]
+                pass_rate_b = model_eval_results[model_b]["pass_rate"]
 
                 # Calculate variance (absolute difference)
                 variance = abs(pass_rate_a - pass_rate_b)
@@ -119,7 +125,7 @@ class DriftDetector:
                     pass_rate_b=pass_rate_b,
                     variance=variance,
                     severity=severity,
-                    verdict=verdict
+                    verdict=verdict,
                 )
 
                 results.append(drift_result)
@@ -154,7 +160,7 @@ class DriftDetector:
                 "highest_severity": "none",
                 "average_variance": 0.0,
                 "model_pairs_compared": 0,
-                "summary": "No drift analysis performed"
+                "summary": "No drift analysis performed",
             }
 
         # Calculate aggregate metrics
@@ -167,7 +173,7 @@ class DriftDetector:
             "none": sum(1 for r in drift_results if r.severity == "none"),
             "low": sum(1 for r in drift_results if r.severity == "low"),
             "moderate": sum(1 for r in drift_results if r.severity == "moderate"),
-            "high": sum(1 for r in drift_results if r.severity == "high")
+            "high": sum(1 for r in drift_results if r.severity == "high"),
         }
 
         # Determine overall verdict
@@ -196,7 +202,10 @@ class DriftDetector:
                 "cmp_agreement_rate": cmp,
                 "cme_variation": cme,
             },
-            "summary": f"Drift analysis completed. Highest severity: {highest_severity}. Average variance: {avg_variance:.3f}"
+            "summary": (
+                f"Drift analysis completed. Highest severity: "
+                f"{highest_severity}. Average variance: {avg_variance:.3f}"
+            ),
         }
 
     def _get_highest_severity(self, drift_results: list[DriftResult]) -> str:
@@ -227,19 +236,19 @@ class DriftDetector:
         if not drift_results:
             return {"agreement_rate": 1.0, "pairwise_agreements": []}
 
-        agreeing = sum(
-            1 for r in drift_results if r.severity in ("none", "low")
-        )
+        agreeing = sum(1 for r in drift_results if r.severity in ("none", "low"))
         agreement_rate = agreeing / len(drift_results)
 
         pairwise = []
         for r in drift_results:
-            pairwise.append({
-                "model_a": r.model_a,
-                "model_b": r.model_b,
-                "agrees": r.severity in ("none", "low"),
-                "variance": r.variance,
-            })
+            pairwise.append(
+                {
+                    "model_a": r.model_a,
+                    "model_b": r.model_b,
+                    "agrees": r.severity in ("none", "low"),
+                    "variance": r.variance,
+                }
+            )
 
         return {
             "agreement_rate": round(agreement_rate, 4),
@@ -269,7 +278,7 @@ class DriftDetector:
             cv = 0.0
         else:
             variance = sum((x - mean_pr) ** 2 for x in pass_rates) / n
-            std_dev = variance ** 0.5
+            std_dev = variance**0.5
             cv = std_dev / mean_pr
 
         return {

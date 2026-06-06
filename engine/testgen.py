@@ -19,7 +19,7 @@ class EvalGenerator:
         try:
             template_path = Path(__file__).parent.parent / "templates" / "minimum-evals.json"
             if template_path.exists():
-                with open(template_path, encoding='utf-8') as f:
+                with open(template_path, encoding="utf-8") as f:
                     self.minimum_evals_template = json.load(f)
             else:
                 self.minimum_evals_template = {
@@ -30,9 +30,7 @@ class EvalGenerator:
                             "category": "trigger",
                             "input": "Please review this skill",
                             "expected_triggers": True,
-                            "assertions": [
-                                {"type": "contains", "value": "review", "weight": 1}
-                            ]
+                            "assertions": [{"type": "contains", "value": "review", "weight": 1}],
                         },
                         {
                             "id": 2,
@@ -42,7 +40,7 @@ class EvalGenerator:
                             "expected_triggers": False,
                             "assertions": [
                                 {"type": "not_contains", "value": "review", "weight": 1}
-                            ]
+                            ],
                         },
                         {
                             "id": 3,
@@ -50,10 +48,8 @@ class EvalGenerator:
                             "category": "normal",
                             "input": "Execute the skill with sample input",
                             "expected_triggers": True,
-                            "assertions": [
-                                {"type": "contains", "value": "skill", "weight": 1}
-                            ]
-                        }
+                            "assertions": [{"type": "contains", "value": "skill", "weight": 1}],
+                        },
                     ]
                 }
         except Exception as e:
@@ -66,9 +62,7 @@ class EvalGenerator:
                         "category": "normal",
                         "input": "Execute the skill",
                         "expected_triggers": True,
-                        "assertions": [
-                            {"type": "contains", "value": "skill", "weight": 1}
-                        ]
+                        "assertions": [{"type": "contains", "value": "skill", "weight": 1}],
                     }
                 ]
             }
@@ -76,9 +70,7 @@ class EvalGenerator:
     def generate_initial_evals(self, skill_spec: dict[str, Any], model_adapter) -> dict[str, Any]:
         try:
             prompt = self._prepare_generation_prompt(skill_spec)
-            response = model_adapter.chat([
-                {"role": "user", "content": prompt}
-            ])
+            response = model_adapter.chat([{"role": "user", "content": prompt}])
             evals = self._parse_evals_response(response)
 
             if not self._has_sufficient_evals(evals):
@@ -94,32 +86,28 @@ class EvalGenerator:
         try:
             coverage = self._calculate_coverage(evals, review_adapter.skill_spec)
             prompt = self._prepare_review_prompt(evals, review_adapter.skill_spec, coverage)
-            response = review_adapter.chat([
-                {"role": "user", "content": prompt}
-            ])
+            response = review_adapter.chat([{"role": "user", "content": prompt}])
             gaps = self._parse_review_response(response, coverage)
             return gaps
         except Exception as e:
             logger.error(f"Failed to review evals: {e}")
-            return {
-                "coverage": 0.0,
-                "gaps": ["Failed to review evals"],
-                "needs_improvement": True
-            }
+            return {"coverage": 0.0, "gaps": ["Failed to review evals"], "needs_improvement": True}
 
-    def fill_gaps(self, gaps: dict[str, Any], skill_spec: dict[str, Any], model_adapter) -> dict[str, Any]:
+    def fill_gaps(
+        self, gaps: dict[str, Any], skill_spec: dict[str, Any], model_adapter
+    ) -> dict[str, Any]:
         try:
             prompt = self._prepare_gap_filling_prompt(gaps, skill_spec)
-            response = model_adapter.chat([
-                {"role": "user", "content": prompt}
-            ])
+            response = model_adapter.chat([{"role": "user", "content": prompt}])
             supplementary_evals = self._parse_evals_response(response)
             return supplementary_evals
         except Exception as e:
             logger.error(f"Failed to fill gaps: {e}")
             return {"eval_cases": []}
 
-    def generate_evals_with_convergence(self, skill_spec: dict[str, Any], model_adapter, review_adapter) -> dict[str, Any]:
+    def generate_evals_with_convergence(
+        self, skill_spec: dict[str, Any], model_adapter, review_adapter
+    ) -> dict[str, Any]:
         review_adapter.skill_spec = skill_spec
 
         current_evals = self.generate_initial_evals(skill_spec, model_adapter)
@@ -135,7 +123,9 @@ class EvalGenerator:
             logger.info(f"Round {round_num + 1}: Coverage = {current_coverage:.2f}")
 
             if current_coverage >= self.coverage_threshold:
-                logger.info(f"Coverage target ({self.coverage_threshold}) reached at round {round_num + 1}")
+                logger.info(
+                    f"Coverage target ({self.coverage_threshold}) reached at round {round_num + 1}"
+                )
                 break
 
             if current_coverage <= prev_coverage:
@@ -144,7 +134,10 @@ class EvalGenerator:
                 no_improvement_count = 0
 
             if no_improvement_count >= self.consecutive_no_improvement:
-                logger.info(f"No improvement for {self.consecutive_no_improvement} consecutive rounds, stopping")
+                logger.info(
+                    f"No improvement for {self.consecutive_no_improvement} "
+                    "consecutive rounds, stopping"
+                )
                 break
 
             if review_result.get("needs_improvement", False):
@@ -160,26 +153,35 @@ class EvalGenerator:
             logger.info("Eval generation completed with sufficient coverage")
             return current_evals
         elif current_coverage >= self.degrade_threshold:
-            logger.warning(f"Eval generation completed with degraded coverage ({current_coverage}), below target but above degrade threshold")
+            logger.warning(
+                f"Eval generation completed with degraded coverage "
+                f"({current_coverage}), below target but above degrade threshold"
+            )
             return current_evals
         elif current_evals.get("eval_cases") or self._get_eval_cases(current_evals):
-            logger.warning(f"Eval generation with degraded coverage ({current_coverage}), using generated evals")
+            logger.warning(
+                f"Eval generation with degraded coverage ({current_coverage}), "
+                "using generated evals"
+            )
             return current_evals
         else:
-            logger.error(f"Eval generation failed with insufficient coverage ({current_coverage}), below block threshold")
+            logger.error(
+                f"Eval generation failed with insufficient coverage "
+                f"({current_coverage}), below block threshold"
+            )
             return self.minimum_evals_template
 
     def _prepare_generation_prompt(self, skill_spec: dict[str, Any]) -> str:
         return f"""
 Generate evaluation test cases for the following skill specification:
 
-Skill Name: {skill_spec.get('name', 'Unknown')}
-Description: {skill_spec.get('description', 'No description')}
-Triggers: {skill_spec.get('triggers', [])}
-Workflow Steps: {skill_spec.get('workflow_steps', [])}
-Anti-Patterns: {skill_spec.get('anti_patterns', [])}
-Output Format: {skill_spec.get('output_format', [])}
-Examples: {skill_spec.get('examples', [])}
+Skill Name: {skill_spec.get("name", "Unknown")}
+Description: {skill_spec.get("description", "No description")}
+Triggers: {skill_spec.get("triggers", [])}
+Workflow Steps: {skill_spec.get("workflow_steps", [])}
+Anti-Patterns: {skill_spec.get("anti_patterns", [])}
+Output Format: {skill_spec.get("output_format", [])}
+Examples: {skill_spec.get("examples", [])}
 
 Generate a JSON object with an array of eval_cases containing:
 - id: integer
@@ -187,7 +189,9 @@ Generate a JSON object with an array of eval_cases containing:
 - category: "normal", "boundary", "failure", or "trigger"
 - input: string (the input to test the skill with)
 - expected_triggers: boolean (whether the skill should trigger)
-- assertions: array of objects with type ("contains", "not_contains", "regex", "starts_with", "json_valid"), value, and weight
+- assertions: array of objects with type
+    ("contains", "not_contains", "regex", "starts_with", "json_valid"),
+    value, and weight
 
 IMPORTANT: Use STRUCTURAL ASSERTIONS, not single keyword checks.
 
@@ -214,8 +218,8 @@ Minimum requirements:
     def _parse_evals_response(self, response: str) -> dict[str, Any]:
         try:
             cleaned = self._strip_markdown_fences(response)
-            start_idx = cleaned.find('{')
-            end_idx = cleaned.rfind('}') + 1
+            start_idx = cleaned.find("{")
+            end_idx = cleaned.rfind("}") + 1
 
             if start_idx != -1 and end_idx != 0:
                 json_str = cleaned[start_idx:end_idx]
@@ -228,19 +232,20 @@ Minimum requirements:
                             parsed["eval_cases"] = parsed[key]
                             break
                     else:
-                        parsed["eval_cases"] = [{
-                            "id": 1,
-                            "name": "fallback-case",
-                            "category": "normal",
-                            "input": "Execute the skill",
-                            "expected_triggers": True,
-                            "assertions": [{"type": "contains", "value": "skill", "weight": 1}]
-                        }]
+                        parsed["eval_cases"] = [
+                            {
+                                "id": 1,
+                                "name": "fallback-case",
+                                "category": "normal",
+                                "input": "Execute the skill",
+                                "expected_triggers": True,
+                                "assertions": [{"type": "contains", "value": "skill", "weight": 1}],
+                            }
+                        ]
 
                 # Normalize each eval case
                 parsed["eval_cases"] = [
-                    self._normalize_eval_case(c, idx)
-                    for idx, c in enumerate(parsed["eval_cases"])
+                    self._normalize_eval_case(c, idx) for idx, c in enumerate(parsed["eval_cases"])
                 ]
 
                 return parsed
@@ -253,20 +258,20 @@ Minimum requirements:
     @staticmethod
     def _strip_markdown_fences(text: str) -> str:
         """Strip markdown JSON fences and return clean JSON text."""
-        lines = text.split('\n')
+        lines = text.split("\n")
         fences = []
         in_fence = False
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith('```'):
+            if stripped.startswith("```"):
                 if in_fence:
                     in_fence = False
-                elif stripped.startswith('```json') or stripped == '```':
+                elif stripped.startswith("```json") or stripped == "```":
                     in_fence = True
                 continue
             if not in_fence or stripped:
                 fences.append(line)
-        return '\n'.join(fences)
+        return "\n".join(fences)
 
     @staticmethod
     def _normalize_eval_case(case: dict, idx: int) -> dict:
@@ -283,11 +288,9 @@ Minimum requirements:
             flat_value = normalized.pop("assertion_value", "")
             flat_weight = normalized.pop("assertion_weight", 1)
             if flat_type:
-                normalized["assertions"] = [{
-                    "type": flat_type,
-                    "value": str(flat_value),
-                    "weight": int(float(flat_weight))
-                }]
+                normalized["assertions"] = [
+                    {"type": flat_type, "value": str(flat_value), "weight": int(float(flat_weight))}
+                ]
             else:
                 normalized["assertions"] = []
 
@@ -295,11 +298,13 @@ Minimum requirements:
         clean_asserts = []
         for i, a in enumerate(normalized["assertions"]):
             if isinstance(a, dict):
-                clean_asserts.append({
-                    "type": a.get("type", "contains"),
-                    "value": str(a.get("value", "")),
-                    "weight": int(float(a.get("weight", 1)))
-                })
+                clean_asserts.append(
+                    {
+                        "type": a.get("type", "contains"),
+                        "value": str(a.get("value", "")),
+                        "weight": int(float(a.get("weight", 1))),
+                    }
+                )
         normalized["assertions"] = clean_asserts
 
         # Ensure required fields
@@ -309,39 +314,55 @@ Minimum requirements:
 
         return normalized
 
+    def _compute_section_coverage(self, section_items: list[str], assertion_set: set[str]) -> float:
+        """Compute coverage of a section (workflow, anti_patterns, output_format)."""
+        if not section_items:
+            return 1.0  # No items to cover = automatic pass
+
+        covered = 0
+        for item in section_items:
+            item_lower = str(item).lower()
+            if any(item_lower in a.lower() or a.lower() in item_lower for a in assertion_set):
+                covered += 1
+        return covered / len(section_items)
+
     def _has_sufficient_evals(self, evals: dict[str, Any]) -> bool:
         """Check if evals have sufficient cases."""
         eval_cases = evals.get("eval_cases", [])
         if not eval_cases:
-            # Also check for alternative keys
-            for key in ["evals", "cases", "test_cases", "evaluations", "eval"]:
+            for key in [
+                "evals",
+                "cases",
+                "test_cases",
+                "evaluations",
+                "eval",
+            ]:
                 if key in evals and isinstance(evals[key], list):
                     eval_cases = evals[key]
                     break
 
-        return len(eval_cases) >= TestGenLimits.MIN_EVAL_CASES
+        # No eval cases = insufficient
+        if not eval_cases:
+            return False
 
-    @staticmethod
-    def _get_eval_cases(evals: dict[str, Any]) -> list:
+        # Has eval cases = sufficient (assertions checked in _calculate_coverage)
+        return True
+
+    def _get_eval_cases(self, evals: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract eval_cases from evals dict, checking multiple possible keys."""
         eval_cases = evals.get("eval_cases", [])
         if not eval_cases:
-            for key in ["evals", "cases", "test_cases", "evaluations", "eval"]:
+            for key in [
+                "evals",
+                "cases",
+                "test_cases",
+                "evaluations",
+                "eval",
+            ]:
                 if key in evals and isinstance(evals[key], list):
-                    return evals[key]
+                    eval_cases = evals[key]
+                    break
         return eval_cases
-
-    @staticmethod
-    def _compute_section_coverage(section_items: list, assertion_set: set) -> float:
-        total = len(section_items)
-        if total == 0:
-            return 1.0
-        covered = 0
-        for item in section_items:
-            search = item.get("name", "") if isinstance(item, dict) else str(item)
-            # Bidirectional matching: step_name IN assertion_value OR assertion_value IN step_name
-            if any(search.lower() in str(val).lower() or str(val).lower() in search.lower() for val in assertion_set):
-                covered += 1
-        return covered / total
 
     def _calculate_coverage(self, evals: dict[str, Any], skill_spec: dict[str, Any]) -> float:
         eval_cases = self._get_eval_cases(evals)
@@ -366,7 +387,9 @@ Minimum requirements:
 
         return workflow_coverage * 0.5 + anti_pattern_coverage * 0.3 + output_coverage * 0.2
 
-    def _prepare_review_prompt(self, evals: dict[str, Any], skill_spec: dict[str, Any], coverage: float) -> str:
+    def _prepare_review_prompt(
+        self, evals: dict[str, Any], skill_spec: dict[str, Any], coverage: float
+    ) -> str:
         return f"""
 Review the following evaluation test cases for the skill:
 
@@ -389,8 +412,8 @@ Return a JSON object with:
 
     def _parse_review_response(self, response: str, current_coverage: float) -> dict[str, Any]:
         try:
-            start_idx = response.find('{')
-            end_idx = response.rfind('}') + 1
+            start_idx = response.find("{")
+            end_idx = response.rfind("}") + 1
 
             if start_idx != -1 and end_idx != 0:
                 json_str = response[start_idx:end_idx]
@@ -408,13 +431,13 @@ Return a JSON object with:
                 return {
                     "coverage": current_coverage,
                     "gaps": ["Could not parse review response"],
-                    "needs_improvement": True
+                    "needs_improvement": True,
                 }
         except json.JSONDecodeError:
             return {
                 "coverage": current_coverage,
                 "gaps": ["Could not parse review response"],
-                "needs_improvement": True
+                "needs_improvement": True,
             }
 
     def _prepare_gap_filling_prompt(self, gaps: dict[str, Any], skill_spec: dict[str, Any]) -> str:
@@ -422,8 +445,8 @@ Return a JSON object with:
 Based on the identified gaps, generate additional evaluation test cases to improve coverage:
 
 Skill Spec: {json.dumps(skill_spec, indent=2)}
-Identified Gaps: {gaps.get('gaps', [])}
-Current Coverage: {gaps.get('coverage', 0.0)}
+Identified Gaps: {gaps.get("gaps", [])}
+Current Coverage: {gaps.get("coverage", 0.0)}
 
 Generate additional eval cases to address the gaps. Focus on:
 - Workflow steps that are not covered
@@ -435,7 +458,9 @@ Generate additional eval cases to address the gaps. Focus on:
 Return a JSON object with an array of eval_cases in the same format as before.
 """
 
-    def _merge_evals(self, current_evals: dict[str, Any], supplementary_evals: dict[str, Any]) -> dict[str, Any]:
+    def _merge_evals(
+        self, current_evals: dict[str, Any], supplementary_evals: dict[str, Any]
+    ) -> dict[str, Any]:
         # Create a copy of current evals
         merged = {}
         for key, value in current_evals.items():

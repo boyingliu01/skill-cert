@@ -66,11 +66,16 @@ class TestValidateApiKey:
 class TestWriteConfig:
     def test_writes_yaml(self, tmp_path):
         config_file = tmp_path / "models.yaml"
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             models = [
-                ModelConfig(model_name="test-model", base_url="https://api.test.com/v1", api_key="sk-test12345678")
+                ModelConfig(
+                    model_name="test-model",
+                    base_url="https://api.test.com/v1",
+                    api_key="sk-test12345678",
+                )
             ]
             result = _write_config(models)
 
@@ -84,8 +89,9 @@ class TestWriteConfig:
 
     def test_writes_fallback_model(self, tmp_path):
         config_file = tmp_path / "models.yaml"
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             models = [
                 ModelConfig(
@@ -102,10 +108,13 @@ class TestWriteConfig:
     def test_creates_directory(self, tmp_path):
         sub = tmp_path / "nested" / "dir"
         config_file = sub / "models.yaml"
-        with patch("skill_cert.cli.setup.CONFIG_DIR", sub), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", sub),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
-            _write_config([ModelConfig(model_name="m", base_url="https://x.com", api_key="sk-12345678")])
+            _write_config(
+                [ModelConfig(model_name="m", base_url="https://x.com", api_key="sk-12345678")]
+            )
             assert config_file.exists()
 
 
@@ -121,7 +130,11 @@ class TestLoadExistingModels:
             yaml.dump(
                 {
                     "models": [
-                        {"model_name": "m1", "base_url": "https://api.test.com", "api_key": "sk-test12345678"}
+                        {
+                            "model_name": "m1",
+                            "base_url": "https://api.test.com",
+                            "api_key": "sk-test12345678",
+                        }
                     ]
                 }
             )
@@ -145,7 +158,9 @@ class TestLoadExistingModels:
 
 class TestConnectivity:
     def test_success(self):
-        model = ModelConfig(model_name="test", base_url="https://api.test.com/v1", api_key="sk-test12345678")
+        model = ModelConfig(
+            model_name="test", base_url="https://api.test.com/v1", api_key="sk-test12345678"
+        )
         mock_adapter = MagicMock()
         mock_adapter.chat.return_value = "OK"
         with patch("adapters.factory.create_adapter", return_value=mock_adapter):
@@ -154,7 +169,9 @@ class TestConnectivity:
         assert "Connected" in msg
 
     def test_failure(self):
-        model = ModelConfig(model_name="test", base_url="https://api.test.com/v1", api_key="sk-test12345678")
+        model = ModelConfig(
+            model_name="test", base_url="https://api.test.com/v1", api_key="sk-test12345678"
+        )
         mock_adapter = MagicMock()
         mock_adapter.chat.side_effect = ConnectionError("refused")
         with patch("adapters.factory.create_adapter", return_value=mock_adapter):
@@ -163,7 +180,9 @@ class TestConnectivity:
         assert "refused" in msg
 
     def test_empty_response(self):
-        model = ModelConfig(model_name="test", base_url="https://api.test.com/v1", api_key="sk-test12345678")
+        model = ModelConfig(
+            model_name="test", base_url="https://api.test.com/v1", api_key="sk-test12345678"
+        )
         mock_adapter = MagicMock()
         mock_adapter.chat.return_value = ""
         with patch("adapters.factory.create_adapter", return_value=mock_adapter):
@@ -186,17 +205,18 @@ class TestSetupInteractive:
     def test_single_model_success(self, tmp_path, capsys):
         config_file = tmp_path / "models.yaml"
         inputs = [
-            "qwen3.6-plus",           # model name
-            "https://api.test.com/v1", # base URL
-            "sk-test12345678",         # API key
-            "",                        # fallback (skip)
-            "n",                       # don't add another
+            "qwen3.6-plus",  # model name
+            "https://api.test.com/v1",  # base URL
+            "sk-test12345678",  # API key
+            "",  # fallback (skip)
+            "n",  # don't add another
         ]
         mock_test = MagicMock(return_value=(True, "OK"))
         outputs = []
 
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             result = _setup_interactive(
                 input_fn=self._make_inputs(inputs),
@@ -212,16 +232,23 @@ class TestSetupInteractive:
     def test_two_models(self, tmp_path):
         config_file = tmp_path / "models.yaml"
         inputs = [
-            "model-a", "https://api.a.com/v1", "sk-aaaaaaaaa", "",  # model 1
+            "model-a",
+            "https://api.a.com/v1",
+            "sk-aaaaaaaaa",
+            "",  # model 1
             "y",  # add another
-            "model-b", "https://api.b.com/v1", "sk-bbbbbbbbb", "",  # model 2
+            "model-b",
+            "https://api.b.com/v1",
+            "sk-bbbbbbbbb",
+            "",  # model 2
             "n",  # don't add another
         ]
         mock_test = MagicMock(return_value=(True, "OK"))
         outputs = []
 
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             result = _setup_interactive(
                 input_fn=self._make_inputs(inputs),
@@ -236,13 +263,24 @@ class TestSetupInteractive:
     def test_existing_config_cancel(self, tmp_path):
         config_file = tmp_path / "models.yaml"
         config_file.write_text(
-            yaml.dump({"models": [{"model_name": "old", "base_url": "https://x.com", "api_key": "sk-old12345678"}]})
+            yaml.dump(
+                {
+                    "models": [
+                        {
+                            "model_name": "old",
+                            "base_url": "https://x.com",
+                            "api_key": "sk-old12345678",
+                        }
+                    ]
+                }
+            )
         )
         inputs = ["n"]  # cancel overwrite
         outputs = []
 
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             result = _setup_interactive(
                 input_fn=self._make_inputs(inputs),
@@ -258,15 +296,19 @@ class TestSetupInteractive:
     def test_connectivity_failure_save_anyway(self, tmp_path):
         config_file = tmp_path / "models.yaml"
         inputs = [
-            "model-x", "https://api.x.com/v1", "sk-xxxxxxxxx", "",  # model
+            "model-x",
+            "https://api.x.com/v1",
+            "sk-xxxxxxxxx",
+            "",  # model
             "y",  # save anyway
             "n",  # don't add another
         ]
         mock_test = MagicMock(return_value=(False, "connection refused"))
         outputs = []
 
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             result = _setup_interactive(
                 input_fn=self._make_inputs(inputs),
@@ -280,9 +322,15 @@ class TestSetupInteractive:
     def test_connectivity_failure_skip(self, tmp_path):
         config_file = tmp_path / "models.yaml"
         inputs = [
-            "model-x", "https://api.x.com/v1", "sk-xxxxxxxxx", "",  # model (fails)
+            "model-x",
+            "https://api.x.com/v1",
+            "sk-xxxxxxxxx",
+            "",  # model (fails)
             "n",  # don't save
-            "model-y", "https://api.y.com/v1", "sk-yyyyyyyyy", "",  # model (ok)
+            "model-y",
+            "https://api.y.com/v1",
+            "sk-yyyyyyyyy",
+            "",  # model (ok)
             "n",  # don't add another
         ]
 
@@ -292,8 +340,9 @@ class TestSetupInteractive:
             return (True, "OK")
 
         outputs = []
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             result = _setup_interactive(
                 input_fn=self._make_inputs(inputs),
@@ -310,15 +359,19 @@ class TestSetupInteractive:
         """First model fails connectivity but user saves it anyway, then declines to add more."""
         config_file = tmp_path / "models.yaml"
         inputs = [
-            "model-x", "https://api.x.com/v1", "sk-xxxxxxxxx", "",
+            "model-x",
+            "https://api.x.com/v1",
+            "sk-xxxxxxxxx",
+            "",
             "y",  # save anyway despite failure
             "n",  # don't add another (model_num=2 triggers this prompt)
         ]
         mock_test = MagicMock(return_value=(False, "failed"))
         outputs = []
 
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             result = _setup_interactive(
                 input_fn=self._make_inputs(inputs),
@@ -341,8 +394,9 @@ class TestSetupNonInteractive:
     def test_success_with_test(self, tmp_path):
         config_file = tmp_path / "models.yaml"
         mock_test = MagicMock(return_value=(True, "OK"))
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             result = _setup_non_interactive(
                 model_name="qwen3.6-plus",
@@ -356,8 +410,9 @@ class TestSetupNonInteractive:
 
     def test_skip_test(self, tmp_path):
         config_file = tmp_path / "models.yaml"
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
         ):
             result = _setup_non_interactive(
                 model_name="test-model",
@@ -394,9 +449,13 @@ class TestSetupNonInteractive:
 class TestRunSetup:
     def test_interactive_when_no_model_name(self, tmp_path):
         config_file = tmp_path / "models.yaml"
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
-        ), patch("skill_cert.cli.setup._setup_interactive", return_value=EXIT_OK) as mock_interactive:
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
+            patch(
+                "skill_cert.cli.setup._setup_interactive", return_value=EXIT_OK
+            ) as mock_interactive,
+        ):
             result = run_setup(None)
         assert result == EXIT_OK
         mock_interactive.assert_called_once()
@@ -410,9 +469,13 @@ class TestRunSetup:
             fallback_model="",
             skip_test=True,
         )
-        with patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path), patch(
-            "skill_cert.cli.setup.CONFIG_FILE", config_file
-        ), patch("skill_cert.cli.setup._setup_non_interactive", return_value=EXIT_OK) as mock_non_interactive:
+        with (
+            patch("skill_cert.cli.setup.CONFIG_DIR", tmp_path),
+            patch("skill_cert.cli.setup.CONFIG_FILE", config_file),
+            patch(
+                "skill_cert.cli.setup._setup_non_interactive", return_value=EXIT_OK
+            ) as mock_non_interactive,
+        ):
             result = run_setup(args)
         assert result == EXIT_OK
         mock_non_interactive.assert_called_once()
@@ -426,9 +489,10 @@ class TestRunSetup:
 class TestMainSetupInterception:
     def test_setup_subcommand_intercepted(self):
         """Verify that 'skill-cert setup' is intercepted before standard argparse."""
-        with patch("sys.argv", ["skill-cert", "setup", "--skip-test"]), patch(
-            "skill_cert.cli.setup.run_setup", return_value=EXIT_OK
-        ) as mock_setup:
+        with (
+            patch("sys.argv", ["skill-cert", "setup", "--skip-test"]),
+            patch("skill_cert.cli.setup.run_setup", return_value=EXIT_OK) as mock_setup,
+        ):
             from skill_cert.cli.main import main
 
             result = main()
@@ -437,20 +501,23 @@ class TestMainSetupInterception:
 
     def test_setup_with_flags(self):
         """Verify non-interactive flags are passed through."""
-        with patch(
-            "sys.argv",
-            [
-                "skill-cert",
-                "setup",
-                "--model-name",
-                "test-model",
-                "--base-url",
-                "https://api.test.com/v1",
-                "--api-key",
-                "sk-test12345678",
-                "--skip-test",
-            ],
-        ), patch("skill_cert.cli.setup.run_setup", return_value=EXIT_OK) as mock_setup:
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "skill-cert",
+                    "setup",
+                    "--model-name",
+                    "test-model",
+                    "--base-url",
+                    "https://api.test.com/v1",
+                    "--api-key",
+                    "sk-test12345678",
+                    "--skip-test",
+                ],
+            ),
+            patch("skill_cert.cli.setup.run_setup", return_value=EXIT_OK) as mock_setup,
+        ):
             from skill_cert.cli.main import main
 
             result = main()

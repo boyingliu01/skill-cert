@@ -2,6 +2,7 @@
 
 Present the fix report addressing all R1 issues to both experts.
 """
+
 import json
 import sys
 import time
@@ -10,7 +11,10 @@ from pathlib import Path
 
 import httpx
 
-API_KEY = "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+API_KEY = (
+    "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/"
+    "qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+)
 PROXY_URL = "https://lab.iwhalecloud.com/gpt-proxy"
 OUTPUT_DIR = Path(".sprint-state/phase-outputs")
 
@@ -27,9 +31,11 @@ FIX_REPORT = """# 修复报告 — Round 1 问题修复方案
 
 **修复方案**：**确立 ExecutionTrace 为唯一数据源，TokenLedger 为只读聚合器**。
 - `ExecutionTrace.token_usage` 是每次 LLM 调用后的唯一写入点（由 runner._run_single 负责）
-- `TokenLedger` 不再接受手动 `record()` 调用，改为 `TokenLedger.aggregate(traces: list[ExecutionTrace])` 方法
+- `TokenLedger` 不再接受手动 `record()` 调用，改为
+  `TokenLedger.aggregate(traces: list[ExecutionTrace])` 方法
 - 聚合逻辑：遍历 traces，按 phase/model/eval_id 分组，从 `trace.token_usage` 读取数据
-- 消除 `TraceEvent.tokens` 字段（事件级 token 记录），token 数据只在 `ExecutionTrace.token_usage` 中记录
+- 消除 `TraceEvent.tokens` 字段（事件级 token 记录），
+  token 数据只在 `ExecutionTrace.token_usage` 中记录
 - `TraceEvent` 仅记录时间线事件（类型、时间戳、延迟），不承担 token 计量职责
 
 ```python
@@ -49,10 +55,13 @@ class TokenLedger:
 **问题**：`except Exception: pass` 导致静默数据丢失。
 
 **修复方案**：
-- `EventBus.emit()` 改为 `except Exception as e: logging.error(f"EventBus handler failed: {e}", exc_info=True)`
+- `EventBus.emit()` 改为
+  `except Exception as e: logging.error(f"EventBus handler failed: {e}", exc_info=True)`
 - `OTLPTraceExporter.export()` 在依赖不可用时：
-  - 若用户显式指定 `--trace-export otlp`：抛出 `click.ClickException("opentelemetry not installed. Run: pip install opentelemetry-api")`
-  - 若为默认行为：记录 `logging.warning("OTLP export skipped: opentelemetry not installed")` 并返回 None
+  - 若用户显式指定 `--trace-export otlp`：抛出
+    `click.ClickException("opentelemetry not installed. Run: pip install opentelemetry-api")`
+  - 若为默认行为：
+    记录 `logging.warning("OTLP export skipped: opentelemetry not installed")` 并返回 None
 - CLI 层在调用 exporter 前增加 `check_available()` 前置检查
 
 ### C3: TokenLedger 并发模型明确化（Expert A #3 + Expert B #1）
@@ -117,7 +126,9 @@ class TokenLedger:
 
 ### M3: TokenLedger.record() 参数类型强化（Expert B #3）
 
-**修复方案**：由于 C1 已将 TokenLedger 改为只读聚合器，`record()` 方法被 `aggregate(traces)` 替代，此问题自动解决。不再接受松散的 `dict` 参数。
+**修复方案**：由于 C1 已将 TokenLedger 改为只读聚合器，
+`record()` 方法被 `aggregate(traces)` 替代，此问题自动解决。
+不再接受松散的 `dict` 参数。
 
 ### M4: 补充性能基准测试（Expert B #4）
 
@@ -133,7 +144,8 @@ class TokenLedger:
 
 | # | 问题 | 处理 |
 |---|------|------|
-| m1 | TraceEvent.latency_ms 精度 | 采纳：改用 `time.perf_counter()` 测量延迟，`timestamp` 仍用 `time.time()` 记录绝对时间 |
+| m1 | TraceEvent.latency_ms 精度 | 采纳：改用 `time.perf_counter()` 测量延迟，
+  `timestamp` 仍用 `time.time()` 记录绝对时间 |
 | m2 | BudgetAlert.level 改 Literal | 采纳：`level: Literal["warning", "critical"]` |
 | m3 | --trace-export 默认 jsonl 的磁盘 I/O | 采纳：新增 `--no-trace-export` 参数可关闭 |
 | m4 | ExecutionTrace 缺 schema_version | 采纳：新增 `schema_version: str = "1.0"` 字段 |
@@ -141,7 +153,8 @@ class TokenLedger:
 | A-8 | OTLP span 映射策略 | 延后：Phase 2 实施前定义，当前标注为 TODO |
 | A-9 | trace-detail-level 参数 | 延后：Phase 2 后续迭代 |
 | A-10 | 旧 Reporter 废弃路径 | 采纳：本版本直接重写 Jinja2 模板，旧测试同步更新 |
-| A-5 | TraceEvent.data 改为 Discriminated Union | 采纳：Phase 1 实施时使用 Union[LLMCallEvent, ToolCallEvent, ...] |
+| A-5 | TraceEvent.data 改为 Discriminated Union |
+  采纳：Phase 1 实施时使用 Union[LLMCallEvent, ToolCallEvent, ...] |
 | A-6 | runner.py 用装饰器模式 | 部分采纳：LLM 调用用装饰器拦截，trace 生命周期用 contextvars 管理 |
 """
 
@@ -181,7 +194,11 @@ Round 1 中你（以及其他专家）对通盘重构设计方案提出了问题
 
 最后输出 JSON：
 ```json
-{{"expert_id": "{expert_id}", "round": 2, "verdict": "APPROVED|REQUEST_CHANGES", "confidence": X, "resolved_issues": ["..."], "remaining_issues": ["..."], "consensus_report": {{"agreed_items": ["..."], "final_verdict": "APPROVED|REQUEST_CHANGES"}}}}
+{"expert_id": "{expert_id}", "round": 2,
+ "verdict": "APPROVED|REQUEST_CHANGES", "confidence": X,
+ "resolved_issues": ["..."], "remaining_issues": ["..."],
+ "consensus_report": {"agreed_items": ["..."],
+ "final_verdict": "APPROVED|REQUEST_CHANGES"}}
 ```"""
 
 
@@ -251,12 +268,12 @@ def main():
                 json_str = response[json_start:]
                 depth = 0
                 for i, c in enumerate(json_str):
-                    if c == '{':
+                    if c == "{":
                         depth += 1
-                    elif c == '}':
+                    elif c == "}":
                         depth -= 1
                         if depth == 0:
-                            vdata = json.loads(json_str[:i+1])
+                            vdata = json.loads(json_str[: i + 1])
                             verdict = vdata.get("verdict", "UNKNOWN")
                             confidence = vdata.get("confidence", 0)
                             break
@@ -265,7 +282,11 @@ def main():
 
         if verdict == "UNKNOWN":
             for line in response.split("\n"):
-                if "APPROVED" in line.upper() and "REQUEST" not in line.upper() and "CONDITIONALLY" not in line.upper():
+                if (
+                    "APPROVED" in line.upper()
+                    and "REQUEST" not in line.upper()
+                    and "CONDITIONALLY" not in line.upper()
+                ):
                     verdict = "APPROVED"
                     break
                 elif "REQUEST_CHANGES" in line.upper():

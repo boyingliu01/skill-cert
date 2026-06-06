@@ -10,16 +10,13 @@ class ToolAvailability(str, Enum):
 
 class BaseIntegration(ABC):
     @abstractmethod
-    def check_available(self) -> bool:
-        ...
+    def check_available(self) -> bool: ...
 
     @abstractmethod
-    def get_version(self) -> str:
-        ...
+    def get_version(self) -> str: ...
 
     @abstractmethod
-    def run(self, spec: dict, **kwargs) -> dict:
-        ...
+    def run(self, spec: dict, **kwargs) -> dict: ...
 
 
 class IntegrationDispatcher:
@@ -69,6 +66,7 @@ class SkillLabIntegration(BaseIntegration):
     def check_available(self) -> bool:
         try:
             import importlib
+
             importlib.import_module("skill_lab")
             return True
         except ImportError:
@@ -77,6 +75,7 @@ class SkillLabIntegration(BaseIntegration):
     def get_version(self) -> str:
         try:
             from skill_lab import __version__
+
             return __version__
         except ImportError:
             return "unavailable"
@@ -91,6 +90,7 @@ class DeepEvalIntegration(BaseIntegration):
     def check_available(self) -> bool:
         try:
             import importlib
+
             importlib.import_module("deepeval")
             return True
         except ImportError:
@@ -99,6 +99,7 @@ class DeepEvalIntegration(BaseIntegration):
     def get_version(self) -> str:
         try:
             from deepeval import __version__
+
             return __version__
         except ImportError:
             return "unavailable"

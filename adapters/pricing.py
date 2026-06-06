@@ -1,6 +1,5 @@
 """Model pricing table — converts token usage to $ cost."""
 
-
 _MODEL_PRICING = {
     # Anthropic Claude family (per 1M tokens)
     "claude-sonnet-4-5-20250514": {"input_per_m": 3.0, "output_per_m": 15.0},
@@ -44,8 +43,9 @@ class ModelPricing:
         price = self.get_model_price(model_name)
         if price is None:
             return 0.0
-        return (prompt_tokens / 1_000_000) * price["input_per_m"] + \
-               (completion_tokens / 1_000_000) * price["output_per_m"]
+        return (prompt_tokens / 1_000_000) * price["input_per_m"] + (
+            completion_tokens / 1_000_000
+        ) * price["output_per_m"]
 
 
 _pricing_instance: ModelPricing | None = None

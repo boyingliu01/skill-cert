@@ -66,17 +66,17 @@ Handles automated testing workflows with proper error handling.
 - Output: `{"status": "ok"}`
 """
 
-BAD_SKILL = """\
----
-  bad yaml [
----
-
-This really long line goes on and on without any breaks because the author clearly didn't understand markdown conventions at all and wrote the entire paragraph as a single run-on sentence that nobody could possibly read comfortably on any screen!!!
-
-Some random content with outdated references to Claude 2 and GPT-3.5-turbo and Python 3.6 which are long past their prime. Uses anthropic-sdk v0.3.0 and openai-python v0.28.0. Version: 0.1.0-beta.
-
-More random stuff. TODO: add actual structure. FIXME: rewrite entirely. No real content whatsoever in this document that was clearly written without any thought or effort put into it at all.
-"""
+BAD_SKILL = (
+    "---\n"
+    "  bad yaml [\n"
+    "---\n"
+    "\n"
+    "This really long line goes on and on without any breaks because the author clearly didn't understand markdown conventions at all and wrote the entire paragraph as a single run-on sentence that nobody could possibly read comfortably on any screen!!!\n"
+    "\n"
+    "Some random content with outdated references to Claude 2 and GPT-3.5-turbo and Python 3.6 which are long past their prime. Uses anthropic-sdk v0.3.0 and openai-python v0.28.0. Version: 0.1.0-beta.\n"
+    "\n"
+    "More random stuff. TODO: add actual structure. FIXME: rewrite entirely. No real content whatsoever in this document that was clearly written without any thought or effort put into it at all.\n"
+)
 
 MINIMAL_SKILL = """\
 ---
@@ -136,49 +136,47 @@ description: Skill with excessive section nesting
 Some content that is fine but the nesting is terrible throughout this file and everywhere we look.
 """
 
-LONG_LINES_SKILL = """\
----
-name: long-lines
-description: This is an intentionally verbose description that serves no real purpose other than to make lines longer than should be acceptable in any documentation
----
+LONG_LINES_SKILL = (
+    "---\n"
+    "name: long-lines\n"
+    "description: This is an intentionally verbose description that serves no real purpose other than to make lines longer than should be acceptable in any documentation\n"
+    "---\n"
+    "\n"
+    "# Long Lines\n"
+    "\n"
+    "This is an extremely long line of text that far exceeds any reasonable line length limit and makes the document very difficult to read on standard screens because it forces horizontal scrolling which is a terrible user experience that nobody should ever tolerate in any professional context whatsoever.\n"
+    "\n"
+    "Another paragraph with excessive length that no reasonable person would accept as good documentation practice in any professional software engineering environment anywhere at all really.\n"
+    "\n"
+    "More text that is deliberately written to ensure every single line surpasses one hundred characters in length because this is a test case designed to validate that the scoring system properly penalizes documents with overly long lines throughout the entire file.\n"
+    "\n"
+    "The final line of this section is also intentionally elongated to maintain consistency with the previous lines and ensure that the overall average line length metric exceeds the threshold that has been set as acceptable by the maintainability scoring system.\n"
+)
 
-# Long Lines
-
-This is an extremely long line of text that far exceeds any reasonable line length limit and makes the document very difficult to read on standard screens because it forces horizontal scrolling which is a terrible user experience that nobody should ever tolerate in any professional context whatsoever.
-
-Another paragraph with excessive length that no reasonable person would accept as good documentation practice in any professional software engineering environment anywhere at all really.
-
-More text that is deliberately written to ensure every single line surpasses one hundred characters in length because this is a test case designed to validate that the scoring system properly penalizes documents with overly long lines throughout the entire file.
-
-The final line of this section is also intentionally elongated to maintain consistency with the previous lines and ensure that the overall average line length metric exceeds the threshold that has been set as acceptable by the maintainability scoring system.
-"""
-
-DEEP_NESTING_SKILL = """\
----
-name: deep-nesting
-description: Skill with excessive section nesting
----
-
-## Level1
-
-### Level2
-
-#### Level3
-
-##### Level4
-
-###### Level5
-
-###### Level5a
-
-###### Level5b
-
-###### Level5c
-
-###### Level5d
-
-Some content here that is completely irrelevant to the overall structure of this document which has way too many nested sections.
-"""
+DEEP_NESTING_SKILL = (
+    "---\n"
+    "name: deep-nesting\n"
+    "description: Skill with excessive section nesting\n"
+    "---\n"
+    "\n"
+    "## Level1\n"
+    "\n"
+    "### Level2\n"
+    "\n"
+    "#### Level3\n"
+    "\n"
+    "##### Level4\n"
+    "\n"
+    "###### Level5a\n"
+    "\n"
+    "###### Level5b\n"
+    "\n"
+    "###### Level5c\n"
+    "\n"
+    "###### Level5d\n"
+    "\n"
+    "Some content here that is completely irrelevant to the overall structure of this document which has way too many nested sections.\n"
+)
 
 TODO_LADEN_SKILL = """\
 ---
@@ -276,8 +274,8 @@ Just some text here.
 
 # ─── Test: readability_score ───────────────────────────────────────────────
 
-class TestReadabilityScore:
 
+class TestReadabilityScore:
     def test_good_readability(self):
         result = readability_score(GOOD_SKILL)
         assert result["avg_line_length"] < 100
@@ -313,8 +311,8 @@ class TestReadabilityScore:
 
 # ─── Test: completeness_score ─────────────────────────────────────────────
 
-class TestCompletenessScore:
 
+class TestCompletenessScore:
     def test_good_completeness(self):
         result = completeness_score(GOOD_SKILL)
         assert result["has_name"] is True
@@ -346,8 +344,8 @@ class TestCompletenessScore:
 
 # ─── Test: freshness_score ────────────────────────────────────────────────
 
-class TestFreshnessScore:
 
+class TestFreshnessScore:
     def test_fresh_references(self):
         result = freshness_score(FRESH_SKILL)
         assert result["outdated_refs"] == 0
@@ -370,8 +368,8 @@ class TestFreshnessScore:
 
 # ─── Test: score_skill_md (composite) ─────────────────────────────────────
 
-class TestCompositeScore:
 
+class TestCompositeScore:
     def test_good_skill_scores_high(self):
         result = score_skill_md(GOOD_SKILL)
         assert isinstance(result, MaintainabilityResult)
@@ -406,11 +404,12 @@ class TestCompositeScore:
 
 # ─── Test: from-file scoring ─────────────────────────────────────────────
 
-class TestFromFile:
 
+class TestFromFile:
     def test_score_from_file(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".md",
-                                          delete=False, encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as f:
             f.write(GOOD_SKILL)
             f.flush()
             result = MaintainabilityScorer().score_file(f.name)
@@ -425,8 +424,8 @@ class TestFromFile:
 
 # ─── Test: MaintainabilityScorer class ────────────────────────────────────
 
-class TestMaintainabilityScorer:
 
+class TestMaintainabilityScorer:
     def test_default_weights(self):
         scorer = MaintainabilityScorer()
         assert scorer.weights["readability"] == 30

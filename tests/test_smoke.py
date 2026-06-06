@@ -27,62 +27,69 @@ class MockModelAdapter:
 
         # Pre-defined responses keyed by phase
         self.responses = {
-            "generate_evals": json.dumps({
-                "eval_cases": [
-                    {
-                        "id": 1,
-                        "name": "basic-trigger-test",
-                        "category": "trigger",
-                        "input": "Please review this skill for evaluation",
-                        "expected_triggers": True,
-                        "assertions": [
-                            {"type": "contains", "value": "PASS", "weight": 3},
-                            {"type": "regex", "value": "(verdict|result|score)", "weight": 2},
-                        ],
-                    },
-                    {
-                        "id": 2,
-                        "name": "should-not-trigger-test",
-                        "category": "trigger",
-                        "input": "Hello world",
-                        "expected_triggers": False,
-                        "assertions": [
-                            {"type": "not_contains", "value": "review", "weight": 2},
-                            {"type": "regex", "value": "(greeting|hello)", "weight": 1},
-                        ],
-                    },
-                    {
-                        "id": 3,
-                        "name": "normal-operation-test",
-                        "category": "normal",
-                        "input": "Execute the skill with sample input data",
-                        "expected_triggers": True,
-                        "assertions": [
-                            {"type": "contains", "value": "skill", "weight": 2},
-                            {"type": "regex", "value": "(output|result|metric)", "weight": 1},
-                        ],
-                    },
-                    {
-                        "id": 4,
-                        "name": "anti-pattern-test",
-                        "category": "boundary",
-                        "input": "Try an invalid scenario",
-                        "expected_triggers": False,
-                        "assertions": [
-                            {"type": "not_contains", "value": "error", "weight": 2},
-                            {"type": "contains", "value": "invalid", "weight": 1},
-                        ],
-                    },
-                ]
-            }),
-            "review_evals": json.dumps({
-                "coverage": 0.95,
-                "gaps": [],
-                "needs_improvement": False,
-            }),
-            "eval_output": "Skill executed successfully. PASS verdict. L1: 0.95, L2: 0.80, L3: 0.90. "
-                           "Results: all metrics computed. Coverage: 95%. "
-                           "Step adherence: complete. No drift detected.",
+            "generate_evals": json.dumps(
+                {
+                    "eval_cases": [
+                        {
+                            "id": 1,
+                            "name": "basic-trigger-test",
+                            "category": "trigger",
+                            "input": "Please review this skill for evaluation",
+                            "expected_triggers": True,
+                            "assertions": [
+                                {"type": "contains", "value": "PASS", "weight": 3},
+                                {"type": "regex", "value": "(verdict|result|score)", "weight": 2},
+                            ],
+                        },
+                        {
+                            "id": 2,
+                            "name": "should-not-trigger-test",
+                            "category": "trigger",
+                            "input": "Hello world",
+                            "expected_triggers": False,
+                            "assertions": [
+                                {"type": "not_contains", "value": "review", "weight": 2},
+                                {"type": "regex", "value": "(greeting|hello)", "weight": 1},
+                            ],
+                        },
+                        {
+                            "id": 3,
+                            "name": "normal-operation-test",
+                            "category": "normal",
+                            "input": "Execute the skill with sample input data",
+                            "expected_triggers": True,
+                            "assertions": [
+                                {"type": "contains", "value": "skill", "weight": 2},
+                                {"type": "regex", "value": "(output|result|metric)", "weight": 1},
+                            ],
+                        },
+                        {
+                            "id": 4,
+                            "name": "anti-pattern-test",
+                            "category": "boundary",
+                            "input": "Try an invalid scenario",
+                            "expected_triggers": False,
+                            "assertions": [
+                                {"type": "not_contains", "value": "error", "weight": 2},
+                                {"type": "contains", "value": "invalid", "weight": 1},
+                            ],
+                        },
+                    ]
+                }
+            ),
+            "review_evals": json.dumps(
+                {
+                    "coverage": 0.95,
+                    "gaps": [],
+                    "needs_improvement": False,
+                }
+            ),
+            "eval_output": (
+                "Skill executed successfully. PASS verdict. "
+                "L1: 0.95, L2: 0.80, L3: 0.90. "
+                "Results: all metrics computed. Coverage: 95%. "
+                "Step adherence: complete. No drift detected."
+            ),
         }
 
     def chat(self, messages, system=None, timeout=120):
@@ -163,9 +170,7 @@ def test_full_pipeline_smoke(skill_path, output_dir):
     mock_adapter = MockModelAdapter()
     mock_review_adapter = MockModelAdapter()
 
-    evals = generator.generate_evals_with_convergence(
-        spec, mock_adapter, mock_review_adapter
-    )
+    evals = generator.generate_evals_with_convergence(spec, mock_adapter, mock_review_adapter)
     assert evals is not None, "generate_evals_with_convergence returned None"
 
     # Extract eval cases (handles flexible key naming)
@@ -326,9 +331,7 @@ def test_full_pipeline_smoke(skill_path, output_dir):
     report_json_path = Path(output_dir) / "result.json"
 
     report_md_path.write_text(md_report, encoding="utf-8")
-    report_json_path.write_text(
-        json.dumps(json_report, indent=2, default=str), encoding="utf-8"
-    )
+    report_json_path.write_text(json.dumps(json_report, indent=2, default=str), encoding="utf-8")
 
     # ── Verify All 3 Output Files Exist ─────────────────────────────────
     assert report_md_path.exists(), f"report.md not found at {report_md_path}"
@@ -342,9 +345,7 @@ def test_full_pipeline_smoke(skill_path, output_dir):
 
     # Verify JSON reports are valid
     loaded_json = json.loads(report_json_path.read_text(encoding="utf-8"))
-    assert loaded_json["verdict"] == json_report["verdict"], (
-        "Written JSON report mismatch"
-    )
+    assert loaded_json["verdict"] == json_report["verdict"], "Written JSON report mismatch"
 
     loaded_evals = json.loads(evals_cache_path.read_text(encoding="utf-8"))
     assert "eval_cases" in loaded_evals, "evals-cache.json missing eval_cases"

@@ -26,15 +26,18 @@ def test_default_config_values():
 
 def test_config_from_env_vars():
     """Test loading configuration from environment variables."""
-    with patch.dict(os.environ, {
-        "SKILL_CERT_MAX_CONCURRENCY": "10",
-        "SKILL_CERT_RATE_LIMIT_RPM": "120",
-        "SKILL_CERT_TIMEOUT": "180",
-        "SKILL_CERT_JUDGE_TEMP": "0.1",
-        "SKILL_CERT_MAX_TESTGEN_ROUNDS": "5",
-        "SKILL_CERT_MAX_GAPFILL_ROUNDS": "4",
-        "SKILL_CERT_MAX_TOTAL_TIME": "7200"
-    }):
+    with patch.dict(
+        os.environ,
+        {
+            "SKILL_CERT_MAX_CONCURRENCY": "10",
+            "SKILL_CERT_RATE_LIMIT_RPM": "120",
+            "SKILL_CERT_TIMEOUT": "180",
+            "SKILL_CERT_JUDGE_TEMP": "0.1",
+            "SKILL_CERT_MAX_TESTGEN_ROUNDS": "5",
+            "SKILL_CERT_MAX_GAPFILL_ROUNDS": "4",
+            "SKILL_CERT_MAX_TOTAL_TIME": "7200",
+        },
+    ):
         config = SkillCertConfig.load()
 
         assert config.max_concurrency == 10
@@ -48,6 +51,7 @@ def test_config_from_env_vars():
 
 def test_config_from_cli_args():
     """Test loading configuration from CLI arguments."""
+
     class MockArgs:
         max_concurrency = 8
         rate_limit_rpm = 100
@@ -71,10 +75,10 @@ def test_config_from_cli_args():
 
 def test_config_priority_order():
     """Test that CLI args override env vars, which override defaults."""
-    with patch.dict(os.environ, {
-        "SKILL_CERT_MAX_CONCURRENCY": "10",
-        "SKILL_CERT_RATE_LIMIT_RPM": "120"
-    }):
+    with patch.dict(
+        os.environ, {"SKILL_CERT_MAX_CONCURRENCY": "10", "SKILL_CERT_RATE_LIMIT_RPM": "120"}
+    ):
+
         class MockArgs:
             max_concurrency = 15
             rate_limit_rpm = None
@@ -113,8 +117,10 @@ def test_parse_models_from_env():
 
 def test_parse_models_from_cli():
     """Test parsing models from CLI arguments."""
-    models_cli = ["gpt-4=https://api.openai.com,v1.secret.key,fallback",
-                  "claude-3=https://api.anthropic.com,v2.secret.key"]
+    models_cli = [
+        "gpt-4=https://api.openai.com,v1.secret.key,fallback",
+        "claude-3=https://api.anthropic.com,v2.secret.key",
+    ]
 
     models = SkillCertConfig._parse_models_from_cli(models_cli)
 
@@ -133,7 +139,7 @@ def test_parse_models_from_cli():
 
 def test_config_from_file():
     """Test loading configuration from file."""
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.yaml') as f:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
         f.write("""
 max_concurrency: 7
 rate_limit_rpm: 80
@@ -155,12 +161,13 @@ models:
     shutil.move(temp_config_path, target_path)
 
     original_expanduser = os.path.expanduser
+
     def mock_expanduser(path):
         if path == "~":
             return tempfile.gettempdir()
         return original_expanduser(path)
 
-    with patch('os.path.expanduser', side_effect=mock_expanduser):
+    with patch("os.path.expanduser", side_effect=mock_expanduser):
         config = SkillCertConfig.load()
 
         assert config.max_concurrency == 7
@@ -182,7 +189,7 @@ def test_config_from_file_with_error():
     from pathlib import Path as RealPath
 
     # Create a temporary config file with invalid YAML
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.yaml') as f:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
         f.write("""
 max_concurrency: 7
 rate_limit_rpm: 80
@@ -201,12 +208,13 @@ models:
     shutil.move(temp_config_path, target_path)
 
     original_expanduser = os.path.expanduser
+
     def mock_expanduser(path):
         if path == "~":
             return tempfile.gettempdir()
         return original_expanduser(path)
 
-    with patch('os.path.expanduser', side_effect=mock_expanduser):
+    with patch("os.path.expanduser", side_effect=mock_expanduser):
         config = SkillCertConfig.load()
 
         assert config.max_concurrency == 7
@@ -225,7 +233,7 @@ def test_config_from_file_with_malformed_yaml():
     from pathlib import Path as RealPath
 
     # Create a temporary config file with invalid YAML
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.yaml') as f:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
         f.write("""
 max_concurrency: 7
 rate_limit_rpm: 80
@@ -247,12 +255,13 @@ models:
     shutil.move(temp_config_path, target_path)
 
     original_expanduser = os.path.expanduser
+
     def mock_expanduser(path):
         if path == "~":
             return tempfile.gettempdir()
         return original_expanduser(path)
 
-    with patch('os.path.expanduser', side_effect=mock_expanduser):
+    with patch("os.path.expanduser", side_effect=mock_expanduser):
         # This should handle the malformed YAML gracefully and use defaults
         config = SkillCertConfig.load()
 
@@ -265,12 +274,15 @@ models:
 
 def test_config_with_invalid_env_var_values():
     """Test loading configuration with invalid environment variable values."""
-    with patch.dict(os.environ, {
-        "SKILL_CERT_MAX_CONCURRENCY": "not_a_number",
-        "SKILL_CERT_RATE_LIMIT_RPM": "also_not_a_number",
-        "SKILL_CERT_TIMEOUT": "still_not_a_number",
-        "SKILL_CERT_JUDGE_TEMP": "not_a_float"
-    }):
+    with patch.dict(
+        os.environ,
+        {
+            "SKILL_CERT_MAX_CONCURRENCY": "not_a_number",
+            "SKILL_CERT_RATE_LIMIT_RPM": "also_not_a_number",
+            "SKILL_CERT_TIMEOUT": "still_not_a_number",
+            "SKILL_CERT_JUDGE_TEMP": "not_a_float",
+        },
+    ):
         config = SkillCertConfig.load()
 
         # Should use default values when env vars can't be converted
@@ -287,7 +299,7 @@ def test_load_models_from_config_with_api_key_resolution():
             "model_name": "test-model",
             "base_url": "https://test.api.com",
             "api_key": "${TEST_API_KEY}",  # This should resolve from env
-            "fallback_model": "fallback-model"
+            "fallback_model": "fallback-model",
         }
     ]
 
@@ -306,7 +318,7 @@ def test_load_models_from_config_with_unresolved_api_key():
             "model_name": "test-model",
             "base_url": "https://test.api.com",
             "api_key": "${UNRESOLVED_API_KEY}",  # This should remain unresolved
-            "fallback_model": "fallback-model"
+            "fallback_model": "fallback-model",
         }
     ]
 
@@ -364,9 +376,15 @@ def test_parse_models_from_cli_with_partial_config():
 
 def test_config_with_models_from_env():
     """Test loading configuration with models from environment variable."""
-    with patch.dict(os.environ, {
-        "SKILL_CERT_MODELS": "gpt-4=https://api.openai.com,test.key,fallback|claude=https://api.claude.com,claude.key"
-    }), patch.object(SkillCertConfig, "_apply_config_file", return_value={"models": []}):
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "SKILL_CERT_MODELS": "gpt-4=https://api.openai.com,test.key,fallback|claude=https://api.claude.com,claude.key"
+            },
+        ),
+        patch.object(SkillCertConfig, "_apply_config_file", return_value={"models": []}),
+    ):
         # Create a mock CLI args without models to trigger env var usage
         class MockArgs:
             max_concurrency = None
@@ -394,27 +412,27 @@ def test_config_with_models_from_env():
 
 class TestCLI:
     def test_cli_no_args_shows_error(self):
-        with patch.object(sys, 'argv', ['skill_cert']), patch('sys.exit') as mock_exit:
+        with patch.object(sys, "argv", ["skill_cert"]), patch("sys.exit") as mock_exit:
             main()
             mock_exit.assert_called_once()
 
     def test_cli_help_output(self, capsys):
-        with patch.object(sys, 'argv', ['skill_cert', '--help']), pytest.raises(SystemExit):
+        with patch.object(sys, "argv", ["skill_cert", "--help"]), pytest.raises(SystemExit):
             main()
         captured = capsys.readouterr()
-        assert '--skill' in captured.out
-        assert '--mode' in captured.out
-        assert '--models' in captured.out
-        assert '--max-turns' in captured.out
-        assert '--session' in captured.out
+        assert "--skill" in captured.out
+        assert "--mode" in captured.out
+        assert "--models" in captured.out
+        assert "--max-turns" in captured.out
+        assert "--session" in captured.out
 
     def test_cli_missing_skill(self):
-        with patch.object(sys, 'argv', ['skill_cert']), pytest.raises(SystemExit) as exc_info:
+        with patch.object(sys, "argv", ["skill_cert"]), pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 2
 
     def test_cli_nonexistent_skill(self):
-        with patch.object(sys, 'argv', ['skill_cert', '--skill', '/nonexistent.md']):
+        with patch.object(sys, "argv", ["skill_cert", "--skill", "/nonexistent.md"]):
             exit_code = main()
             assert exit_code == EXIT_ERROR
 
@@ -423,36 +441,36 @@ class TestCLI:
 
         Uses monkeypatch/tmp_path to isolate from local ~/.skill-cert/models.yaml.
         """
-        spec_path = str(Path(__file__).parent.parent / 'SKILL.md')
+        spec_path = str(Path(__file__).parent.parent / "SKILL.md")
         assert Path(spec_path).exists(), f"SKILL.md not found at {spec_path}"
 
         # Isolate from any existing config: empty HOME means no ~/.skill-cert/models.yaml
-        monkeypatch.setenv('HOME', str(tmp_path))
-        monkeypatch.delenv('SKILL_CERT_MODELS', raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.delenv("SKILL_CERT_MODELS", raising=False)
 
-        with patch.object(sys, 'argv', ['skill_cert', '--skill', spec_path]):
+        with patch.object(sys, "argv", ["skill_cert", "--skill", spec_path]):
             exit_code = main()
             assert exit_code == EXIT_ERROR
 
     def test_cli_mode_single_is_default(self, capsys):
-        with patch.object(sys, 'argv', ['skill_cert', '--help']), pytest.raises(SystemExit):
+        with patch.object(sys, "argv", ["skill_cert", "--help"]), pytest.raises(SystemExit):
             main()
         captured = capsys.readouterr()
-        assert 'single' in captured.out
-        assert 'dialogue' in captured.out
-        assert 'replay' in captured.out
+        assert "single" in captured.out
+        assert "dialogue" in captured.out
+        assert "replay" in captured.out
 
     def test_cli_mode_dialogue_requires_max_turns(self, capsys):
-        with patch.object(sys, 'argv', ['skill_cert', '--help']), pytest.raises(SystemExit):
+        with patch.object(sys, "argv", ["skill_cert", "--help"]), pytest.raises(SystemExit):
             main()
         captured = capsys.readouterr()
-        assert '--max-turns' in captured.out
+        assert "--max-turns" in captured.out
 
     def test_cli_mode_replay_requires_session(self, capsys):
-        with patch.object(sys, 'argv', ['skill_cert', '--help']), pytest.raises(SystemExit):
+        with patch.object(sys, "argv", ["skill_cert", "--help"]), pytest.raises(SystemExit):
             main()
         captured = capsys.readouterr()
-        assert '--session' in captured.out
+        assert "--session" in captured.out
 
     def test_cli_exit_codes_defined(self):
         assert EXIT_PASS == 0

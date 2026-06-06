@@ -17,14 +17,13 @@ from engine.testgen import EvalGenerator
 
 
 class MockModelAdapter:
-
     def __init__(self, model_name="mock-model", responses=None):
         self.model_name = model_name
         self.responses = responses or {
             "default": "Mock model response",
             "trigger": "Trigger detected and processed",
             "workflow": "Workflow step completed",
-            "anti_pattern": "Anti-pattern detected and avoided"
+            "anti_pattern": "Anti-pattern detected and avoided",
         }
 
     def chat(self, messages, system=None, timeout=120):
@@ -47,7 +46,6 @@ class MockModelAdapter:
 
 
 class TestIntegration:
-
     def setup_method(self):
         self.temp_dir = tempfile.mkdtemp()
         self.skill_path = os.path.join(self.temp_dir, "test_skill.md")
@@ -82,11 +80,12 @@ description: "Test skill for integration testing"
 - Example 1: Process user input
 - Example 2: Handle edge cases
 """
-        with open(self.skill_path, 'w', encoding='utf-8') as f:
+        with open(self.skill_path, "w", encoding="utf-8") as f:
             f.write(sample_skill_content)
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir)
 
     def test_full_phase_0_to_2_pipeline_with_mocked_adapters(self):
@@ -101,7 +100,7 @@ description: "Test skill for integration testing"
         mock_review_adapter = MockModelAdapter()
 
         def mock_generate_evals(messages):
-            return '''
+            return """
             {
                 "evals": [
                     {
@@ -136,21 +135,21 @@ description: "Test skill for integration testing"
                     }
                 ]
             }
-            '''
+            """
 
         mock_model_adapter.chat = mock_generate_evals
-        mock_review_adapter.chat = lambda msgs: '''
+        mock_review_adapter.chat = lambda msgs: (
+            """
         {
             "coverage": 0.85,
             "gaps": [],
             "needs_improvement": false
         }
-        '''
+        """
+        )
 
         evals = eval_generator.generate_evals_with_convergence(
-            skill_spec_dict,
-            mock_model_adapter,
-            mock_review_adapter
+            skill_spec_dict, mock_model_adapter, mock_review_adapter
         )
 
         # The test generator might return different keys, check for available keys
@@ -183,7 +182,7 @@ description: "Test skill for integration testing"
         with pytest.raises(FileNotFoundError):
             parse_skill_md(nonexistent_path)
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("Just some random text without proper structure")
             malformed_path = f.name
 
@@ -218,11 +217,30 @@ description: "Test skill for integration testing"
             "l3_step_adherence": 0.80,
             "l4_execution_stability": 0.95,
             "metrics_breakdown": {
-                "l1_details": {"total_trigger_evals": 10, "passed_trigger_evals": 9, "trigger_accuracy": 0.9},
-                "l2_details": {"with_skill_avg_pass_rate": 0.8, "without_skill_avg_pass_rate": 0.5, "delta": 0.3, "improvement_percentage": 30.0},
-                "l3_details": {"total_evaluations": 20, "passing_evaluations": 16, "step_coverage_ratio": 0.8},
-                "l4_details": {"deterministic_evals_count": 15, "execution_stability": 0.95, "stdev_deterministic_pass_rate": 0.02, "with_skill_stdev": 0.02, "without_skill_stdev": 0.0}
-            }
+                "l1_details": {
+                    "total_trigger_evals": 10,
+                    "passed_trigger_evals": 9,
+                    "trigger_accuracy": 0.9,
+                },
+                "l2_details": {
+                    "with_skill_avg_pass_rate": 0.8,
+                    "without_skill_avg_pass_rate": 0.5,
+                    "delta": 0.3,
+                    "improvement_percentage": 30.0,
+                },
+                "l3_details": {
+                    "total_evaluations": 20,
+                    "passing_evaluations": 16,
+                    "step_coverage_ratio": 0.8,
+                },
+                "l4_details": {
+                    "deterministic_evals_count": 15,
+                    "execution_stability": 0.95,
+                    "stdev_deterministic_pass_rate": 0.02,
+                    "with_skill_stdev": 0.02,
+                    "without_skill_stdev": 0.0,
+                },
+            },
         }
 
         drift = {
@@ -230,7 +248,7 @@ description: "Test skill for integration testing"
             "highest_severity": "low",
             "average_variance": 0.05,
             "model_pairs_compared": 1,
-            "overall_verdict": "PASS"
+            "overall_verdict": "PASS",
         }
 
         config = {
@@ -242,7 +260,7 @@ description: "Test skill for integration testing"
             "important_total": 18,
             "normal_passed": 45,
             "normal_total": 50,
-            "timestamp": "2026-04-26T10:00:00Z"
+            "timestamp": "2026-04-26T10:00:00Z",
         }
 
         markdown_report, json_report = reporter.generate_report(metrics, drift, config)
@@ -258,7 +276,7 @@ description: "Test skill for integration testing"
         mock_review_adapter = MockModelAdapter()
 
         def mock_generate_evals(messages):
-            return '''
+            return """
             {
                 "evals": [
                     {
@@ -283,21 +301,21 @@ description: "Test skill for integration testing"
                     }
                 ]
             }
-            '''
+            """
 
         mock_gen_adapter.chat = mock_generate_evals
-        mock_review_adapter.chat = lambda msgs: '''
+        mock_review_adapter.chat = lambda msgs: (
+            """
         {
             "coverage": 0.8,
             "gaps": [],
             "needs_improvement": false
         }
-        '''
+        """
+        )
 
         evals = eval_generator.generate_evals_with_convergence(
-            skill_spec_dict,
-            mock_gen_adapter,
-            mock_review_adapter
+            skill_spec_dict, mock_gen_adapter, mock_review_adapter
         )
 
         grader = Grader()
@@ -317,7 +335,7 @@ description: "Test skill for integration testing"
                         name=f"assert_{i}",
                         type=assertion["type"],
                         value=assertion["value"],
-                        weight=assertion.get("weight", 1)
+                        weight=assertion.get("weight", 1),
                     )
                     for i, assertion in enumerate(eval_data["assertions"])
                 ]
@@ -326,8 +344,8 @@ description: "Test skill for integration testing"
                     id=eval_data["id"],
                     name=eval_data["name"],
                     category=eval_data["category"],
-                    prompt=eval_data.get("input", eval_data["prompt"]),
-                    assertions=assertions
+                    prompt=eval_data.get("input", eval_data.get("prompt", "")),
+                    assertions=assertions,
                 )
                 eval_cases.append(eval_case)
 
@@ -335,7 +353,7 @@ description: "Test skill for integration testing"
             grade_results = []
 
             for i, eval_case in enumerate(eval_cases):
-                mock_output = mock_outputs[min(i, len(mock_outputs)-1)]
+                mock_output = mock_outputs[min(i, len(mock_outputs) - 1)]
                 grade_result = grader.grade_output(eval_case, mock_output)
                 grade_results.append(grade_result)
 
@@ -356,7 +374,7 @@ description: "Test skill for integration testing"
             name="contains-test",
             category="normal",
             prompt="Test content",
-            assertions=[EvalAssertion(name="test", type="contains", value="content", weight=1)]
+            assertions=[EvalAssertion(name="test", type="contains", value="content", weight=1)],
         )
 
         result = grader.grade_output(eval_case, "This is test content")
@@ -369,7 +387,7 @@ description: "Test skill for integration testing"
             name="not-contains-test",
             category="normal",
             prompt="Test content",
-            assertions=[EvalAssertion(name="test", type="not_contains", value="missing", weight=1)]
+            assertions=[EvalAssertion(name="test", type="not_contains", value="missing", weight=1)],
         )
 
         result = grader.grade_output(eval_case, "This is test content")
@@ -381,7 +399,7 @@ description: "Test skill for integration testing"
             name="regex-test",
             category="normal",
             prompt="Test content",
-            assertions=[EvalAssertion(name="test", type="regex", value=r"\\btest\\b", weight=1)]
+            assertions=[EvalAssertion(name="test", type="regex", value=r"\\btest\\b", weight=1)],
         )
 
         result = grader.grade_output(eval_case, "This is test content")
@@ -393,7 +411,7 @@ description: "Test skill for integration testing"
             name="starts-with-test",
             category="normal",
             prompt="Test content",
-            assertions=[EvalAssertion(name="test", type="starts_with", value="This", weight=1)]
+            assertions=[EvalAssertion(name="test", type="starts_with", value="This", weight=1)],
         )
 
         result = grader.grade_output(eval_case, "This is test content")
@@ -405,7 +423,7 @@ description: "Test skill for integration testing"
             name="json-valid-test",
             category="normal",
             prompt="Test content",
-            assertions=[EvalAssertion(name="test", type="json_valid", value="", weight=1)]
+            assertions=[EvalAssertion(name="test", type="json_valid", value="", weight=1)],
         )
 
         result = grader.grade_output(eval_case, '{"valid": "json"}')
@@ -423,8 +441,8 @@ description: "Test skill for integration testing"
                 "skill_used": True,
                 "assertion_results": [
                     {"confidence": 1.0, "passed": True},
-                    {"confidence": 1.0, "passed": True}
-                ]
+                    {"confidence": 1.0, "passed": True},
+                ],
             },
             {
                 "category": "trigger",
@@ -433,8 +451,8 @@ description: "Test skill for integration testing"
                 "skill_used": True,
                 "assertion_results": [
                     {"confidence": 1.0, "passed": False},
-                    {"confidence": 1.0, "passed": True}
-                ]
+                    {"confidence": 1.0, "passed": True},
+                ],
             },
             {
                 "category": "normal",
@@ -443,8 +461,8 @@ description: "Test skill for integration testing"
                 "skill_used": True,
                 "assertion_results": [
                     {"confidence": 1.0, "passed": True},
-                    {"confidence": 1.0, "passed": True}
-                ]
+                    {"confidence": 1.0, "passed": True},
+                ],
             },
             {
                 "category": "normal",
@@ -453,9 +471,9 @@ description: "Test skill for integration testing"
                 "skill_used": False,
                 "assertion_results": [
                     {"confidence": 1.0, "passed": True},
-                    {"confidence": 1.0, "passed": False}
-                ]
-            }
+                    {"confidence": 1.0, "passed": False},
+                ],
+            },
         ]
 
         metrics = calc.calculate_metrics(eval_results)
@@ -478,6 +496,7 @@ description: "Test skill for integration testing"
         detector = DriftDetector()
 
         from engine.drift import DriftResult
+
         drift_results = [
             DriftResult(
                 model_a="model_a",
@@ -486,7 +505,7 @@ description: "Test skill for integration testing"
                 pass_rate_b=0.85,
                 variance=0.05,
                 severity="low",
-                verdict="PASS"
+                verdict="PASS",
             ),
             DriftResult(
                 model_a="model_a",
@@ -495,8 +514,8 @@ description: "Test skill for integration testing"
                 pass_rate_b=0.6,
                 variance=0.3,
                 severity="moderate",
-                verdict="PASS_WITH_CAVEATS"
-            )
+                verdict="PASS_WITH_CAVEATS",
+            ),
         ]
 
         drift_report = detector.aggregate_drift_report(drift_results)
@@ -510,12 +529,7 @@ description: "Test skill for integration testing"
         runner = EvalRunner(max_concurrency=2, rate_limit_rpm=30)
 
         eval_cases = [
-            {
-                "id": i,
-                "name": f"test-{i}",
-                "category": "normal",
-                "input": f"Test input {i}"
-            }
+            {"id": i, "name": f"test-{i}", "category": "normal", "input": f"Test input {i}"}
             for i in range(5)
         ]
 
@@ -550,26 +564,27 @@ description: "Test skill for integration testing"
                 "l1_details": {
                     "total_trigger_evals": 20,
                     "passed_trigger_evals": 17,
-                    "trigger_accuracy": 0.85
+                    "trigger_accuracy": 0.85,
                 },
                 "l2_details": {
                     "with_skill_avg_pass_rate": 0.85,
                     "without_skill_avg_pass_rate": 0.65,
                     "delta": 0.20,
-                    "improvement_percentage": 30.77
+                    "improvement_percentage": 30.77,
                 },
                 "l3_details": {
                     "total_evaluations": 50,
                     "passing_evaluations": 41,
-                    "step_coverage_ratio": 0.82
+                    "step_coverage_ratio": 0.82,
                 },
                 "l4_details": {
                     "deterministic_evals_count": 40,
                     "avg_deterministic_pass_rate": 0.88,
-                    "std": 0.08, "stdev_deterministic_pass_rate": 0.08,
-                    "execution_stability": 0.90
-                }
-            }
+                    "std": 0.08,
+                    "stdev_deterministic_pass_rate": 0.08,
+                    "execution_stability": 0.90,
+                },
+            },
         }
 
         drift = {
@@ -580,7 +595,7 @@ description: "Test skill for integration testing"
             "model_pairs_compared": 3,
             "severity_distribution": {"none": 1, "low": 2, "moderate": 0, "high": 0},
             "overall_verdict": "PASS",
-            "summary": "Low drift detected across model pairs"
+            "summary": "Low drift detected across model pairs",
         }
 
         config = {
@@ -592,7 +607,7 @@ description: "Test skill for integration testing"
             "important_total": 40,
             "normal_passed": 85,
             "normal_total": 90,
-            "timestamp": "2026-04-26T10:00:00Z"
+            "timestamp": "2026-04-26T10:00:00Z",
         }
 
         markdown_report, json_report = reporter.generate_report(metrics, drift, config)
@@ -629,11 +644,13 @@ description: "Test skill for integration testing"
                 # Mock the response for dialogue turns
                 responses = []
                 for eval_case in eval_cases:
-                    responses.append({
-                        "eval_id": eval_case.get("id", "default_id"),
-                        "output": "Mock skill response for dialogue turn",
-                        "timestamp": 1234567890.0
-                    })
+                    responses.append(
+                        {
+                            "eval_id": eval_case.get("id", "default_id"),
+                            "output": "Mock skill response for dialogue turn",
+                            "timestamp": 1234567890.0,
+                        }
+                    )
                 return responses
 
         skill_runner = MockSkillRunner()
@@ -643,7 +660,7 @@ description: "Test skill for integration testing"
             simulator=user_simulator,
             evaluator=dialogue_evaluator,
             skill_runner=skill_runner,
-            max_turns=5
+            max_turns=5,
         )
 
         # Create a mock evaluation case
@@ -652,18 +669,26 @@ description: "Test skill for integration testing"
             "name": "dialogue-test-eval",
             "category": "dialogue",
             "input": "Please help me with this multi-turn task",
-            "workflow_steps": ["step1", "step2", "finalize"]
+            "workflow_steps": ["step1", "step2", "finalize"],
         }
 
         # Execute the dialogue evaluation
         import asyncio
+
         try:
-            result = asyncio.run(dialogue_runner.run_dialogue_eval(mock_eval_case, "test skill context"))
+            result = asyncio.run(
+                dialogue_runner.run_dialogue_eval(mock_eval_case, "test skill context")
+            )
         except RuntimeError:
             # Alternative execution if event loop is already running
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(lambda: asyncio.run(dialogue_runner.run_dialogue_eval(mock_eval_case, "test skill context")))
+                future = executor.submit(
+                    lambda: asyncio.run(
+                        dialogue_runner.run_dialogue_eval(mock_eval_case, "test skill context")
+                    )
+                )
                 result = future.result()
 
         # Verify evaluation result has all expected fields

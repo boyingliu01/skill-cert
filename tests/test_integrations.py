@@ -1,4 +1,5 @@
 """Tests for engine/integrations.py — external tool integration framework."""
+
 import pytest
 
 from engine.integrations import (
@@ -53,6 +54,7 @@ class MockDegradedIntegration(BaseIntegration):
 
     def check_health(self):
         from engine.integrations import ToolAvailability
+
         return ToolAvailability.DEGRADED if self._degraded else ToolAvailability.AVAILABLE
 
     def get_version(self):

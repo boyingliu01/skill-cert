@@ -29,14 +29,18 @@ class TestParseEvalsResponseMarkdownFences:
         assert "eval_cases" in result or "evals" in result
 
     def test_strips_json_only_fence(self):
-        _response = '''```json
-{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x", "assertions": [{"type": "contains", "value": "x", "weight": 1}]}]}
-```'''
+        _response = """```json
+{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x",
+"assertions": [{"type": "contains", "value": "x", "weight": 1}]}]}
+```"""
         result = self.gen._parse_evals_response(_response)
         assert result is not None
 
     def test_handles_plain_json(self):
-        _response = '{"evals": [{"id": 1, "name": "t", "category": "n", "input": "x", "assertions": [{"type": "contains", "value": "x", "weight": 1}]}]}'
+        _response = (
+            '{"evals": [{"id": 1, "name": "t", "category": "n", "input": "x", '
+            '"assertions": [{"type": "contains", "value": "x", "weight": 1}]}]}'
+        )
         result = self.gen._parse_evals_response(_response)
         assert result is not None
 
@@ -48,7 +52,8 @@ class TestParseEvalsResponseMarkdownFences:
 ```
 Second block with data:
 ```json
-{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x", "assertions": [{"type": "contains", "value": "x", "weight": 1}]}]}
+{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x",
+"assertions": [{"type": "contains", "value": "x", "weight": 1}]}]}
 ```
 """
         result = self.gen._parse_evals_response(_response)
@@ -62,7 +67,10 @@ class TestParseEvalsResponseSchemaValidation:
         self.gen = EvalGenerator()
 
     def test_rejects_malformed_assertion_type_flat_fields(self):
-        _response = '{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x", "assertion_type": "contains", "assertion_value": "x"}]}'
+        _response = (
+            '{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x", '
+            '"assertion_type": "contains", "assertion_value": "x"}]}'
+        )
         result = self.gen._parse_evals_response(_response)
         cases = result.get("eval_cases") or result.get("evals", [])
         case = cases[0]
@@ -71,7 +79,11 @@ class TestParseEvalsResponseSchemaValidation:
         assert isinstance(case["assertions"], list)
 
     def test_normalizes_flat_assertion_to_array(self):
-        _response = '{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x", "assertion_type": "contains", "assertion_value": "x", "assertion_weight": 2}]}'
+        _response = (
+            '{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x", '
+            '"assertion_type": "contains", "assertion_value": "x", '
+            '"assertion_weight": 2}]}'
+        )
         result = self.gen._parse_evals_response(_response)
         cases = result.get("eval_cases") or result.get("evals", [])
         case = cases[0]
@@ -81,13 +93,19 @@ class TestParseEvalsResponseSchemaValidation:
         assert case["assertions"][0]["weight"] == 2
 
     def test_passes_through_correct_assertions(self):
-        _response = '{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x", "assertions": [{"type": "contains", "value": "x", "weight": 1}]}]}'
+        _response = (
+            '{"eval_cases": [{"id": 1, "name": "t", "category": "n", "input": "x", '
+            '"assertions": [{"type": "contains", "value": "x", "weight": 1}]}]}'
+        )
         result = self.gen._parse_evals_response(_response)
         cases = result.get("eval_cases") or result.get("evals", [])
         assert len(cases[0]["assertions"]) == 1
 
     def test_missing_input_fallback_to_prompt(self):
-        _response = '{"eval_cases": [{"id": 1, "name": "t", "category": "n", "prompt": "test prompt", "assertions": []}]}'
+        _response = (
+            '{"eval_cases": [{"id": 1, "name": "t", "category": "n", '
+            '"prompt": "test prompt", "assertions": []}]}'
+        )
         result = self.gen._parse_evals_response(_response)
         cases = result.get("eval_cases") or result.get("evals", [])
         assert cases[0].get("input") == "test prompt"

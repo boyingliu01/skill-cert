@@ -296,4 +296,6 @@ def create_golden_dataset() -> GoldenEvalSet:
         ),
     ]
 
-    return GoldenEvalSet(name="standard-v1", description="Standard golden evaluation dataset v1", cases=cases)
+    return GoldenEvalSet(
+        name="standard-v1", description="Standard golden evaluation dataset v1", cases=cases
+    )

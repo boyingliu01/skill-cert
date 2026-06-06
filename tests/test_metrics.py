@@ -41,7 +41,7 @@ class TestMetricsCalculator:
 
         l1_score = calculator._calculate_l1_trigger_accuracy(eval_results)
 
-        assert l1_score == 2/3  # 2 out of 3 trigger evaluations passed
+        assert l1_score == 2 / 3  # 2 out of 3 trigger evaluations passed
 
     def test_calculate_l1_trigger_accuracy_no_triggers(self):
         """Test L1 calculation when there are no trigger evaluations."""
@@ -289,7 +289,7 @@ class TestMetricsCalculator:
                     {"confidence": 1.0, "passed": True},
                     {"confidence": 1.0, "passed": True},
                 ]
-            }
+            },
         ]
 
         l4_score = calculator._calculate_l4_execution_stability(eval_results)
@@ -368,7 +368,9 @@ class TestMetricsCalculator:
         assert details["with_skill_avg_pass_rate"] == pytest.approx(0.85)  # (0.8 + 0.9) / 2
         assert details["without_skill_avg_pass_rate"] == pytest.approx(0.65)  # (0.6 + 0.7) / 2
         assert details["delta"] == pytest.approx(0.2)  # 0.85 - 0.65
-        assert details["improvement_percentage"] == pytest.approx(30.77, abs=0.01)  # (0.2 / 0.65) * 100
+        assert details["improvement_percentage"] == pytest.approx(
+            30.77, abs=0.01
+        )  # (0.2 / 0.65) * 100
 
     def test_get_l3_details(self):
         """Test getting L3 details."""
@@ -403,7 +405,7 @@ class TestMetricsCalculator:
                     {"confidence": 1.0, "passed": True},
                     {"confidence": 1.0, "passed": False},
                 ]
-            }
+            },
         ]
 
         details = calculator._get_l4_details(eval_results)
@@ -498,19 +500,27 @@ class TestMetricsCalculator:
         calc = MetricsCalculator()
         results = [
             {
-                "category": "trigger", "final_passed": True,
-                "skill_used": True, "pass_rate": 0.9, "cost": 0.05,
+                "category": "trigger",
+                "final_passed": True,
+                "skill_used": True,
+                "pass_rate": 0.9,
+                "cost": 0.05,
                 "execution_time": 5.0,
                 "trace": {"violations": []},
-                "mode": "dialogue", "turn_similarity": 0.8,
+                "mode": "dialogue",
+                "turn_similarity": 0.8,
                 "assertion_results": [{"confidence": 1.0, "passed": True}],
             },
             {
-                "category": "normal", "final_passed": True,
-                "skill_used": False, "pass_rate": 0.6, "cost": 0.03,
+                "category": "normal",
+                "final_passed": True,
+                "skill_used": False,
+                "pass_rate": 0.6,
+                "cost": 0.03,
                 "execution_time": 3.0,
                 "trace": {"violations": []},
-                "mode": "dialogue", "turn_similarity": 0.7,
+                "mode": "dialogue",
+                "turn_similarity": 0.7,
                 "assertion_results": [{"confidence": 1.0, "passed": True}],
             },
         ]
@@ -525,10 +535,20 @@ class TestMetricsCalculator:
         """Overall score uses 4 active metrics when L5 and L6 are None."""
         calc = MetricsCalculator()
         results = [
-            {"category": "normal", "final_passed": True, "skill_used": True,
-             "pass_rate": 0.8, "assertion_results": [{"confidence": 1.0, "passed": True}]},
-            {"category": "normal", "final_passed": True, "skill_used": False,
-             "pass_rate": 0.5, "assertion_results": [{"confidence": 1.0, "passed": True}]},
+            {
+                "category": "normal",
+                "final_passed": True,
+                "skill_used": True,
+                "pass_rate": 0.8,
+                "assertion_results": [{"confidence": 1.0, "passed": True}],
+            },
+            {
+                "category": "normal",
+                "final_passed": True,
+                "skill_used": False,
+                "pass_rate": 0.5,
+                "assertion_results": [{"confidence": 1.0, "passed": True}],
+            },
         ]
         metrics = calc.calculate_metrics(results)
         assert metrics["l5_step_efficiency"] is None
@@ -558,9 +578,7 @@ class TestMetricsCalculator:
     def test_get_l4_details_single_deterministic_result(self):
         """L4 details with single deterministic result → std_dev=0."""
         calc = MetricsCalculator()
-        results = [
-            {"assertion_results": [{"confidence": 1.0, "passed": True}]}
-        ]
+        results = [{"assertion_results": [{"confidence": 1.0, "passed": True}]}]
         details = calc._get_l4_details(results)
         assert details["deterministic_evals_count"] == 1
         assert details["stdev_deterministic_pass_rate"] == 0.0
@@ -619,8 +637,12 @@ class TestMetricsCalculator:
         l7 = calc.calculate_l7_cost_efficiency(results)
         assert l7 is not None
         assert set(l7.keys()) == {
-            "cost_per_eval", "total_cost", "cost_with_skill",
-            "cost_without_skill", "cost_delta_pct", "cost_efficiency",
+            "cost_per_eval",
+            "total_cost",
+            "cost_with_skill",
+            "cost_without_skill",
+            "cost_delta_pct",
+            "cost_efficiency",
         }
 
     # ── L3 Turn-Level Metrics ─────────────────────────────────────
@@ -630,7 +652,8 @@ class TestMetricsCalculator:
         calc = MetricsCalculator()
         results = [
             {
-                "final_passed": True, "pass_rate": 0.8,
+                "final_passed": True,
+                "pass_rate": 0.8,
                 "tool_calls": [{"tool_name": "search", "success": True}],
                 "expected_tools": ["search"],
                 "turns": [{"has_tool_call": True, "message": ""}],
@@ -723,7 +746,8 @@ class TestMetricsCalculator:
         calc = MetricsCalculator()
         results = [
             {
-                "final_passed": True, "pass_rate": 0.9,
+                "final_passed": True,
+                "pass_rate": 0.9,
                 "tool_calls": [{"tool_name": "search", "success": True}],
                 "turns": [{"has_tool_call": True, "message": "searching"}],
             },
@@ -732,7 +756,11 @@ class TestMetricsCalculator:
         assert details["method"] == "weighted_composite"
         assert details["tool_call_accuracy"] == 1.0
         assert details["turn_relevance"] == 1.0
-        assert details["weights"] == {"step_coverage": 0.5, "tool_call_accuracy": 0.3, "turn_relevance": 0.2}
+        assert details["weights"] == {
+            "step_coverage": 0.5,
+            "tool_call_accuracy": 0.3,
+            "turn_relevance": 0.2,
+        }
 
     def test_l3_details_fallback_without_turn_data(self):
         """_get_l3_details falls back to pass_rate_proxy without turn data."""

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 class JudgeResult(BaseModel):
     """Structure for LLM-as-judge evaluation results."""
+
     passed: bool
     confidence: float = Field(ge=0.0, le=1.0)
     reasoning: str = ""
@@ -22,6 +23,7 @@ class JudgeResult(BaseModel):
 
 class EvalAssertion(BaseModel):
     """Single assertion in an evaluation case."""
+
     name: str
     type: str  # contains, not_contains, regex, starts_with, json_valid
     value: str
@@ -30,6 +32,7 @@ class EvalAssertion(BaseModel):
 
 class EvalCase(BaseModel):
     """Single evaluation test case."""
+
     id: int
     name: str
     category: str  # normal, boundary, failure, trigger
@@ -43,6 +46,7 @@ class EvalCase(BaseModel):
 @dataclass
 class AssertionResult:
     """Result of a single assertion evaluation."""
+
     assertion: EvalAssertion
     passed: bool
     confidence: float
@@ -81,8 +85,8 @@ class Grader:
 
         # If not all deterministic assertions passed, or if we have complex cases, use LLM judge
         use_llm_judge = (
-            deterministic_total_count < len(results) or  # Some assertions are non-deterministic
-            deterministic_passed_count < deterministic_total_count  # Some deterministic failed
+            deterministic_total_count < len(results)  # Some assertions are non-deterministic
+            or deterministic_passed_count < deterministic_total_count  # Some deterministic failed
         )
 
         judge_result = None
@@ -100,7 +104,7 @@ class Grader:
                     "assertion": result.assertion.model_dump(),
                     "passed": result.passed,
                     "confidence": result.confidence,
-                    "reason": result.reason
+                    "reason": result.reason,
                 }
                 for result in results
             ],
@@ -108,7 +112,9 @@ class Grader:
             "total_possible_score": total_possible_score,
             "pass_rate": pass_rate,
             "judge_result": judge_result.model_dump() if judge_result else None,
-            "final_passed": judge_result.passed if judge_result and judge_result.confidence >= 0.8 else pass_rate >= 0.5
+            "final_passed": judge_result.passed
+            if judge_result and judge_result.confidence >= 0.8
+            else pass_rate >= 0.5,
         }
 
     def _evaluate_assertion(self, assertion: EvalAssertion, model_output: str) -> AssertionResult:
@@ -127,7 +133,9 @@ class Grader:
                 match = pattern.search(model_output)
                 passed = bool(match)
                 confidence = 1.0
-                reason = f"Regex '{assertion.value}' {'matched' if passed else 'did not match'} output"
+                reason = (
+                    f"Regex '{assertion.value}' {'matched' if passed else 'did not match'} output"
+                )
             except re.error:
                 passed = False
                 confidence = 0.0
@@ -135,7 +143,9 @@ class Grader:
         elif assertion.type == "starts_with":
             passed = model_output.startswith(assertion.value)
             confidence = 1.0
-            reason = f"Output {'starts with' if passed else 'does not start with'} '{assertion.value}'"
+            reason = (
+                f"Output {'starts with' if passed else 'does not start with'} '{assertion.value}'"
+            )
         elif assertion.type == "json_valid":
             try:
                 json.loads(model_output)
@@ -153,17 +163,16 @@ class Grader:
             reason = f"Unknown assertion type: {assertion.type}"
 
         return AssertionResult(
-            assertion=assertion,
-            passed=passed,
-            confidence=confidence,
-            reason=reason
+            assertion=assertion, passed=passed, confidence=confidence, reason=reason
         )
 
     def _get_weight_multiplier(self, weight: int) -> int:
         """Convert weight to multiplier: 1=Normal=1, 2=Important=2, 3=Critical=3."""
         return max(1, min(3, weight))  # Clamp between 1 and 3
 
-    def _llm_judge(self, eval_case: EvalCase, model_output: str, assertion_results: list[AssertionResult]) -> JudgeResult | None:
+    def _llm_judge(
+        self, eval_case: EvalCase, model_output: str, assertion_results: list[AssertionResult]
+    ) -> JudgeResult | None:
         """Use LLM as judge for complex behavior evaluation."""
         import os
 
@@ -177,7 +186,9 @@ class Grader:
             )
 
         # Check if LLM judge is disabled via environment variable
-        llm_judge_enabled = os.environ.get("SKILL_CERT_LLM_JUDGE_ENABLED", "true").lower() != "false"
+        llm_judge_enabled = (
+            os.environ.get("SKILL_CERT_LLM_JUDGE_ENABLED", "true").lower() != "false"
+        )
 
         # Fallback to simplified logic if LLM client is None or LLM judge is disabled
         if self.llm_client is None or not llm_judge_enabled:
@@ -187,7 +198,11 @@ class Grader:
             return JudgeResult(
                 passed=passed_ratio >= 0.5,
                 confidence=passed_ratio,
-                reasoning=f"LLM evaluation: {passed_assertions}/{total_assertions} assertions passed ({passed_ratio:.2f})",
+                reasoning=(
+                    f"LLM evaluation: "
+                    f"{passed_assertions}/{total_assertions} "
+                    f"assertions passed ({passed_ratio:.2f})"
+                ),
                 judge_version="1.0",
                 judge_model="",
             )
@@ -270,9 +285,7 @@ class Grader:
 
             # Position debias: for borderline cases (confidence < 0.8), run swap
             if result.confidence < 0.8 and self.llm_client:
-                result = self._debias_position(
-                    eval_case, model_output, assertion_results, result
-                )
+                result = self._debias_position(eval_case, model_output, assertion_results, result)
 
             return result
         except Exception as e:
@@ -283,7 +296,12 @@ class Grader:
             return JudgeResult(
                 passed=passed_ratio >= 0.5,
                 confidence=passed_ratio,
-                reasoning=f"LLM judge call failed ({e}), fallback to assertion-based: {passed_assertions}/{total_assertions} passed ({passed_ratio:.2f})",
+                reasoning=(
+                    f"LLM judge call failed ({e}), "
+                    f"fallback to assertion-based: "
+                    f"{passed_assertions}/{total_assertions} "
+                    f"passed ({passed_ratio:.2f})"
+                ),
                 judge_version="2.0",
                 judge_model="",
             )
@@ -380,5 +398,8 @@ class Grader:
         lines = []
         for r in assertion_results:
             status = "PASS" if r.passed else "FAIL"
-            lines.append(f"- [{status}] {r.assertion.name} (type={r.assertion.type}, weight={r.assertion.weight}): {r.reason}")
+            lines.append(
+                f"- [{status}] {r.assertion.name} "
+                f"(type={r.assertion.type}, weight={r.assertion.weight}): {r.reason}"
+            )
         return "\n".join(lines) if lines else "(no assertions)"

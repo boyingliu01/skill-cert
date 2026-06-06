@@ -36,12 +36,8 @@ class TrajectoryScore(BaseModel):
     repetition_score: float = Field(
         ge=0.0, le=1.0, description="1.0 = no repetition, lower = more repetition"
     )
-    path_correctness_score: float = Field(
-        ge=0.0, le=1.0, description="1.0 = perfect path match"
-    )
-    path_optimization_score: float = Field(
-        ge=0.0, le=1.0, description="1.0 = no unnecessary calls"
-    )
+    path_correctness_score: float = Field(ge=0.0, le=1.0, description="1.0 = perfect path match")
+    path_optimization_score: float = Field(ge=0.0, le=1.0, description="1.0 = no unnecessary calls")
     tool_call_accuracy_score: float = Field(
         default=0.0, ge=0.0, le=1.0, description="1.0 = all tool calls correct"
     )
@@ -58,9 +54,7 @@ class TrajectoryScore(BaseModel):
 class TrajectoryEvaluator:
     """Evaluates LLM agent trajectories for quality metrics."""
 
-    def detect_repetition(
-        self, steps: list[TrajectoryStep]
-    ) -> tuple[float, list[str]]:
+    def detect_repetition(self, steps: list[TrajectoryStep]) -> tuple[float, list[str]]:
         """Detect duplicate tool calls (same tool_name + same params).
 
         Returns (score, repeated_names).
@@ -97,31 +91,21 @@ class TrajectoryEvaluator:
         matches = 0
         exp_idx = 0
         for tool in actual_tools:
-            if (
-                exp_idx < len(expected.tool_names)
-                and tool == expected.tool_names[exp_idx]
-            ):
+            if exp_idx < len(expected.tool_names) and tool == expected.tool_names[exp_idx]:
                 matches += 1
                 exp_idx += 1
         missing = expected.tool_names[exp_idx:]
         score = matches / len(expected.tool_names)
         return score, missing
 
-    def assess_optimization(
-        self, steps: list[TrajectoryStep]
-    ) -> tuple[float, list[str]]:
+    def assess_optimization(self, steps: list[TrajectoryStep]) -> tuple[float, list[str]]:
         """Assess if there are unnecessary tool call steps.
 
         Detects consecutive same-tool duplicate calls.
         """
         unnecessary: list[str] = []
-        tool_steps = [
-            s for s in steps if s.tool_call is not None
-        ]
-        tool_calls = [
-            s.tool_call for s in tool_steps
-            if s.tool_call is not None
-        ]
+        tool_steps = [s for s in steps if s.tool_call is not None]
+        tool_calls = [s.tool_call for s in tool_steps if s.tool_call is not None]
         for i in range(1, len(tool_calls)):
             curr = tool_calls[i]
             prev = tool_calls[i - 1]
@@ -153,21 +137,19 @@ class TrajectoryEvaluator:
         if expected_tools is not None and len(expected_tools) > 0:
             expected_set = set(expected_tools)
             correct = sum(
-                1 for s in tool_steps
+                1
+                for s in tool_steps
                 if s.tool_call is not None and s.tool_call.tool_name in expected_set
             )
             return correct / len(tool_steps)
 
         # Fallback: check if tool calls have results (success indicator)
         with_results = sum(
-            1 for s in tool_steps
-            if s.tool_call is not None and s.tool_call.result is not None
+            1 for s in tool_steps if s.tool_call is not None and s.tool_call.result is not None
         )
         return with_results / len(tool_steps)
 
-    def _calculate_turn_relevance(
-        self, steps: list[TrajectoryStep]
-    ) -> float:
+    def _calculate_turn_relevance(self, steps: list[TrajectoryStep]) -> float:
         """Calculate turn relevance score.
 
         A turn is relevant if it either has a tool call or a non-empty message.
@@ -202,9 +184,7 @@ class TrajectoryEvaluator:
             path_score, missing = 1.0, []
         opt_score, unnecessary = self.assess_optimization(steps)
 
-        total = (
-            rep_score * 0.4 + path_score * 0.35 + opt_score * 0.25
-        )
+        total = rep_score * 0.4 + path_score * 0.35 + opt_score * 0.25
 
         # Turn-level metrics
         expected_tools = expected.tool_names if expected else None

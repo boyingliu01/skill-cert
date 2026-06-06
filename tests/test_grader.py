@@ -23,8 +23,8 @@ class TestGrader:
             expected_output="Hello world",
             assertions=[
                 EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1),
-                EvalAssertion(name="not_contains_bad", type="not_contains", value="bad", weight=2)
-            ]
+                EvalAssertion(name="not_contains_bad", type="not_contains", value="bad", weight=2),
+            ],
         )
 
         model_output = "Hello world, this is good"
@@ -51,8 +51,10 @@ class TestGrader:
             expected_output="Goodbye",
             assertions=[
                 EvalAssertion(name="contains_goodbye", type="contains", value="Goodbye", weight=1),
-                EvalAssertion(name="contains_hello", type="contains", value="helloXXX", weight=2)  # Use term that won't match
-            ]
+                EvalAssertion(
+                    name="contains_hello", type="contains", value="helloXXX", weight=2
+                ),  # Use term that won't match
+            ],
         )
 
         model_output = "Goodbye, but no helloXX"
@@ -60,7 +62,7 @@ class TestGrader:
 
         assert result["total_weighted_score"] == 1  # Only first assertion passes (1*1)
         assert result["total_possible_score"] == 3  # Both assertions have weights 1+2
-        assert result["pass_rate"] == 1/3
+        assert result["pass_rate"] == 1 / 3
         assert result["final_passed"] is False  # Less than 50% pass rate
 
     def test_grade_output_regex_assertion(self):
@@ -74,8 +76,10 @@ class TestGrader:
             prompt="Provide a phone number",
             expected_output="(123) 456-7890",
             assertions=[
-                EvalAssertion(name="phone_pattern", type="regex", value=r"\(\d{3}\) \d{3}-\d{4}", weight=1)
-            ]
+                EvalAssertion(
+                    name="phone_pattern", type="regex", value=r"\(\d{3}\) \d{3}-\d{4}", weight=1
+                )
+            ],
         )
 
         model_output = "Call me at (123) 456-7890"
@@ -96,9 +100,7 @@ class TestGrader:
             category="normal",
             prompt="Provide JSON data",
             expected_output='{"name": "test", "value": 123}',
-            assertions=[
-                EvalAssertion(name="valid_json", type="json_valid", value="", weight=1)
-            ]
+            assertions=[EvalAssertion(name="valid_json", type="json_valid", value="", weight=1)],
         )
 
         model_output = '{"name": "test", "value": 123}'
@@ -119,9 +121,7 @@ class TestGrader:
             category="normal",
             prompt="Provide JSON data",
             expected_output='{"name": "test", "value": 123}',
-            assertions=[
-                EvalAssertion(name="valid_json", type="json_valid", value="", weight=1)
-            ]
+            assertions=[EvalAssertion(name="valid_json", type="json_valid", value="", weight=1)],
         )
 
         model_output = '{"name": "test", "value": 123'  # Invalid JSON
@@ -144,7 +144,7 @@ class TestGrader:
             expected_output="Hello there",
             assertions=[
                 EvalAssertion(name="starts_with_hello", type="starts_with", value="Hello", weight=1)
-            ]
+            ],
         )
 
         model_output = "Hello there, nice to meet you"
@@ -167,7 +167,7 @@ class TestGrader:
             expected_output="Good content",
             assertions=[
                 EvalAssertion(name="no_bad_word", type="not_contains", value="bad", weight=1)
-            ]
+            ],
         )
 
         model_output = "This is good content"
@@ -189,9 +189,13 @@ class TestGrader:
             prompt="Important test",
             expected_output="Must contain this",
             assertions=[
-                EvalAssertion(name="critical_check", type="contains", value="this", weight=3),  # Critical
-                EvalAssertion(name="normal_check", type="contains", value="thatYYY", weight=1)    # Normal - use term that won't match
-            ]
+                EvalAssertion(
+                    name="critical_check", type="contains", value="this", weight=3
+                ),  # Critical
+                EvalAssertion(
+                    name="normal_check", type="contains", value="thatYYY", weight=1
+                ),  # Normal - use term that won't match
+            ],
         )
 
         model_output = "Contains this but not thatZZZ"
@@ -199,7 +203,7 @@ class TestGrader:
 
         assert result["total_weighted_score"] == 3  # Only critical assertion passes
         assert result["total_possible_score"] == 4  # Critical(3) + Normal(1)
-        assert result["pass_rate"] == 3/4
+        assert result["pass_rate"] == 3 / 4
         assert result["final_passed"] is True  # More than 50% pass rate
 
     def test_grade_output_empty_assertions(self):
@@ -212,7 +216,7 @@ class TestGrader:
             category="normal",
             prompt="Empty test",
             expected_output="",
-            assertions=[]
+            assertions=[],
         )
 
         model_output = "Any output"
@@ -248,9 +252,7 @@ def test_grade_output_with_llm_judge():
         category="normal",
         prompt="Test with LLM judge",
         expected_output="Expected output",
-        assertions=[
-            EvalAssertion(name="contains_test", type="contains", value="test", weight=1)
-        ]
+        assertions=[EvalAssertion(name="contains_test", type="contains", value="test", weight=1)],
     )
 
     model_output = "This is a test output"
@@ -275,7 +277,7 @@ def test_grade_output_unknown_assertion_type():
         expected_output="Expected output",
         assertions=[
             EvalAssertion(name="unknown_type", type="unknown_type", value="test", weight=1)
-        ]
+        ],
     )
 
     model_output = "This is a test output"
@@ -302,7 +304,7 @@ def test_grade_output_invalid_regex():
         expected_output="Expected output",
         assertions=[
             EvalAssertion(name="invalid_regex", type="regex", value="[unclosed_bracket", weight=1)
-        ]
+        ],
     )
 
     model_output = "This is a test output"
@@ -327,7 +329,7 @@ def test_llm_judge_method():
         category="normal",
         prompt="Test judge method",
         expected_output="Expected output",
-        assertions=[]
+        assertions=[],
     )
 
     # Test with no assertions
@@ -344,14 +346,14 @@ def test_llm_judge_method():
             assertion=EvalAssertion(name="test", type="contains", value="test", weight=1),
             passed=True,
             confidence=1.0,
-            reason="Passed"
+            reason="Passed",
         ),
         AssertionResult(
             assertion=EvalAssertion(name="test2", type="contains", value="test2", weight=1),
             passed=False,
             confidence=1.0,
-            reason="Failed"
-        )
+            reason="Failed",
+        ),
     ]
 
     judge_result = grader._llm_judge(eval_case, "model output with test", assertion_results)
@@ -371,9 +373,7 @@ def test_llm_judge_with_low_confidence():
         category="normal",
         prompt="Test low confidence",
         expected_output="Expected output",
-        assertions=[
-            EvalAssertion(name="test", type="contains", value="test", weight=1)
-        ]
+        assertions=[EvalAssertion(name="test", type="contains", value="test", weight=1)],
     )
 
     # Create assertion results with low confidence
@@ -382,7 +382,7 @@ def test_llm_judge_with_low_confidence():
             assertion=EvalAssertion(name="test", type="contains", value="test", weight=1),
             passed=True,
             confidence=0.3,  # Low confidence
-            reason="Passed with low confidence"
+            reason="Passed with low confidence",
         )
     ]
 
@@ -394,6 +394,7 @@ def test_llm_judge_with_low_confidence():
 
 
 # ── JudgeResult v2 fields ─────────────────────────────
+
 
 def test_judge_result_v2_fields():
     """JudgeResult includes failure_reasons, position_sensitive, debias_runs."""
@@ -423,17 +424,22 @@ def test_judge_result_defaults():
 
 # ── _format_assertions_for_judge ──────────────────────
 
+
 def test_format_assertions_for_judge():
     """_format_assertions_for_judge formats PASS/FAIL lines."""
     grader = Grader()
     results = [
         AssertionResult(
             assertion=EvalAssertion(name="check_a", type="contains", value="a", weight=3),
-            passed=True, confidence=1.0, reason="Found"
+            passed=True,
+            confidence=1.0,
+            reason="Found",
         ),
         AssertionResult(
             assertion=EvalAssertion(name="check_b", type="contains", value="b", weight=1),
-            passed=False, confidence=1.0, reason="Not found"
+            passed=False,
+            confidence=1.0,
+            reason="Not found",
         ),
     ]
     text = grader._format_assertions_for_judge(results)
@@ -450,18 +456,31 @@ def test_format_assertions_empty():
 
 # ── _debias_position ───────────────────────────────────
 
+
 def test_debias_position_agreement():
     """Debias: when both runs agree, confidence is max."""
     mock_llm = MagicMock()
-    mock_llm.chat.return_value = '{"passed": true, "confidence": 0.75, "reasoning": "ok", "failure_reasons": []}'
+    mock_llm.chat.return_value = (
+        '{"passed": true, "confidence": 0.75, "reasoning": "ok", "failure_reasons": []}'
+    )
     grader = Grader(llm_client=mock_llm)
 
-    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p", expected_output="e",
-                         assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)])
+    eval_case = EvalCase(
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)],
+    )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     assertion_results = [
-        AssertionResult(assertion=EvalAssertion(name="a", type="contains", value="x", weight=1),
-                        passed=True, confidence=1.0, reason="ok")
+        AssertionResult(
+            assertion=EvalAssertion(name="a", type="contains", value="x", weight=1),
+            passed=True,
+            confidence=1.0,
+            reason="ok",
+        )
     ]
     result = grader._debias_position(eval_case, "output", assertion_results, first)
     assert result.passed is True
@@ -473,11 +492,14 @@ def test_debias_position_agreement():
 def test_debias_position_disagreement():
     """Debias: when runs disagree, confidence reduced, position_sensitive=True."""
     mock_llm = MagicMock()
-    mock_llm.chat.return_value = '{"passed": false, "confidence": 0.6, "reasoning": "no", "failure_reasons": []}'
+    mock_llm.chat.return_value = (
+        '{"passed": false, "confidence": 0.6, "reasoning": "no", "failure_reasons": []}'
+    )
     grader = Grader(llm_client=mock_llm)
 
-    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p", expected_output="e",
-                         assertions=[])
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
     assert result.passed is True  # Keep first result's verdict
@@ -493,8 +515,9 @@ def test_debias_position_swap_call_fails():
     mock_llm.chat.side_effect = RuntimeError("API error")
     grader = Grader(llm_client=mock_llm)
 
-    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p",
-                         expected_output="e", assertions=[])
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
     assert result.passed is True
@@ -505,25 +528,43 @@ def test_debias_position_swap_call_fails():
 
 # ── LLM judge with failure_reasons parsing ───────────
 
+
 def test_llm_judge_parses_failure_reasons():
     """LLM judge correctly parses failure_reasons from response."""
     mock_llm = MagicMock()
-    mock_llm.chat.return_value = json.dumps({
-        "passed": False,
-        "confidence": 0.9,
-        "reasoning": "Missing section",
-        "failure_reasons": [
-            {"assertion_name": "has_security", "failure_type": "missing", "explanation": "No security section"}
-        ]
-    })
+    mock_llm.chat.return_value = json.dumps(
+        {
+            "passed": False,
+            "confidence": 0.9,
+            "reasoning": "Missing section",
+            "failure_reasons": [
+                {
+                    "assertion_name": "has_security",
+                    "failure_type": "missing",
+                    "explanation": "No security section",
+                }
+            ],
+        }
+    )
     grader = Grader(llm_client=mock_llm)
-    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p",
-                         expected_output="e",
-                         assertions=[EvalAssertion(name="has_security", type="contains", value="security", weight=3)])
+    eval_case = EvalCase(
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[
+            EvalAssertion(name="has_security", type="contains", value="security", weight=3)
+        ],
+    )
     assertion_results = [
         AssertionResult(
-            assertion=EvalAssertion(name="has_security", type="contains", value="security", weight=3),
-            passed=False, confidence=1.0, reason="Not found"
+            assertion=EvalAssertion(
+                name="has_security", type="contains", value="security", weight=3
+            ),
+            passed=False,
+            confidence=1.0,
+            reason="Not found",
         )
     ]
     result = grader._llm_judge(eval_case, "no security here", assertion_results)
@@ -537,13 +578,13 @@ def test_llm_judge_parses_failure_reasons():
 def test_llm_judge_invalid_failure_reasons_type():
     """When failure_reasons is not a list, it defaults to empty."""
     mock_llm = MagicMock()
-    mock_llm.chat.return_value = json.dumps({
-        "passed": True, "confidence": 0.95, "reasoning": "ok",
-        "failure_reasons": "not a list"
-    })
+    mock_llm.chat.return_value = json.dumps(
+        {"passed": True, "confidence": 0.95, "reasoning": "ok", "failure_reasons": "not a list"}
+    )
     grader = Grader(llm_client=mock_llm)
-    eval_case = EvalCase(id=1, name="t", category="normal", prompt="p",
-                         expected_output="e", assertions=[])
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
     result = grader._llm_judge(eval_case, "output", [])
     assert result.failure_reasons == []
 

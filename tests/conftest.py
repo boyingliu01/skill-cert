@@ -23,7 +23,12 @@ class MockModelAdapter:
         chat_history: List of dicts with 'messages' and 'system' keys.
     """
 
-    def __init__(self, responses: Any = None, model_name: str = "mock-model", default_response: str = "Mock response"):
+    def __init__(
+        self,
+        responses: Any = None,
+        model_name: str = "mock-model",
+        default_response: str = "Mock response",
+    ):
         self.model_name = model_name
         self.model = model_name
         self._mock_name = "mock_adapter"
@@ -66,7 +71,9 @@ class MockModelAdapter:
 
         return self.default_response
 
-    def chat_with_usage(self, messages: Any, system: str | None = None, timeout: int = 120) -> tuple[str, dict[str, int]]:
+    def chat_with_usage(
+        self, messages: Any, system: str | None = None, timeout: int = 120
+    ) -> tuple[str, dict[str, int]]:
         """Mock chat with token usage tracking."""
         response = self.chat(messages, system, timeout)
         return response, {

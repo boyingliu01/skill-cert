@@ -26,7 +26,7 @@ def test_openai_compat_adapter_initialization():
         api_key="test-key",
         model="gpt-4",
         fallback_model="gpt-3.5",
-        rpm_limit=100
+        rpm_limit=100,
     )
 
     assert adapter.base_url == "https://api.openai.com"
@@ -41,7 +41,7 @@ def test_openai_compat_fallback_model():
         base_url="https://api.openai.com",
         api_key="test-key",
         model="primary-model",
-        fallback_model="fallback-model"
+        fallback_model="fallback-model",
     )
 
     assert adapter.model == "primary-model"
@@ -57,11 +57,9 @@ def test_openai_compat_chat_sync():
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "choices": [{"message": {"content": "sync response"}}]
-    }
+    mock_response.json.return_value = {"choices": [{"message": {"content": "sync response"}}]}
 
-    with patch.object(adapter.client, 'post', return_value=mock_response):
+    with patch.object(adapter.client, "post", return_value=mock_response):
         result = adapter.chat([{"role": "user", "content": "Hello"}])
         assert result == "sync response"
 
@@ -77,10 +75,10 @@ def test_openai_compat_chat_with_usage():
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "choices": [{"message": {"content": "response with usage"}}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
     }
 
-    with patch.object(adapter.client, 'post', return_value=mock_response):
+    with patch.object(adapter.client, "post", return_value=mock_response):
         content, usage = adapter.chat_with_usage([{"role": "user", "content": "Hello"}])
         assert content == "response with usage"
         assert usage["prompt_tokens"] == 10
@@ -97,7 +95,7 @@ def test_openai_compat_chat_401_error():
     mock_response = MagicMock()
     mock_response.status_code = 401
 
-    with patch.object(adapter.client, 'post', return_value=mock_response):
+    with patch.object(adapter.client, "post", return_value=mock_response):
         with pytest.raises(RuntimeError, match="Invalid API key"):
             adapter.chat([{"role": "user", "content": "Hello"}])
 
@@ -112,7 +110,7 @@ def test_openai_compat_chat_404_error():
     mock_response = MagicMock()
     mock_response.status_code = 404
 
-    with patch.object(adapter.client, 'post', return_value=mock_response):
+    with patch.object(adapter.client, "post", return_value=mock_response):
         with pytest.raises(RuntimeError, match="Model not found"):
             adapter.chat([{"role": "user", "content": "Hello"}])
 
@@ -127,7 +125,7 @@ def test_openai_compat_chat_429_error():
     mock_response = MagicMock()
     mock_response.status_code = 429
 
-    with patch.object(adapter.client, 'post', return_value=mock_response):
+    with patch.object(adapter.client, "post", return_value=mock_response):
         with pytest.raises(RuntimeError, match="Insufficient quota"):
             adapter.chat([{"role": "user", "content": "Hello"}])
 
@@ -147,11 +145,13 @@ def test_openai_compat_batch_chat():
         call_count[0] += 1
         return result
 
-    with patch.object(adapter, 'chat', side_effect=mock_chat):
-        result = adapter.batch_chat([
-            {"messages": [{"role": "user", "content": "Hello"}]},
-            {"messages": [{"role": "user", "content": "World"}]}
-        ])
+    with patch.object(adapter, "chat", side_effect=mock_chat):
+        result = adapter.batch_chat(
+            [
+                {"messages": [{"role": "user", "content": "Hello"}]},
+                {"messages": [{"role": "user", "content": "World"}]},
+            ]
+        )
         assert result == ["batch response 1", "batch response 2"]
 
 
@@ -162,7 +162,7 @@ def test_openai_compat_cleanup():
         model="gpt-4",
     )
 
-    with patch.object(adapter.client, 'close') as mock_close:
+    with patch.object(adapter.client, "close") as mock_close:
         adapter.__del__()
         mock_close.assert_called_once()
 

@@ -54,6 +54,7 @@ skill-cert = "skill_cert.cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+pythonpath = ["."]
 
 [tool.ruff]
 target-version = "py310"
@@ -64,3 +65,5 @@ select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/test_cli_pipeline.py" = ["N806"]
+# test_maintainability.py contains intentionally long SKILL.md strings for testing readability scoring
+"tests/test_maintainability.py" = ["E501"]

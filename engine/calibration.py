@@ -52,13 +52,15 @@ class GoldenEvalSet:
         """Create GoldenEvalSet from list of dicts."""
         cases = []
         for d in data:
-            cases.append(GoldenEvalCase(
-                eval_id=d.get("eval_id", ""),
-                prompt=d.get("prompt", ""),
-                model_output=d.get("model_output", ""),
-                human_passed=d.get("human_passed", False),
-                assertion_results=d.get("assertion_results", []),
-            ))
+            cases.append(
+                GoldenEvalCase(
+                    eval_id=d.get("eval_id", ""),
+                    prompt=d.get("prompt", ""),
+                    model_output=d.get("model_output", ""),
+                    human_passed=d.get("human_passed", False),
+                    assertion_results=d.get("assertion_results", []),
+                )
+            )
         return cls(cases)
 
 
@@ -147,13 +149,16 @@ class CalibrationRunner:
             elif self.grader is not None:
                 # Use grader to evaluate
                 from engine.grader import EvalAssertion, EvalCase
+
                 assertions = []
                 for ar in case.assertion_results:
-                    assertions.append(EvalAssertion(
-                        name=ar.get("name", ""),
-                        type=ar.get("type", "contains"),
-                        value=ar.get("value", ""),
-                    ))
+                    assertions.append(
+                        EvalAssertion(
+                            name=ar.get("name", ""),
+                            type=ar.get("type", "contains"),
+                            value=ar.get("value", ""),
+                        )
+                    )
                 eval_case = EvalCase(
                     id=0,
                     name=case.eval_id,

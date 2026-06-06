@@ -36,7 +36,9 @@ class Reporter:
 
 ### L1: Trigger Accuracy
 - **Score**: {{ "%.2f"|format(l1_score * 100) }}%
-- **Details**: {{ l1_details.total_trigger_evals }} trigger evaluations, {{ l1_details.passed_trigger_evals }} passed
+- **Details**:
+  {{ l1_details.total_trigger_evals }} trigger evaluations,
+  {{ l1_details.passed_trigger_evals }} passed
 - **Accuracy**: {{ "%.2f"|format(l1_details.trigger_accuracy * 100) }}%
 
 ### L2: With/Without Skill Delta
@@ -47,7 +49,8 @@ class Reporter:
 
 ### L3: Step Adherence
 - **Score**: {{ "%.2f"|format(l3_score * 100) }}%
-- **Coverage**: {{ "%.2f"|format(l3_details.step_coverage_ratio * 100) }}% of evaluations covered expected steps
+- **Coverage**: {{ "%.2f"|format(l3_details.step_coverage_ratio * 100) }}%
+  of evaluations covered expected steps
 
 ### L4: Execution Stability
 - **Score**: {{ "%.2f"|format(l4_score * 100) }}%
@@ -64,7 +67,9 @@ class Reporter:
 
 #### Model Comparisons
 {% for result in drift_results %}
-- {{ result.model_a }} vs {{ result.model_b }}: {{ result.severity }} severity (variance: {{ "%.3f"|format(result.variance) }})
+- {{ result.model_a }} vs {{ result.model_b }}:
+  {{ result.severity }} severity
+  (variance: {{ "%.3f"|format(result.variance) }})
 {% endfor %}
 {% else %}
 ### No Significant Drift Detected
@@ -101,10 +106,34 @@ class Reporter:
 {% if latency_analysis.with_skill %}
 | Metric | With Skill | Without Skill | Overhead |
 |--------|-----------|---------------|----------|
-| P50 | {{ "%.2f"|format(latency_analysis.with_skill.p50) }}s | {{ "%.2f"|format(latency_analysis.without_skill.p50) }}s | {% if latency_analysis.with_skill.p50 > latency_analysis.without_skill.p50 %}+{{ "%.1f"|format(((latency_analysis.with_skill.p50 - latency_analysis.without_skill.p50) / latency_analysis.without_skill.p50 * 100) if latency_analysis.without_skill.p50 > 0 else 0) }}%{% else %}—{% endif %} |
-| P95 | {{ "%.2f"|format(latency_analysis.with_skill.p95) }}s | {{ "%.2f"|format(latency_analysis.without_skill.p95) }}s | {% if latency_analysis.with_skill.p95 > latency_analysis.without_skill.p95 %}+{{ "%.1f"|format(((latency_analysis.with_skill.p95 - latency_analysis.without_skill.p95) / latency_analysis.without_skill.p95 * 100) if latency_analysis.without_skill.p95 > 0 else 0) }}%{% else %}—{% endif %} |
-| Mean | {{ "%.2f"|format(latency_analysis.with_skill.mean) }}s | {{ "%.2f"|format(latency_analysis.without_skill.mean) }}s | — |
-| Slow (>30s) | {{ latency_analysis.slow_with_skill }} | {{ latency_analysis.slow_without_skill }} | +{{ latency_analysis.slow_with_skill - latency_analysis.slow_without_skill }} |
+| P50 |
+  {{ "%.2f"|format(latency_analysis.with_skill.p50) }}s |
+  {{ "%.2f"|format(latency_analysis.without_skill.p50) }}s |
+  {% if latency_analysis.with_skill.p50 > latency_analysis.without_skill.p50 %}
+    +{{ "%.1f"|format(
+        ((latency_analysis.with_skill.p50 - latency_analysis.without_skill.p50)
+         / latency_analysis.without_skill.p50 * 100)
+        if latency_analysis.without_skill.p50 > 0 else 0
+    ) }}%
+  {% else %}—{% endif %} |
+| P95 |
+  {{ "%.2f"|format(latency_analysis.with_skill.p95) }}s |
+  {{ "%.2f"|format(latency_analysis.without_skill.p95) }}s |
+  {% if latency_analysis.with_skill.p95 > latency_analysis.without_skill.p95 %}
+    +{{ "%.1f"|format(
+        ((latency_analysis.with_skill.p95 - latency_analysis.without_skill.p95)
+         / latency_analysis.without_skill.p95 * 100)
+        if latency_analysis.without_skill.p95 > 0 else 0
+    ) }}%
+  {% else %}—{% endif %} |
+| Mean |
+  {{ "%.2f"|format(latency_analysis.with_skill.mean) }}s |
+  {{ "%.2f"|format(latency_analysis.without_skill.mean) }}s |
+  — |
+| Slow (>30s) |
+  {{ latency_analysis.slow_with_skill }} |
+  {{ latency_analysis.slow_without_skill }} |
+  +{{ latency_analysis.slow_with_skill - latency_analysis.slow_without_skill }} |
 {% endif %}
 {% if latency_analysis.overhead_pct and latency_analysis.overhead_pct > 20 %}
 ⚠️ Skill adds {{ latency_analysis.overhead_pct }}% latency overhead.
@@ -144,7 +173,8 @@ class Reporter:
 - **Rate Limit**: {{ config_info.rate_limit_rpm }} RPM
 - **Request Timeout**: {{ config_info.request_timeout }}s
 - **Judge Temperature**: {{ config_info.judge_temperature }}
-- **Max Testgen Rounds**: {{ config_info.max_testgen_rounds }}
+- **Max Testgen Rounds**:
+  {{ config_info.max_testgen_rounds }}
 {% else %}
 - Configuration details not available
 {% endif %}
@@ -161,7 +191,8 @@ class Reporter:
 | Freshness | {{ maintainability.freshness_score }} |
 
 {% if maintainability.readability_details.avg_line_length > 100 %}
-⚠️ Average line length exceeds 100 characters: {{ maintainability.readability_details.avg_line_length }}
+  ⚠️ Average line length exceeds 100 characters:
+    {{ maintainability.readability_details.avg_line_length }}
 {% endif %}
 {% if maintainability.readability_details.max_depth > 3 %}
 ⚠️ Section nesting exceeds 3 levels: depth {{ maintainability.readability_details.max_depth }}
@@ -220,24 +251,24 @@ For detailed results, see the JSON output.
             Tuple of (markdown_report, json_report)
         """
         # Prepare data for the template
-        overall_score = metrics.get('overall_score', 0.0)
-        l1_score = metrics.get('l1_trigger_accuracy', 0.0)
-        l2_score = metrics.get('l2_with_without_skill_delta', 0.0)
-        l3_score = metrics.get('l3_step_adherence', 0.0)
-        l4_score = metrics.get('l4_execution_stability', 0.0)
+        overall_score = metrics.get("overall_score", 0.0)
+        l1_score = metrics.get("l1_trigger_accuracy", 0.0)
+        l2_score = metrics.get("l2_with_without_skill_delta", 0.0)
+        l3_score = metrics.get("l3_step_adherence", 0.0)
+        l4_score = metrics.get("l4_execution_stability", 0.0)
 
-        l1_details = metrics.get('metrics_breakdown', {}).get('l1_details', {})
-        l2_details = metrics.get('metrics_breakdown', {}).get('l2_details', {})
-        l3_details = metrics.get('metrics_breakdown', {}).get('l3_details', {})
-        l4_details = metrics.get('metrics_breakdown', {}).get('l4_details', {})
+        l1_details = metrics.get("metrics_breakdown", {}).get("l1_details", {})
+        l2_details = metrics.get("metrics_breakdown", {}).get("l2_details", {})
+        l3_details = metrics.get("metrics_breakdown", {}).get("l3_details", {})
+        l4_details = metrics.get("metrics_breakdown", {}).get("l4_details", {})
 
         # Determine verdict based on overall score and drift analysis
         # If drift analysis indicates failure, use that verdict regardless of score
-        drift_verdict = drift.get('overall_verdict', 'PASS')
-        if drift_verdict == 'FAIL':
-            verdict = 'FAIL'
-        elif drift_verdict == 'PASS_WITH_CAVEATS' and overall_score < 0.8:
-            verdict = 'PASS_WITH_CAVEATS'
+        drift_verdict = drift.get("overall_verdict", "PASS")
+        if drift_verdict == "FAIL":
+            verdict = "FAIL"
+        elif drift_verdict == "PASS_WITH_CAVEATS" and overall_score < 0.8:
+            verdict = "PASS_WITH_CAVEATS"
         elif overall_score >= 0.8:
             verdict = "PASS"
         elif overall_score >= 0.6:
@@ -246,30 +277,30 @@ For detailed results, see the JSON output.
             verdict = "FAIL"
 
         # Prepare drift data
-        drift_detected = drift.get('drift_detected', False)
-        highest_severity = drift.get('highest_severity', 'none')
-        average_variance = drift.get('average_variance', 0.0)
-        max_variance = drift.get('max_variance', 0.0)
-        drift_results = drift.get('drift_results', [])  # This would come from drift analysis
+        drift_detected = drift.get("drift_detected", False)
+        highest_severity = drift.get("highest_severity", "none")
+        average_variance = drift.get("average_variance", 0.0)
+        max_variance = drift.get("max_variance", 0.0)
+        drift_results = drift.get("drift_results", [])  # This would come from drift analysis
 
         # Calculate evaluation coverage stats
-        total_evaluations = config.get('total_evaluations', 0)
-        avg_pass_rate = config.get('avg_pass_rate', 0.0)
-        critical_passed = config.get('critical_passed', 0)
-        critical_total = config.get('critical_total', 0)
-        important_passed = config.get('important_passed', 0)
-        important_total = config.get('important_total', 0)
-        normal_passed = config.get('normal_passed', 0)
-        normal_total = config.get('normal_total', 0)
+        total_evaluations = config.get("total_evaluations", 0)
+        avg_pass_rate = config.get("avg_pass_rate", 0.0)
+        critical_passed = config.get("critical_passed", 0)
+        critical_total = config.get("critical_total", 0)
+        important_passed = config.get("important_passed", 0)
+        important_total = config.get("important_total", 0)
+        normal_passed = config.get("normal_passed", 0)
+        normal_total = config.get("normal_total", 0)
 
         # Cost analysis
-        cost_analysis = metrics.get('l7_cost_efficiency')
+        cost_analysis = metrics.get("l7_cost_efficiency")
 
         # Latency analysis
-        latency_analysis = metrics.get('l8_latency', {})
+        latency_analysis = metrics.get("l8_latency", {})
 
         # Reliability analysis
-        reliability = metrics.get('reliability', {})
+        reliability = metrics.get("reliability", {})
 
         # Generate improvement suggestions
         suggestions = self._generate_suggestions(
@@ -277,9 +308,13 @@ For detailed results, see the JSON output.
         )
 
         # Evaluation coverage
-        _results = metrics.get('_results', [])
-        total_evaluations = len(_results) or config.get('total_evaluations', 0)
-        avg_pass_rate = sum(r.get('pass_rate', 0) for r in _results) / len(_results) if _results else config.get('avg_pass_rate', 0.0)
+        _results = metrics.get("_results", [])
+        total_evaluations = len(_results) or config.get("total_evaluations", 0)
+        avg_pass_rate = (
+            sum(r.get("pass_rate", 0) for r in _results) / len(_results)
+            if _results
+            else config.get("avg_pass_rate", 0.0)
+        )
 
         # Assertion breakdown from results or config fallback
         critical_passed = 0
@@ -291,58 +326,64 @@ For detailed results, see the JSON output.
 
         if _results:
             for r in _results:
-                for a in r.get('grade', {}).get('assertion_results', []):
-                    weight = a.get('assertion', {}).get('weight', 1)
+                for a in r.get("grade", {}).get("assertion_results", []):
+                    weight = a.get("assertion", {}).get("weight", 1)
                     if weight >= 3:
                         critical_total += 1
-                        if a.get('passed'):
+                        if a.get("passed"):
                             critical_passed += 1
                     elif weight == 2:
                         important_total += 1
-                        if a.get('passed'):
+                        if a.get("passed"):
                             important_passed += 1
                     else:
                         normal_total += 1
-                        if a.get('passed'):
+                        if a.get("passed"):
                             normal_passed += 1
         else:
-            critical_passed = config.get('critical_passed', 0)
-            critical_total = config.get('critical_total', 0)
-            important_passed = config.get('important_passed', 0)
-            important_total = config.get('important_total', 0)
-            normal_passed = config.get('normal_passed', 0)
-            normal_total = config.get('normal_total', 0)
+            critical_passed = config.get("critical_passed", 0)
+            critical_total = config.get("critical_total", 0)
+            important_passed = config.get("important_passed", 0)
+            important_total = config.get("important_total", 0)
+            normal_passed = config.get("normal_passed", 0)
+            normal_total = config.get("normal_total", 0)
 
         # Create summary
-        summary = self._create_summary(verdict, overall_score, l1_score, l2_score, l3_score, l4_score)
+        summary = self._create_summary(
+            verdict, overall_score, l1_score, l2_score, l3_score, l4_score
+        )
 
         # Prepare config info for report
         config_info = None
         if config:
-            models = config.get('models', [])
-            model_names = ', '.join(m.get('model_name', m.get('name', 'unknown')) for m in models) if isinstance(models, list) else str(models)
+            models = config.get("models", [])
+            model_names = (
+                ", ".join(m.get("model_name", m.get("name", "unknown")) for m in models)
+                if isinstance(models, list)
+                else str(models)
+            )
             config_info = {
-                'models': model_names or 'Not specified',
-                'max_concurrency': config.get('max_concurrency', 5),
-                'rate_limit_rpm': config.get('rate_limit_rpm', 60),
-                'request_timeout': config.get('request_timeout', 120),
-                'judge_temperature': config.get('judge_temperature', 0.0),
-                'max_testgen_rounds': config.get('max_testgen_rounds', 3),
+                "models": model_names or "Not specified",
+                "max_concurrency": config.get("max_concurrency", 5),
+                "rate_limit_rpm": config.get("rate_limit_rpm", 60),
+                "request_timeout": config.get("request_timeout", 120),
+                "judge_temperature": config.get("judge_temperature", 0.0),
+                "max_testgen_rounds": config.get("max_testgen_rounds", 3),
             }
 
         # Prepare benchmark info
-        total_tokens = config.get('total_tokens', 0)
+        total_tokens = config.get("total_tokens", 0)
         if not total_tokens:
-            total_tokens = config.get('total_evaluator_tokens', 0)
-        _results = metrics.get('_results', [])
-        total_eval_tokens = sum(r.get('tokens_used', 0) for r in _results) if _results else 0
+            total_tokens = config.get("total_evaluator_tokens", 0)
+        _results = metrics.get("_results", [])
+        total_eval_tokens = sum(r.get("tokens_used", 0) for r in _results) if _results else 0
         benchmark_info = {
-            'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
-            'spec_version': 'v2.0',
-            'total_requirements': 11,
-            'total_acceptance_criteria': 74,
-            'test_coverage': f'{len(_results)} evals, L1-L7 metrics computed',
-            'total_tokens': f'{total_eval_tokens:,}' if total_eval_tokens else 'N/A (local models)',
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "spec_version": "v2.0",
+            "total_requirements": 11,
+            "total_acceptance_criteria": 74,
+            "test_coverage": f"{len(_results)} evals, L1-L7 metrics computed",
+            "total_tokens": f"{total_eval_tokens:,}" if total_eval_tokens else "N/A (local models)",
         }
 
         # Render markdown
@@ -397,8 +438,8 @@ For detailed results, see the JSON output.
                 "assertion_breakdown": {
                     "critical": {"passed": critical_passed, "total": critical_total},
                     "important": {"passed": important_passed, "total": important_total},
-                    "normal": {"passed": normal_passed, "total": normal_total}
-                }
+                    "normal": {"passed": normal_passed, "total": normal_total},
+                },
             },
             "improvement_suggestions": suggestions,
             "timestamp": config.get("timestamp", ""),
@@ -432,28 +473,38 @@ For detailed results, see the JSON output.
         suggestions = []
 
         # L1 suggestions
-        l1_score = metrics.get('l1_trigger_accuracy', 0.0)
+        l1_score = metrics.get("l1_trigger_accuracy", 0.0)
         if l1_score < 0.7:
-            suggestions.append("Improve trigger accuracy - skill may not be properly detecting trigger conditions")
+            suggestions.append(
+                "Improve trigger accuracy - skill may not be properly detecting trigger conditions"
+            )
 
         # L2 suggestions
-        l2_score = metrics.get('l2_with_without_skill_delta', 0.0)
+        l2_score = metrics.get("l2_with_without_skill_delta", 0.0)
         if l2_score < 0.5:
-            suggestions.append("Skill may not be providing sufficient value - consider enhancing core functionality")
+            suggestions.append(
+                "Skill may not be providing sufficient value - "
+                "consider enhancing core functionality"
+            )
 
         # L3 suggestions
-        l3_score = metrics.get('l3_step_adherence', 0.0)
+        l3_score = metrics.get("l3_step_adherence", 0.0)
         if l3_score < 0.7:
             suggestions.append("Improve adherence to expected workflow steps")
 
         # L4 suggestions
-        l4_score = metrics.get('l4_execution_stability', 0.0)
+        l4_score = metrics.get("l4_execution_stability", 0.0)
         if l4_score < 0.8:
-            suggestions.append("Address execution instability - results vary significantly across runs")
+            suggestions.append(
+                "Address execution instability - results vary significantly across runs"
+            )
 
         # Drift suggestions
-        if drift.get('drift_detected', False):
-            suggestions.append(f"Address cross-model drift (highest severity: {drift.get('highest_severity', 'none')})")
+        if drift.get("drift_detected", False):
+            suggestions.append(
+                f"Address cross-model drift "
+                f"(highest severity: {drift.get('highest_severity', 'none')})"
+            )
 
         # Overall suggestions
         if overall_score < 0.6:
@@ -463,35 +514,60 @@ For detailed results, see the JSON output.
 
         # Cost suggestions
         if cost_analysis and cost_analysis.get("cost_delta_pct", 0) > 0.5:
-            suggestions.append(f"Skill increases costs by {cost_analysis['cost_delta_pct']:.0%} — consider optimizing prompt or reducing verbosity")
-        if cost_analysis and cost_analysis.get("cost_efficiency", 0) < 0.1 and cost_analysis.get("cost_delta_pct", 0) > 0:
+            suggestions.append(
+                f"Skill increases costs by "
+                f"{cost_analysis['cost_delta_pct']:.0%} — "
+                "consider optimizing prompt or reducing verbosity"
+            )
+        if (
+            cost_analysis
+            and cost_analysis.get("cost_efficiency", 0) < 0.1
+            and cost_analysis.get("cost_delta_pct", 0) > 0
+        ):
             suggestions.append("Low cost efficiency — quality gains don't justify cost increase")
 
         # Latency suggestions
         if latency_analysis and latency_analysis.get("overhead_pct", 0) > 50:
-            suggestions.append(f"Skill adds {latency_analysis['overhead_pct']}% latency overhead — optimize prompt or reduce steps")
+            suggestions.append(
+                f"Skill adds {latency_analysis['overhead_pct']}% "
+                "latency overhead — "
+                "optimize prompt or reduce steps"
+            )
         slow_count = latency_analysis.get("slow_with_skill", 0) if latency_analysis else 0
         if slow_count > 0:
-            suggestions.append(f"{slow_count} requests exceeded 30s threshold — consider async processing or timeouts")
+            suggestions.append(
+                f"{slow_count} requests exceeded 30s threshold — "
+                "consider async processing or timeouts"
+            )
 
         # Reliability suggestions
         if reliability and reliability.get("error_rate", 0) > 0.2:
-            suggestions.append(f"Error rate is {reliability['error_rate']:.0%} — implement retry logic or fallback models")
+            suggestions.append(
+                f"Error rate is {reliability['error_rate']:.0%} — "
+                "implement retry logic or fallback models"
+            )
         if reliability and reliability.get("retry_stats", {}).get("max_retries", 0) > 2:
-            suggestions.append(f"Max retries of {reliability['retry_stats']['max_retries']} detected — consider backoff or circuit breaker")
+            suggestions.append(
+                f"Max retries of {reliability['retry_stats']['max_retries']} detected — "
+                "consider backoff or circuit breaker"
+            )
         if reliability and reliability.get("errors_by_category"):
-            cats = list(reliability['errors_by_category'].keys())
+            cats = list(reliability["errors_by_category"].keys())
             if "timeout" in cats:
                 suggestions.append("Timeout errors detected — increase timeout or optimize prompts")
             if "rate_limit" in cats:
-                suggestions.append("Rate limit errors detected — reduce concurrency or request rate")
+                suggestions.append(
+                    "Rate limit errors detected — reduce concurrency or request rate"
+                )
 
         if not suggestions:
             suggestions.append("Performance is strong across all metrics")
 
         return suggestions
 
-    def _create_summary(self, verdict: str, overall_score: float, l1: float, l2: float, l3: float, l4: float) -> str:
+    def _create_summary(
+        self, verdict: str, overall_score: float, l1: float, l2: float, l3: float, l4: float
+    ) -> str:
         """Create executive summary based on results."""
         summary_parts = [f"This skill certification resulted in a {verdict} verdict."]
 
@@ -500,11 +576,11 @@ For detailed results, see the JSON output.
         elif overall_score >= 0.6:
             summary_parts.append("The skill shows promise but needs improvements in certain areas.")
         else:
-            summary_parts.append("The skill requires significant improvements before certification.")
+            summary_parts.append(
+                "The skill requires significant improvements before certification."
+            )
 
-        summary_parts.append(
-            f"L1:{l1:.0%}, L2:{l2:.0%}, L3:{l3:.0%}, L4:{l4:.0%}"
-        )
+        summary_parts.append(f"L1:{l1:.0%}, L2:{l2:.0%}, L3:{l3:.0%}, L4:{l4:.0%}")
 
         return " ".join(summary_parts)
 
@@ -521,12 +597,26 @@ For detailed results, see the JSON output.
             "l2_with_without_skill_delta": metrics.get("l2_with_without_skill_delta", 0.0),
             "l3_step_adherence": metrics.get("l3_step_adherence", 0.0),
             "l4_execution_stability": metrics.get("l4_execution_stability", 0.0),
-            "metrics_breakdown": metrics.get("metrics_breakdown", {
-                "l1_details": {"total_trigger_evals": 0, "passed_trigger_evals": 0, "trigger_accuracy": 0.0},
-                "l2_details": {"with_skill_avg_pass_rate": 0.0, "without_skill_avg_pass_rate": 0.0, "improvement_percentage": 0.0},
-                "l3_details": {"step_coverage_ratio": 0.0},
-                "l4_details": {"execution_stability": 0.0, "stdev_deterministic_pass_rate": 0.0},
-            }),
+            "metrics_breakdown": metrics.get(
+                "metrics_breakdown",
+                {
+                    "l1_details": {
+                        "total_trigger_evals": 0,
+                        "passed_trigger_evals": 0,
+                        "trigger_accuracy": 0.0,
+                    },
+                    "l2_details": {
+                        "with_skill_avg_pass_rate": 0.0,
+                        "without_skill_avg_pass_rate": 0.0,
+                        "improvement_percentage": 0.0,
+                    },
+                    "l3_details": {"step_coverage_ratio": 0.0},
+                    "l4_details": {
+                        "execution_stability": 0.0,
+                        "stdev_deterministic_pass_rate": 0.0,
+                    },
+                },
+            ),
         }
         md_report, json_report = self.generate_report(safe_metrics, drift, config)
 
@@ -537,9 +627,14 @@ For detailed results, see the JSON output.
             "skill_count": multi_skill_report.get("skill_count", 0),
             "overall_risk": multi_skill_report.get("overall_risk", "none"),
             "summary": multi_skill_report.get("summary", ""),
-            "conflicts": [c.to_dict() if hasattr(c, "to_dict") else c for c in multi_skill_report.get("conflicts", [])],
+            "conflicts": [
+                c.to_dict() if hasattr(c, "to_dict") else c
+                for c in multi_skill_report.get("conflicts", [])
+            ],
             "trigger_conflicts": multi_skill_report.get("trigger_conflicts", 0),
-            "prompt_contamination_conflicts": multi_skill_report.get("prompt_contamination_conflicts", 0),
+            "prompt_contamination_conflicts": multi_skill_report.get(
+                "prompt_contamination_conflicts", 0
+            ),
             "token_overflow_conflicts": multi_skill_report.get("token_overflow_conflicts", 0),
         }
 
@@ -637,12 +732,22 @@ For detailed results, see the JSON output.
             l2_output_delta=metrics.get("l2_with_without_skill_delta", 0.0),
             l3_step_adherence=metrics.get("l3_step_adherence", 0.0) * 100,
             l4_stability_std=l4_details.get("stdev_deterministic_pass_rate", 0.0),
-            l5_step_efficiency=metrics.get("l5_step_efficiency", 0.0) * 100 if "l5_step_efficiency" in metrics else 0.0,
-            l6_trajectory_quality=metrics.get("l6_trajectory_quality", 0.0) * 100 if "l6_trajectory_quality" in metrics else 0.0,
+            l5_step_efficiency=metrics.get("l5_step_efficiency", 0.0) * 100
+            if "l5_step_efficiency" in metrics
+            else 0.0,
+            l6_trajectory_quality=metrics.get("l6_trajectory_quality", 0.0) * 100
+            if "l6_trajectory_quality" in metrics
+            else 0.0,
             l7_cost_efficiency=cost_analysis.get("cost_efficiency", 0.0) if cost_analysis else 0.0,
-            l8_latency_p50=latency_analysis.get("with_skill", {}).get("p50", 0.0) * 1000 if latency_analysis and latency_analysis.get("with_skill") else 0.0,
-            l8_latency_p95=latency_analysis.get("with_skill", {}).get("p95", 0.0) * 1000 if latency_analysis and latency_analysis.get("with_skill") else 0.0,
-            l8_latency_p99=latency_analysis.get("with_skill", {}).get("p99", 0.0) * 1000 if latency_analysis and latency_analysis.get("with_skill") else 0.0,
+            l8_latency_p50=latency_analysis.get("with_skill", {}).get("p50", 0.0) * 1000
+            if latency_analysis and latency_analysis.get("with_skill")
+            else 0.0,
+            l8_latency_p95=latency_analysis.get("with_skill", {}).get("p95", 0.0) * 1000
+            if latency_analysis and latency_analysis.get("with_skill")
+            else 0.0,
+            l8_latency_p99=latency_analysis.get("with_skill", {}).get("p99", 0.0) * 1000
+            if latency_analysis and latency_analysis.get("with_skill")
+            else 0.0,
         )
 
         # Build token analysis
@@ -652,12 +757,10 @@ For detailed results, see the JSON output.
                 total_tokens=token_analysis.get("total_tokens", 0),
                 total_cost=token_analysis.get("total_cost", 0.0),
                 by_phase={
-                    k: TokenBreakdown(**v)
-                    for k, v in token_analysis.get("by_phase", {}).items()
+                    k: TokenBreakdown(**v) for k, v in token_analysis.get("by_phase", {}).items()
                 },
                 by_model={
-                    k: TokenBreakdown(**v)
-                    for k, v in token_analysis.get("by_model", {}).items()
+                    k: TokenBreakdown(**v) for k, v in token_analysis.get("by_model", {}).items()
                 },
                 by_eval=token_analysis.get("by_eval", []),
             )
@@ -675,19 +778,23 @@ For detailed results, see the JSON output.
             )
 
         # Build improvements
-        suggestions = self._generate_suggestions(metrics, drift, verdict, overall_score, cost_analysis, latency_analysis)
+        suggestions = self._generate_suggestions(
+            metrics, drift, verdict, overall_score, cost_analysis, latency_analysis
+        )
         improvements = []
         for s in suggestions:
             if isinstance(s, ImprovementSuggestion):
                 improvements.append(s)
             else:
                 # Convert string suggestions to ImprovementSuggestion
-                improvements.append(ImprovementSuggestion(
-                    category="general",
-                    priority="medium",
-                    title=s[:50] if len(s) > 50 else s,
-                    description=s,
-                ))
+                improvements.append(
+                    ImprovementSuggestion(
+                        category="general",
+                        priority="medium",
+                        title=s[:50] if len(s) > 50 else s,
+                        description=s,
+                    )
+                )
 
         return StructuredReport(
             metadata=metadata,
@@ -718,7 +825,9 @@ For detailed results, see the JSON output.
         """Build blocking issues from drift analysis."""
         issues = []
         if drift.get("highest_severity") == "high":
-            issues.append(f"High severity drift detected (variance: {drift.get('max_variance', 0):.3f})")
+            issues.append(
+                f"High severity drift detected (variance: {drift.get('max_variance', 0):.3f})"
+            )
         return issues
 
     def _build_caveats(self, metrics: dict[str, Any], drift: dict[str, Any]) -> list[str]:

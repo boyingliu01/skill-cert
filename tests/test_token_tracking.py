@@ -87,23 +87,17 @@ def test_anthropic_adapter_extracts_usage():
     from adapters.anthropic_compat import AnthropicCompatAdapter
 
     adapter = AnthropicCompatAdapter(
-        base_url="https://api.anthropic.com",
-        api_key="test-key",
-        model="claude-3-sonnet"
+        base_url="https://api.anthropic.com", api_key="test-key", model="claude-3-sonnet"
     )
 
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "content": [{"type": "text", "text": "Test response"}],
-        "usage": {
-            "input_tokens": 100,
-            "output_tokens": 50,
-            "cache_read_input_tokens": 25
-        }
+        "usage": {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 25},
     }
 
-    with patch.object(adapter.session, 'post', return_value=mock_response):
+    with patch.object(adapter.session, "post", return_value=mock_response):
         content, usage = adapter.chat_with_usage([{"role": "user", "content": "Hello"}])
 
         assert content == "Test response"
@@ -117,23 +111,17 @@ def test_anthropic_adapter_usage_fields():
     from adapters.anthropic_compat import AnthropicCompatAdapter
 
     adapter = AnthropicCompatAdapter(
-        base_url="https://api.anthropic.com",
-        api_key="test-key",
-        model="claude-3-sonnet"
+        base_url="https://api.anthropic.com", api_key="test-key", model="claude-3-sonnet"
     )
 
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "content": [{"type": "text", "text": "Response"}],
-        "usage": {
-            "input_tokens": 500,
-            "output_tokens": 250,
-            "cache_read_input_tokens": 100
-        }
+        "usage": {"input_tokens": 500, "output_tokens": 250, "cache_read_input_tokens": 100},
     }
 
-    with patch.object(adapter.session, 'post', return_value=mock_response):
+    with patch.object(adapter.session, "post", return_value=mock_response):
         content, usage = adapter.chat_with_usage([{"role": "user", "content": "Test"}])
 
         # Verify mapping is correct
@@ -148,23 +136,17 @@ def test_openai_adapter_extracts_usage():
     from adapters.openai_compat import OpenAICompatAdapter
 
     adapter = OpenAICompatAdapter(
-        base_url="https://api.openai.com",
-        api_key="test-key",
-        model="gpt-4"
+        base_url="https://api.openai.com", api_key="test-key", model="gpt-4"
     )
 
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "choices": [{"message": {"content": "Test response"}}],
-        "usage": {
-            "prompt_tokens": 100,
-            "completion_tokens": 50,
-            "total_tokens": 150
-        }
+        "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
     }
 
-    with patch.object(adapter.client, 'post', return_value=mock_response):
+    with patch.object(adapter.client, "post", return_value=mock_response):
         content, usage = adapter.chat_with_usage([{"role": "user", "content": "Hello"}])
 
         assert content == "Test response"
@@ -178,23 +160,17 @@ def test_openai_adapter_usage_fields():
     from adapters.openai_compat import OpenAICompatAdapter
 
     adapter = OpenAICompatAdapter(
-        base_url="https://api.openai.com",
-        api_key="test-key",
-        model="gpt-4"
+        base_url="https://api.openai.com", api_key="test-key", model="gpt-4"
     )
 
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "choices": [{"message": {"content": "Response"}}],
-        "usage": {
-            "prompt_tokens": 1000,
-            "completion_tokens": 500,
-            "total_tokens": 1500
-        }
+        "usage": {"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500},
     }
 
-    with patch.object(adapter.client, 'post', return_value=mock_response):
+    with patch.object(adapter.client, "post", return_value=mock_response):
         content, usage = adapter.chat_with_usage([{"role": "user", "content": "Test"}])
 
         # Verify mapping is correct
@@ -206,6 +182,7 @@ def test_openai_adapter_usage_fields():
 # Test 5: Runner using real token counts
 class MockAdapterWithUsage:
     """Mock adapter that returns real token usage."""
+
     def __init__(self):
         self.model_name = "test-model"
         self.call_count = 0
@@ -232,7 +209,7 @@ def test_runner_uses_real_token_counts():
             "name": "test-eval",
             "category": "normal",
             "input": "test input",
-            "assertions": []
+            "assertions": [],
         }
     ]
 
@@ -268,6 +245,7 @@ def test_runner_total_tokens_accumulates():
 # Test 6: Token budget enforcement with real tokens
 class MockTraceWithTokens:
     """Mock trace with real token data."""
+
     def __init__(self, tokens=0):
         self.tokens = tokens
         self.steps = 5
@@ -313,6 +291,7 @@ def test_token_budget_enforcement_at_boundary():
 # Test 7: Backward compatibility - adapter without usage
 class MockAdapterWithoutUsage:
     """Mock adapter without chat_with_usage method."""
+
     def __init__(self):
         self.model_name = "test-model"
 
@@ -333,12 +312,12 @@ def test_runner_fallback_for_old_adapters():
             "name": "test-eval",
             "category": "normal",
             "input": "test input",
-            "assertions": []
+            "assertions": [],
         }
     ]
 
     # Need to patch to avoid actual API calls
-    with patch.object(adapter, 'chat', return_value="Response without usage"):
+    with patch.object(adapter, "chat", return_value="Response without usage"):
         results = runner.run_with_skill(evals, "/path/to/skill.md", adapter)
 
     assert len(results) == 1

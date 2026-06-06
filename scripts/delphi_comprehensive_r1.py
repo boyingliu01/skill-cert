@@ -13,9 +13,16 @@ from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────
 PROXY_URL = "https://lab.iwhalecloud.com/gpt-proxy"
-API_KEY = "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
 
-DESIGN_DOC = Path(__file__).parent.parent / "docs" / "plans" / "2026-06-04-comprehensive-redesign.md"
+
+API_KEY = (
+    "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/"
+    "qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+)
+
+DESIGN_DOC = (
+    Path(__file__).parent.parent / "docs" / "plans" / "2026-06-04-comprehensive-redesign.md"
+)
 OUTPUT_DIR = Path(__file__).parent.parent / ".sprint-state" / "phase-outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -195,9 +202,9 @@ def main():
                 depth = 0
                 end_idx = 0
                 for i, c in enumerate(json_str):
-                    if c == '{':
+                    if c == "{":
                         depth += 1
-                    elif c == '}':
+                    elif c == "}":
                         depth -= 1
                         if depth == 0:
                             end_idx = i + 1

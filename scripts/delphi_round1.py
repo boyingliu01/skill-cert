@@ -1,10 +1,14 @@
 """Round 1 Delphi Review — anonymous independent expert reviews."""
+
 import json
 from pathlib import Path
 
 import httpx
 
-API_KEY = "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+API_KEY = (
+    "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/"
+    "qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+)
 BASE_URL = "https://lab.iwhalecloud.com/gpt-proxy"
 
 DESIGN_DOC = Path("docs/plans/2026-06-04-structured-report-output.md").read_text(encoding="utf-8")
@@ -36,7 +40,8 @@ EXPERT_A_SYSTEM = """你是一位资深软件架构师（Expert A），专注于
 ### 关键理由
 1. ..."""
 
-EXPERT_B_SYSTEM = """你是一位资深实现工程师（Expert B），专注于 Python 工程实践、测试策略和 CLI 工具开发。
+EXPERT_B_SYSTEM = """你是一位资深实现工程师（Expert B），
+专注于 Python 工程实践、测试策略和 CLI 工具开发。
 你正在对一个评测引擎的报告结构化输出方案进行独立评审。
 你不知道其他专家的意见。请独立评审。
 
@@ -107,9 +112,9 @@ def call_model(model: str, system: str, user: str) -> str:
 def main():
     results = {}
     for expert_id, model, system in EXPERTS:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  Calling Expert {expert_id} ({model})...")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         try:
             review = call_model(model, system, USER_PROMPT)
             results[expert_id] = {"model": model, "review": review}

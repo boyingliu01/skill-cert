@@ -78,8 +78,10 @@ class TestWeaknessModel:
         valid = ["low", "medium", "high"]
         for sev in valid:
             w = Weakness(
-                category="ambiguous_trigger", description="test",
-                severity=sev, location="x",
+                category="ambiguous_trigger",
+                description="test",
+                severity=sev,
+                location="x",
             )
             assert w.severity == sev
 
@@ -228,20 +230,28 @@ class TestAdversarialGenerator:
         generator = AdversarialGenerator()
         weaknesses = [
             Weakness(
-                category="ambiguous_trigger", description="no triggers",
-                severity="high", location="triggers",
+                category="ambiguous_trigger",
+                description="no triggers",
+                severity="high",
+                location="triggers",
             ),
             Weakness(
-                category="unclear_workflow", description="no steps",
-                severity="high", location="workflow_steps",
+                category="unclear_workflow",
+                description="no steps",
+                severity="high",
+                location="workflow_steps",
             ),
             Weakness(
-                category="missing_edge_case", description="no anti-patterns",
-                severity="medium", location="anti_patterns",
+                category="missing_edge_case",
+                description="no anti-patterns",
+                severity="medium",
+                location="anti_patterns",
             ),
             Weakness(
-                category="vague_output", description="no output format",
-                severity="medium", location="output_format",
+                category="vague_output",
+                description="no output format",
+                severity="medium",
+                location="output_format",
             ),
         ]
         cases, metrics = generator.generate(weaknesses)
@@ -255,20 +265,28 @@ class TestAdversarialGenerator:
         generator = AdversarialGenerator()
         weaknesses = [
             Weakness(
-                category="ambiguous_trigger", description="test",
-                severity="high", location="triggers",
+                category="ambiguous_trigger",
+                description="test",
+                severity="high",
+                location="triggers",
             ),
             Weakness(
-                category="unclear_workflow", description="test",
-                severity="high", location="steps",
+                category="unclear_workflow",
+                description="test",
+                severity="high",
+                location="steps",
             ),
             Weakness(
-                category="missing_edge_case", description="test",
-                severity="medium", location="anti_patterns",
+                category="missing_edge_case",
+                description="test",
+                severity="medium",
+                location="anti_patterns",
             ),
             Weakness(
-                category="vague_output", description="test",
-                severity="medium", location="output_format",
+                category="vague_output",
+                description="test",
+                severity="medium",
+                location="output_format",
             ),
         ]
         cases, _ = generator.generate(weaknesses)
@@ -279,8 +297,10 @@ class TestAdversarialGenerator:
         generator = AdversarialGenerator()
         weaknesses = [
             Weakness(
-                category="ambiguous_trigger", description="test",
-                severity="high", location="triggers",
+                category="ambiguous_trigger",
+                description="test",
+                severity="high",
+                location="triggers",
             ),
         ]
         _, metrics = generator.generate(weaknesses)
@@ -341,12 +361,16 @@ class TestEvaluatePoc:
         generator = AdversarialGenerator()
         weaknesses = [
             Weakness(
-                category="ambiguous_trigger", description="test",
-                severity="high", location="triggers",
+                category="ambiguous_trigger",
+                description="test",
+                severity="high",
+                location="triggers",
             ),
             Weakness(
-                category="unclear_workflow", description="test",
-                severity="high", location="steps",
+                category="unclear_workflow",
+                description="test",
+                severity="high",
+                location="steps",
             ),
         ]
         cases1, _ = generator.generate(weaknesses)

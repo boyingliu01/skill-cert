@@ -11,12 +11,36 @@ from engine.constants import StabilityThresholds
 # Lookup table for common confidence levels and degrees of freedom (1-30)
 # t-values for 95% CI two-tailed
 _T_TABLE_95 = {
-    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
-    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
-    11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
-    16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
-    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
-    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
+    1: 12.706,
+    2: 4.303,
+    3: 3.182,
+    4: 2.776,
+    5: 2.571,
+    6: 2.447,
+    7: 2.365,
+    8: 2.306,
+    9: 2.262,
+    10: 2.228,
+    11: 2.201,
+    12: 2.179,
+    13: 2.160,
+    14: 2.145,
+    15: 2.131,
+    16: 2.120,
+    17: 2.110,
+    18: 2.101,
+    19: 2.093,
+    20: 2.086,
+    21: 2.080,
+    22: 2.074,
+    23: 2.069,
+    24: 2.064,
+    25: 2.060,
+    26: 2.056,
+    27: 2.052,
+    28: 2.048,
+    29: 2.045,
+    30: 2.042,
 }
 
 
@@ -42,7 +66,7 @@ def _get_t_value(df: int, confidence: float = 0.95) -> float:
     if p > 0.5:
         t = 1 - p
     w = math.sqrt(-2 * math.log(t))
-    z = w - (c[0] + c[1]*w + c[2]*w*w) / (1 + d[0]*w + d[1]*w*w + d[2]*w*w*w)
+    z = w - (c[0] + c[1] * w + c[2] * w * w) / (1 + d[0] * w + d[1] * w * w + d[2] * w * w * w)
     if p < 0.5:
         z = -z
     return z
@@ -83,7 +107,13 @@ class StabilityRunner:
         self.max_concurrency = max_concurrency
         self.confidence = confidence
 
-    def run_stability(self, evals: list[dict[str, Any]], skill_path: str, model_adapter, with_skill: bool = True) -> dict[str, Any]:
+    def run_stability(
+        self,
+        evals: list[dict[str, Any]],
+        skill_path: str,
+        model_adapter,
+        with_skill: bool = True,
+    ) -> dict[str, Any]:
         """Run evals N times and return pass rates + stability stats per eval."""
         all_run_results = []
         for run_idx in range(self.num_runs):
@@ -178,7 +208,7 @@ def calculate_l4_stability(stability_data: dict[str, Any]) -> float:
     if overall_mean == 0:
         return 0.0
 
-    coefficient_of_variation = overall_std / overall_mean if overall_mean > 0 else float('inf')
+    coefficient_of_variation = overall_std / overall_mean if overall_mean > 0 else float("inf")
 
     if coefficient_of_variation <= 0.10:
         return 1.0

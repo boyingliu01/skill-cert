@@ -11,7 +11,8 @@ class UserSimulator:
         Initialize the UserSimulator.
 
         Args:
-            persona_profiles: Optional dictionary with different persona characteristics
+            persona_profiles: Optional dictionary with different persona
+                characteristics
         """
         self.persona_profiles = persona_profiles or {
             "professional": {
@@ -22,29 +23,27 @@ class UserSimulator:
                     "Could you explain that in more detail?",
                     "Can you clarify how this applies to X?",
                     "What are the potential risks of Y?",
-                    "How does this compare with previous approaches?"
+                    "How does this compare with previous approaches?",
                 ],
                 "clarifications": [
                     "I need to implement feature Z. Would this approach work?",
                     "Can this also handle edge case X?",
                     "I'd like to modify the original requirement Y.",
-                    "Would this also work for scenario A or B?"
-                ]
+                    "Would this also work for scenario A or B?",
+                ],
             }
         }
 
     async def generate_next_message(
-        self,
-        eval_case: dict,
-        context_history: list[dict],
-        skill_context: str = ""
+        self, eval_case: dict, context_history: list[dict], skill_context: str = ""
     ) -> dict:
         """
         Generate the next simulated user message based on the conversation history.
 
         Args:
             eval_case: The original evaluation case being simulated
-            context_history: List of conversation turns [{"role": "user"/"assistant", "content": "..."}]
+            context_history: List of conversation turns
+                [{"role": "user"/"assistant", "content": "..."}]
             skill_context: Additional context about the skill evaluation
 
         Returns:
@@ -58,9 +57,11 @@ class UserSimulator:
         if not context_history:
             return {
                 "role": "user",
-                "content": eval_case.get("input", eval_case.get("prompt", "Please help me with this task")),
+                "content": eval_case.get(
+                    "input", eval_case.get("prompt", "Please help me with this task")
+                ),
                 "timestamp": self._generate_timestamp(),
-                "simulated": True
+                "simulated": True,
             }
 
         # Get the last message from the assistant
@@ -75,7 +76,7 @@ class UserSimulator:
             content = self._generate_follow_up_message(
                 last_response=last_assistant_msg.get("content", ""),
                 user_prompt=eval_case.get("input", ""),
-                persona=persona
+                persona=persona,
             )
         else:
             content = random.choice(persona["questions"])
@@ -84,32 +85,35 @@ class UserSimulator:
             "role": "user",
             "content": content,
             "timestamp": self._generate_timestamp(),
-            "simulated": True
+            "simulated": True,
         }
 
     def _generate_follow_up_message(
-        self,
-        last_response: str,
-        user_prompt: str,
-        persona: dict
+        self, last_response: str, user_prompt: str, persona: dict
     ) -> str:
         """
         Generate a follow-up message based on the last assistant response.
         """
         # Check if response contains completion signals that indicate task completion
         completion_keywords = [
-            "completed", "finished", "done", "completed:", "finished:",
-            "done:", "here is the", "result:"
+            "completed",
+            "finished",
+            "done",
+            "completed:",
+            "finished:",
+            "done:",
+            "here is the",
+            "result:",
         ]
 
         last_response_lower = last_response.lower()
         if any(keyword in last_response_lower for keyword in completion_keywords):
-            # If the task seems complete, user might ask for verification or ask a follow-up question
+            # If task complete, user may ask for verification or a follow-up question
             follow_ups = [
                 "Thanks, that looks good!",
                 "Great, that completes what I asked for!",
                 "Perfect, thanks for completing that task!",
-                "Excellent - I think that addresses what I needed!"
+                "Excellent - I think that addresses what I needed!",
             ]
             return random.choice(follow_ups)
 
@@ -122,8 +126,7 @@ class UserSimulator:
             return random.choice(choices)
 
     def _generate_timestamp(self) -> float:
-        """
-        Generate a timestamp for simulation purposes.
-        """
+        """Generate a timestamp for simulation purposes."""
         import time
+
         return time.time()

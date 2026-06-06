@@ -48,7 +48,10 @@ def _setup_single_mode(args, config):
         "completeness_score": maintainability.completeness_score,
         "freshness_score": maintainability.freshness_score,
     }
-    print(f"  Maintainability Score: {maintainability.total_score:.1f}/100 (Grade: {maintainability.grade})")
+    print(
+        f"  Maintainability Score: {maintainability.total_score:.1f}/100 "
+        f"(Grade: {maintainability.grade})"
+    )
     print(f"  Readability: {maintainability.readability_score:.1f}")
     print(f"  Completeness: {maintainability.completeness_score:.1f}")
     print(f"  Freshness: {maintainability.freshness_score:.1f}")
@@ -56,7 +59,10 @@ def _setup_single_mode(args, config):
         print("  WARNING: Low maintainability score — SKILL.md needs improvement.")
 
     if not config.models:
-        print("\nERROR: No models configured. Use --models, SKILL_CERT_MODELS env, or ~/.skill-cert/models.yaml")
+        print(
+            "\nERROR: No models configured. "
+            "Use --models, SKILL_CERT_MODELS env, or ~/.skill-cert/models.yaml"
+        )
         return None, None, None, None, None, None
 
     adapters = {mc.model_name: _create_adapter(mc, config.rate_limit_rpm) for mc in config.models}
@@ -67,7 +73,10 @@ def _setup_single_mode(args, config):
     primary_adapter = list(adapters.values())[0]
     review_adapter = list(adapters.values())[1] if len(adapters) > 1 else primary_adapter
     evals = generator.generate_evals_with_convergence(spec, primary_adapter, review_adapter)
-    total_evals = sum(len(evals.get(k, [])) for k in ("eval_cases", "evals", "cases", "test_cases", "evaluations", "eval"))
+    total_evals = sum(
+        len(evals.get(k, []))
+        for k in ("eval_cases", "evals", "cases", "test_cases", "evaluations", "eval")
+    )
     print(f"  Generated: {total_evals} eval cases")
     if generator._calculate_coverage(evals, spec) < generator.coverage_threshold:
         print(f"  WARNING: Coverage below {generator.coverage_threshold * 100:.0f}% threshold")

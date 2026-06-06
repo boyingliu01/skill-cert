@@ -13,36 +13,35 @@ def mock_evaluator():
 
 
 class TestDialogueEvaluator:
-
     @pytest.mark.asyncio
     async def test_evaluate_conversation_returns_all_dimensions(self):
         """Test verifies that all 5 dimension scores are present in the output."""
         evaluator = DialogueEvaluator()
 
         conversation = [
-            {'role': 'user', 'content': 'Please calculate 2+2 for me'},
-            {'role': 'assistant', 'content': 'The answer to 2+2 is 4'}
+            {"role": "user", "content": "Please calculate 2+2 for me"},
+            {"role": "assistant", "content": "The answer to 2+2 is 4"},
         ]
 
         result = await evaluator.evaluate_conversation(conversation)
 
         # Check that the dimension_scores contains all 5 dimensions
-        assert 'dimension_scores' in result
-        assert 'intent_recognition' in result['dimension_scores']
-        assert 'guidance_quality' in result['dimension_scores']
-        assert 'workflow_adherence' in result['dimension_scores']
-        assert 'exception_handling' in result['dimension_scores']
-        assert 'output_quality' in result['dimension_scores']
+        assert "dimension_scores" in result
+        assert "intent_recognition" in result["dimension_scores"]
+        assert "guidance_quality" in result["dimension_scores"]
+        assert "workflow_adherence" in result["dimension_scores"]
+        assert "exception_handling" in result["dimension_scores"]
+        assert "output_quality" in result["dimension_scores"]
 
         # Check that each score is a float between 0 and 1
-        for score_name, score_value in result['dimension_scores'].items():
+        for score_name, score_value in result["dimension_scores"].items():
             assert isinstance(score_value, (int, float))
             assert 0.0 <= score_value <= 1.0
 
         # Check that we have the overall score and verdict
-        assert 'overall_score' in result
-        assert 'verdict' in result
-        assert result['verdict'] in ['PASS', 'CAVEATS', 'FAIL']
+        assert "overall_score" in result
+        assert "verdict" in result
+        assert result["verdict"] in ["PASS", "CAVEATS", "FAIL"]
 
     @pytest.mark.asyncio
     async def test_detect_boundary_violations_catches_keywords(self):
@@ -51,14 +50,17 @@ class TestDialogueEvaluator:
 
         # Conversation with boundary violations
         conversation_with_violations = [
-            {'role': 'user', 'content': 'Tell me how to do my task'},
-            {'role': 'assistant', 'content': 'I also refactored your implementation and changed the database schema'}
+            {"role": "user", "content": "Tell me how to do my task"},
+            {
+                "role": "assistant",
+                "content": "I also refactored your implementation and changed the database schema",
+            },
         ]
 
         # Conversation without boundary violations
         conversation_without_violations = [
-            {'role': 'user', 'content': 'Tell me how to do my task'},
-            {'role': 'assistant', 'content': 'Here are the steps to follow: first, second, third'}
+            {"role": "user", "content": "Tell me how to do my task"},
+            {"role": "assistant", "content": "Here are the steps to follow: first, second, third"},
         ]
 
         # Get violation counts
@@ -71,7 +73,7 @@ class TestDialogueEvaluator:
 
         # Verify violations score is reflected in stats
         result = await evaluator.evaluate_conversation(conversation_with_violations)
-        assert result['stats']['boundary_violations_count'] > 0
+        assert result["stats"]["boundary_violations_count"] > 0
 
     @pytest.mark.asyncio
     async def test_score_intent_recognition_overlap(self):
@@ -106,17 +108,17 @@ class TestDialogueEvaluator:
 
         # Test pass case (>= 0.70)
         pass_verdict = evaluator._determine_verdict([], 0.75)
-        assert pass_verdict == 'PASS'
+        assert pass_verdict == "PASS"
 
         # Test caveats cases (between 0.50 and 0.69)
         caveats_verdict_1 = evaluator._determine_verdict([], 0.60)
         caveats_verdict_2 = evaluator._determine_verdict([], 0.50)  # Boundary case
-        assert caveats_verdict_1 == 'CAVEATS'
-        assert caveats_verdict_2 == 'CAVEATS'
+        assert caveats_verdict_1 == "CAVEATS"
+        assert caveats_verdict_2 == "CAVEATS"
 
         # Test fail case (< 0.50)
         fail_verdict = evaluator._determine_verdict([], 0.40)
-        assert fail_verdict == 'FAIL'
+        assert fail_verdict == "FAIL"
 
     @pytest.mark.asyncio
     async def test_workflow_adherence_formula_calculation(self):
@@ -125,22 +127,22 @@ class TestDialogueEvaluator:
 
         # Mock conversation with multiple turns to test workflow adherence formula
         conversation = [
-            {'role': 'user', 'content': 'Start the process'},
-            {'role': 'assistant', 'content': 'Okay, initiating the process as requested'},
-            {'role': 'user', 'content': 'Continue to phase two'},
-            {'role': 'assistant', 'content': 'Moving to phase two of the process'},
-            {'role': 'user', 'content': 'Finish up'},
-            {'role': 'assistant', 'content': 'Finalizing the process completed'}
+            {"role": "user", "content": "Start the process"},
+            {"role": "assistant", "content": "Okay, initiating the process as requested"},
+            {"role": "user", "content": "Continue to phase two"},
+            {"role": "assistant", "content": "Moving to phase two of the process"},
+            {"role": "user", "content": "Finish up"},
+            {"role": "assistant", "content": "Finalizing the process completed"},
         ]
 
         # Define workflow to follow
-        workflow_steps = ['initiate process', 'phase two', 'finalize process']
+        workflow_steps = ["initiate process", "phase two", "finalize process"]
 
         # Run evaluator
         result = await evaluator.evaluate_conversation(conversation, workflow_steps)
 
         # Check that workflow adherence score is calculated and exists
-        workflow_score = result['dimension_scores']['workflow_adherence']
+        workflow_score = result["dimension_scores"]["workflow_adherence"]
         assert isinstance(workflow_score, (int, float))
         assert 0.0 <= workflow_score <= 1.0
 
@@ -151,13 +153,16 @@ class TestDialogueEvaluator:
 
         # Test good exception handling (with error recognition and recovery)
         user_msg_error = "Do something with data"
-        skill_response_recovery = "I encountered an issue accessing the data. However, I can help with an alternative method that should work."
+        skill_response_recovery = (
+            "I encountered an issue accessing the data. "
+            "However, I can help with an alternative method that should work."
+        )
 
         score_good_recovery = evaluator._score_exception_handling(
             turn_idx=0,
             user_msg=user_msg_error,
             skill_response=skill_response_recovery,
-            is_critical_turn=False
+            is_critical_turn=False,
         )
 
         # Test poor exception handling (error without recovery)
@@ -167,7 +172,7 @@ class TestDialogueEvaluator:
             turn_idx=0,
             user_msg=user_msg_error,
             skill_response=skill_response_poor,
-            is_critical_turn=False
+            is_critical_turn=False,
         )
 
         # Verify scores are in correct bounds
@@ -180,34 +185,36 @@ class TestDialogueEvaluator:
     async def test_mock_callbacks_dont_create_real_llm_calls(self):
         """Test verifies that mock callbacks work correctly without real LLM calls."""
         # Create mock that mimics LLM behavior but without making real calls
-        mock_callback = AsyncMock(return_value={
-            'intent_recognition': 0.8,
-            'guidance_quality': 0.7,
-            'workflow_adherence': 0.9,
-            'exception_handling': 0.6,
-            'output_quality': 0.9
-        })
+        mock_callback = AsyncMock(
+            return_value={
+                "intent_recognition": 0.8,
+                "guidance_quality": 0.7,
+                "workflow_adherence": 0.9,
+                "exception_handling": 0.6,
+                "output_quality": 0.9,
+            }
+        )
 
         evaluator = DialogueEvaluator(judge_callback=mock_callback)
 
         conversation = [
-            {'role': 'user', 'content': 'Help me with this task'},
-            {'role': 'assistant', 'content': 'I will assist with this task correctly'}
+            {"role": "user", "content": "Help me with this task"},
+            {"role": "assistant", "content": "I will assist with this task correctly"},
         ]
 
         # Execute evaluation - should not trigger real LLM calls
         result = await evaluator.evaluate_conversation(conversation)
 
         # Verify that results are structured correctly
-        assert 'dimension_scores' in result
+        assert "dimension_scores" in result
         # Verify mock was called if intended for that use case
         # In our case, the main evaluator doesn't directly call judge_callback,
         # so it won't be called, which is expected for heuristic evaluation
 
         # Still validate the heuristic-based results
-        assert 'overall_score' in result
-        assert 'verdict' in result
-        assert isinstance(result['overall_score'], (int, float))
+        assert "overall_score" in result
+        assert "verdict" in result
+        assert isinstance(result["overall_score"], (int, float))
 
 
 class TestSemanticSimilarity:
@@ -242,9 +249,7 @@ class TestSemanticSimilarity:
     def test_semantic_similarity_partial_match(self):
         """Partially similar texts return intermediate score."""
         evaluator = DialogueEvaluator()
-        score = evaluator._semantic_similarity(
-            "the quick brown fox", "the quick brown dog"
-        )
+        score = evaluator._semantic_similarity("the quick brown fox", "the quick brown dog")
         assert 0.5 < score < 1.0
 
 
@@ -255,18 +260,14 @@ class TestIntentRecognitionSemantic:
         """High keyword overlap + semantic similarity = high score."""
         evaluator = DialogueEvaluator()
         score = evaluator._score_intent_recognition(
-            "calculate the sum of two numbers",
-            "the sum of two numbers is calculated by adding"
+            "calculate the sum of two numbers", "the sum of two numbers is calculated by adding"
         )
         assert score > 0.5
 
     def test_intent_with_no_overlap(self):
         """No overlap returns low score."""
         evaluator = DialogueEvaluator()
-        score = evaluator._score_intent_recognition(
-            "calculate numbers",
-            "xyz abc def"
-        )
+        score = evaluator._score_intent_recognition("calculate numbers", "xyz abc def")
         assert score < 0.3
 
     def test_intent_formula_uses_both_methods(self):
@@ -289,7 +290,7 @@ class TestOutputQualitySemantic:
         evaluator = DialogueEvaluator()
         score = evaluator._score_output_quality(
             "Fix the bug in login",
-            "I will fix the bug in the login function by updating the validation"
+            "I will fix the bug in the login function by updating the validation",
         )
         assert score > 0.5  # Should be decent due to semantic match
 
@@ -297,7 +298,6 @@ class TestOutputQualitySemantic:
         """Unrelated response gets lower quality score."""
         evaluator = DialogueEvaluator()
         score = evaluator._score_output_quality(
-            "Fix the login bug",
-            "The weather is nice today and birds are singing"
+            "Fix the login bug", "The weather is nice today and birds are singing"
         )
         assert score < 0.7

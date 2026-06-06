@@ -25,7 +25,6 @@ class MockModelAdapter:
 
 
 class TestDriftDetector:
-
     def test_detect_drift_basic(self):
         detector = DriftDetector()
         grader = Grader()
@@ -36,20 +35,26 @@ class TestDriftDetector:
                 name="hello_test",
                 category="normal",
                 prompt="Say hello",
-                assertions=[EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1)]
+                assertions=[
+                    EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1)
+                ],
             ),
             EvalCase(
                 id=2,
                 name="goodbye_test",
                 category="normal",
                 prompt="Say goodbye",
-                assertions=[EvalAssertion(name="contains_goodbye", type="contains", value="goodbye", weight=1)]
-            )
+                assertions=[
+                    EvalAssertion(
+                        name="contains_goodbye", type="contains", value="goodbye", weight=1
+                    )
+                ],
+            ),
         ]
 
         model_adapters = {
             "model_a": MockModelAdapter({"hello": "Hello there!", "goodbye": "Goodbye!"}),
-            "model_b": MockModelAdapter({"hello": "Hi there!", "goodbye": "Bye!"})
+            "model_b": MockModelAdapter({"hello": "Hi there!", "goodbye": "Bye!"}),
         }
 
         results = detector.detect_drift(eval_cases, model_adapters, grader)
@@ -75,13 +80,15 @@ class TestDriftDetector:
                 name="identical_test",
                 category="normal",
                 prompt="Say hello",
-                assertions=[EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1)]
+                assertions=[
+                    EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1)
+                ],
             )
         ]
 
         model_adapters = {
             "model_a": MockModelAdapter({"hello": "Hello world"}),
-            "model_b": MockModelAdapter({"hello": "Hello world"})
+            "model_b": MockModelAdapter({"hello": "Hello world"}),
         }
 
         results = detector.detect_drift(eval_cases, model_adapters, grader)
@@ -104,13 +111,15 @@ class TestDriftDetector:
                 name="different_test",
                 category="normal",
                 prompt="Say hello",
-                assertions=[EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1)]
+                assertions=[
+                    EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1)
+                ],
             )
         ]
 
         model_adapters = {
             "model_a": MockModelAdapter({"hello": "Hello world"}),
-            "model_b": MockModelAdapter({"hello": "Goodbye world"})
+            "model_b": MockModelAdapter({"hello": "Goodbye world"}),
         }
 
         results = detector.detect_drift(eval_cases, model_adapters, grader)
@@ -167,7 +176,7 @@ class TestDriftDetector:
                 pass_rate_b=0.6,
                 variance=0.2,
                 severity="low",
-                verdict="PASS"
+                verdict="PASS",
             )
         ]
 
@@ -192,7 +201,7 @@ class TestDriftDetector:
                 pass_rate_b=0.6,
                 variance=0.2,
                 severity="low",
-                verdict="PASS_WITH_CAVEATS"
+                verdict="PASS_WITH_CAVEATS",
             ),
             DriftResult(
                 model_a="model_a",
@@ -201,8 +210,8 @@ class TestDriftDetector:
                 pass_rate_b=0.3,
                 variance=0.5,
                 severity="high",
-                verdict="FAIL"
-            )
+                verdict="FAIL",
+            ),
         ]
 
         report = detector.aggregate_drift_report(results)
@@ -221,21 +230,41 @@ class TestDriftDetector:
 
         results = [
             DriftResult(
-                model_a="a", model_b="b", pass_rate_a=0.5, pass_rate_b=0.5,
-                variance=0.0, severity="none", verdict="PASS"
+                model_a="a",
+                model_b="b",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.0,
+                severity="none",
+                verdict="PASS",
             ),
             DriftResult(
-                model_a="a", model_b="c", pass_rate_a=0.5, pass_rate_b=0.5,
-                variance=0.15, severity="low", verdict="PASS"
+                model_a="a",
+                model_b="c",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.15,
+                severity="low",
+                verdict="PASS",
             ),
             DriftResult(
-                model_a="a", model_b="d", pass_rate_a=0.5, pass_rate_b=0.5,
-                variance=0.3, severity="moderate", verdict="PASS_WITH_CAVEATS"
+                model_a="a",
+                model_b="d",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.3,
+                severity="moderate",
+                verdict="PASS_WITH_CAVEATS",
             ),
             DriftResult(
-                model_a="a", model_b="e", pass_rate_a=0.5, pass_rate_b=0.5,
-                variance=0.4, severity="high", verdict="FAIL"
-            )
+                model_a="a",
+                model_b="e",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.4,
+                severity="high",
+                verdict="FAIL",
+            ),
         ]
 
         highest = detector._get_highest_severity(results)
@@ -246,20 +275,68 @@ class TestDriftDetector:
         detector = DriftDetector()
 
         results_all_pass = [
-            DriftResult(model_a="a", model_b="b", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.05, severity="none", verdict="PASS"),
-            DriftResult(model_a="a", model_b="c", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.08, severity="none", verdict="PASS")
+            DriftResult(
+                model_a="a",
+                model_b="b",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.05,
+                severity="none",
+                verdict="PASS",
+            ),
+            DriftResult(
+                model_a="a",
+                model_b="c",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.08,
+                severity="none",
+                verdict="PASS",
+            ),
         ]
         assert detector._aggregate_verdict(results_all_pass) == "PASS"
 
         results_with_caveats = [
-            DriftResult(model_a="a", model_b="b", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.05, severity="none", verdict="PASS"),
-            DriftResult(model_a="a", model_b="c", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.25, severity="moderate", verdict="PASS_WITH_CAVEATS")
+            DriftResult(
+                model_a="a",
+                model_b="b",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.05,
+                severity="none",
+                verdict="PASS",
+            ),
+            DriftResult(
+                model_a="a",
+                model_b="c",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.25,
+                severity="moderate",
+                verdict="PASS_WITH_CAVEATS",
+            ),
         ]
         assert detector._aggregate_verdict(results_with_caveats) == "PASS_WITH_CAVEATS"
 
         results_with_fail = [
-            DriftResult(model_a="a", model_b="b", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.05, severity="none", verdict="PASS"),
-            DriftResult(model_a="a", model_b="c", pass_rate_a=0.5, pass_rate_b=0.5, variance=0.4, severity="high", verdict="FAIL")
+            DriftResult(
+                model_a="a",
+                model_b="b",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.05,
+                severity="none",
+                verdict="PASS",
+            ),
+            DriftResult(
+                model_a="a",
+                model_b="c",
+                pass_rate_a=0.5,
+                pass_rate_b=0.5,
+                variance=0.4,
+                severity="high",
+                verdict="FAIL",
+            ),
         ]
         assert detector._aggregate_verdict(results_with_fail) == "FAIL"
 

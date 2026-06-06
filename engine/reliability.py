@@ -32,13 +32,15 @@ class ReliabilityTracker:
 
     def record_eval(self, eval_id: str, success: bool, error: str | None, retry_count: int = 0):
         """Record the result of a single eval run."""
-        self.results.append({
-            "eval_id": eval_id,
-            "success": success,
-            "error": error,
-            "error_category": classify_error(error) if error else "none",
-            "retry_count": retry_count,
-        })
+        self.results.append(
+            {
+                "eval_id": eval_id,
+                "success": success,
+                "error": error,
+                "error_category": classify_error(error) if error else "none",
+                "retry_count": retry_count,
+            }
+        )
 
     def generate_report(self) -> dict[str, Any]:
         """Generate a reliability report from all recorded eval results."""
@@ -64,7 +66,9 @@ class ReliabilityTracker:
         errors_by_category: dict[str, int] = {}
         for r in self.results:
             if r["error_category"] and r["error_category"] != "none":
-                errors_by_category[r["error_category"]] = errors_by_category.get(r["error_category"], 0) + 1
+                errors_by_category[r["error_category"]] = (
+                    errors_by_category.get(r["error_category"], 0) + 1
+                )
 
         retries = [r["retry_count"] for r in self.results]
 

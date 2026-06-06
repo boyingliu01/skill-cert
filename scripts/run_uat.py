@@ -16,6 +16,7 @@ from engine.reporter import Reporter
 
 PROJECT_ROOT = Path("/mnt/e/Private/opencode优化/xgate")
 
+
 def load_eval_cases(skill_name, spec, adapter):
     cache = Path(f"results/{skill_name}-evals-cache.json")
     if cache.exists():
@@ -23,6 +24,7 @@ def load_eval_cases(skill_name, spec, adapter):
         return json.loads(cache.read_text())
 
     from engine.testgen import EvalGenerator
+
     gen = EvalGenerator()
     prompt = gen._prepare_generation_prompt(spec)
     try:
@@ -38,12 +40,13 @@ def load_eval_cases(skill_name, spec, adapter):
     tmpl = gen.minimum_evals_template
     return tmpl.get("eval_cases", tmpl.get("evals", []))
 
+
 def run_single_skill(skill_path, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     skill_name = Path(skill_path).parent.name
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Skill-Cert UAT: {skill_name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     config = SkillCertConfig.load()
     if not config.models:
@@ -51,7 +54,9 @@ def run_single_skill(skill_path, output_dir):
         return None
     mc = config.models[0]
     primary = mc.model_name
-    adapter = AnthropicCompatAdapter(base_url=mc.base_url, api_key=mc.api_key, model=primary, fallback_model=mc.fallback_model)
+    adapter = AnthropicCompatAdapter(
+        base_url=mc.base_url, api_key=mc.api_key, model=primary, fallback_model=mc.fallback_model
+    )
 
     print("\n[Phase 0] Parsing SKILL.md...")
     spec = parse_skill_md(skill_path)
@@ -67,10 +72,13 @@ def run_single_skill(skill_path, output_dir):
         return None
 
     print(f"\n[Phase 2] Executing eval cases with {primary}...")
-    prompts = [{"messages": [{"role": "user", "content": e.get("input", e.get("prompt", ""))}]} for e in eval_cases]
+    prompts = [
+        {"messages": [{"role": "user", "content": e.get("input", e.get("prompt", ""))}]}
+        for e in eval_cases
+    ]
     t0 = time.time()
     outputs = adapter.batch_chat(prompts)
-    print(f"  Completed {len(outputs)} responses in {time.time()-t0:.0f}s")
+    print(f"  Completed {len(outputs)} responses in {time.time() - t0:.0f}s")
 
     print("\n[Phase 2] Grading...")
     grader = Grader()
@@ -84,13 +92,17 @@ def run_single_skill(skill_path, output_dir):
                     assertions.append(EvalAssertion(**a))
                 except Exception:
                     pass
-        ec_obj = type('EvalCase', (), {
-            "id": eval_case.get("id", 0),
-            "name": eval_case.get("name", "unknown"),
-            "category": eval_case.get("category", "normal"),
-            "prompt": eval_case.get("input", eval_case.get("prompt", "")),
-            "assertions": assertions,
-        })()
+        ec_obj = type(
+            "EvalCase",
+            (),
+            {
+                "id": eval_case.get("id", 0),
+                "name": eval_case.get("name", "unknown"),
+                "category": eval_case.get("category", "normal"),
+                "prompt": eval_case.get("input", eval_case.get("prompt", "")),
+                "assertions": assertions,
+            },
+        )()
         grading = grader.grade_output(ec_obj, output)
         grading["run"] = "with-skill"
         grading["model"] = primary
@@ -113,9 +125,16 @@ def run_single_skill(skill_path, output_dir):
     md_report, json_report = reporter.generate_report(
         metrics,
         {"overall_drift": "none", "overall_verdict": "PASS"},
-        {"total_evaluations": len(eval_cases), "avg_pass_rate": metrics.get('l1_trigger_accuracy', 0),
-         "critical_passed": 0, "critical_total": 0, "important_passed": 0, "important_total": 0,
-         "normal_passed": 0, "normal_total": 0}
+        {
+            "total_evaluations": len(eval_cases),
+            "avg_pass_rate": metrics.get("l1_trigger_accuracy", 0),
+            "critical_passed": 0,
+            "critical_total": 0,
+            "important_passed": 0,
+            "important_total": 0,
+            "normal_passed": 0,
+            "normal_total": 0,
+        },
     )
 
     report_path = output_dir / f"{skill_name}-report.md"
@@ -127,14 +146,18 @@ def run_single_skill(skill_path, output_dir):
     print(f"  Verdict: {json_report.get('verdict', 'UNKNOWN')}")
     return json_report
 
+
 def main():
     parser = argparse.ArgumentParser(description="Run SkillCert UAT")
-    parser.add_argument("--mode", choices=["single", "dialogue", "replay"],
-                       default="single", help="Execution mode")
-    parser.add_argument("--max-turns", type=int, default=10,
-                       help="Maximum conversation turns for dialogue mode")
-    parser.add_argument("--profiles", nargs="+", default=[],
-                       help="List of profile names for dialogue mode")
+    parser.add_argument(
+        "--mode", choices=["single", "dialogue", "replay"], default="single", help="Execution mode"
+    )
+    parser.add_argument(
+        "--max-turns", type=int, default=10, help="Maximum conversation turns for dialogue mode"
+    )
+    parser.add_argument(
+        "--profiles", nargs="+", default=[], help="List of profile names for dialogue mode"
+    )
 
     args = parser.parse_args()
 
@@ -167,17 +190,22 @@ def main():
         except Exception as e:
             print(f"❌ {name} failed: {e}")
             import traceback
+
             traceback.print_exc()
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("  UAT Summary")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for name, result in results.items():
         if result:
-            print(f"  {name}: {result.get('verdict', 'N/A')} (score: {result.get('overall_score', 0):.2%})")
+            print(
+                f"  {name}: {result.get('verdict', 'N/A')} "
+                f"(score: {result.get('overall_score', 0):.2%})"
+            )
         else:
             print(f"  {name}: FAILED")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -18,17 +18,39 @@ class ModelConfig(BaseModel):
 
 class SkillCertConfig(BaseModel):
     """Configuration with loading priority: CLI args > env vars > config file > defaults"""
+
     models: list[ModelConfig] = Field(default_factory=list)
-    max_concurrency: int = Field(default=ConcurrencyLimits.MAX_CONCURRENCY, json_schema_extra={"env": "SKILL_CERT_MAX_CONCURRENCY"})
-    rate_limit_rpm: int = Field(default=TimingLimits.RATE_LIMIT_RPM, json_schema_extra={"env": "SKILL_CERT_RATE_LIMIT_RPM"})
-    request_timeout: int = Field(default=TimingLimits.REQUEST_TIMEOUT, json_schema_extra={"env": "SKILL_CERT_TIMEOUT"})
-    judge_temperature: float = Field(default=0.0, json_schema_extra={"env": "SKILL_CERT_JUDGE_TEMP"})
-    max_testgen_rounds: int = Field(default=TestGenLimits.MAX_REVIEW_ROUNDS, json_schema_extra={"env": "SKILL_CERT_MAX_TESTGEN_ROUNDS"})
-    max_gapfill_rounds: int = Field(default=TestGenLimits.MAX_REVIEW_ROUNDS, json_schema_extra={"env": "SKILL_CERT_MAX_GAPFILL_ROUNDS"})
-    max_total_time: int = Field(default=TimingLimits.GLOBAL_TIMEOUT, json_schema_extra={"env": "SKILL_CERT_MAX_TOTAL_TIME"})
+    max_concurrency: int = Field(
+        default=ConcurrencyLimits.MAX_CONCURRENCY,
+        json_schema_extra={"env": "SKILL_CERT_MAX_CONCURRENCY"},
+    )
+    rate_limit_rpm: int = Field(
+        default=TimingLimits.RATE_LIMIT_RPM,
+        json_schema_extra={"env": "SKILL_CERT_RATE_LIMIT_RPM"},
+    )
+    request_timeout: int = Field(
+        default=TimingLimits.REQUEST_TIMEOUT,
+        json_schema_extra={"env": "SKILL_CERT_TIMEOUT"},
+    )
+    judge_temperature: float = Field(
+        default=0.0,
+        json_schema_extra={"env": "SKILL_CERT_JUDGE_TEMP"},
+    )
+    max_testgen_rounds: int = Field(
+        default=TestGenLimits.MAX_REVIEW_ROUNDS,
+        json_schema_extra={"env": "SKILL_CERT_MAX_TESTGEN_ROUNDS"},
+    )
+    max_gapfill_rounds: int = Field(
+        default=TestGenLimits.MAX_REVIEW_ROUNDS,
+        json_schema_extra={"env": "SKILL_CERT_MAX_GAPFILL_ROUNDS"},
+    )
+    max_total_time: int = Field(
+        default=TimingLimits.GLOBAL_TIMEOUT,
+        json_schema_extra={"env": "SKILL_CERT_MAX_TOTAL_TIME"},
+    )
 
     @classmethod
-    def load(cls, cli_args=None) -> 'SkillCertConfig':
+    def load(cls, cli_args=None) -> "SkillCertConfig":
         """Load configuration with priority: CLI args > env vars > config file > defaults"""
         config_dict = cls._get_default_config()
         config_dict = cls._apply_config_file(config_dict)
@@ -46,7 +68,7 @@ class SkillCertConfig(BaseModel):
             "max_testgen_rounds": TestGenLimits.MAX_REVIEW_ROUNDS,
             "max_gapfill_rounds": TestGenLimits.MAX_REVIEW_ROUNDS,
             "max_total_time": TimingLimits.GLOBAL_TIMEOUT,
-            "models": []
+            "models": [],
         }
 
     @classmethod
@@ -82,8 +104,14 @@ class SkillCertConfig(BaseModel):
 
         for key, value in env_vars.items():
             if value is not None:
-                if key in ["max_concurrency", "rate_limit_rpm", "max_testgen_rounds",
-                          "max_gapfill_rounds", "max_total_time", "request_timeout"]:
+                if key in [
+                    "max_concurrency",
+                    "rate_limit_rpm",
+                    "max_testgen_rounds",
+                    "max_gapfill_rounds",
+                    "max_total_time",
+                    "request_timeout",
+                ]:
                     try:
                         config_dict[key] = int(value)
                     except ValueError:
@@ -98,14 +126,20 @@ class SkillCertConfig(BaseModel):
     @classmethod
     def _apply_cli_arguments(cls, config_dict: dict, cli_args) -> dict:
         if cli_args:
-            for field in ["max_concurrency", "rate_limit_rpm", "request_timeout",
-                         "judge_temperature", "max_testgen_rounds", "max_gapfill_rounds",
-                         "max_total_time"]:
+            for field in [
+                "max_concurrency",
+                "rate_limit_rpm",
+                "request_timeout",
+                "judge_temperature",
+                "max_testgen_rounds",
+                "max_gapfill_rounds",
+                "max_total_time",
+            ]:
                 if hasattr(cli_args, field) and getattr(cli_args, field) is not None:
                     config_dict[field] = getattr(cli_args, field)
 
-            if hasattr(cli_args, 'models') and cli_args.models:
-                config_dict['models'] = cls._parse_models_from_cli(cli_args.models)
+            if hasattr(cli_args, "models") and cli_args.models:
+                config_dict["models"] = cls._parse_models_from_cli(cli_args.models)
 
         if not config_dict["models"]:
             models_env = os.getenv("SKILL_CERT_MODELS")
@@ -131,7 +165,8 @@ class SkillCertConfig(BaseModel):
 
     @staticmethod
     def _parse_models_from_env(models_env: str) -> list[ModelConfig]:
-        """Parse models from environment variable in format: model1=url,key,fallback|model2=url,key,fallback"""
+        """Parse models from environment variable in format:
+        model1=url,key,fallback|model2=url,key,fallback"""
         models: list[ModelConfig] = []
         if not models_env:
             return models
@@ -147,12 +182,14 @@ class SkillCertConfig(BaseModel):
                     api_key = config_parts[1]
                     fallback_model = config_parts[2] if len(config_parts) > 2 else None
 
-                    models.append(ModelConfig(
-                        model_name=name_part,
-                        base_url=base_url,
-                        api_key=api_key,
-                        fallback_model=fallback_model
-                    ))
+                    models.append(
+                        ModelConfig(
+                            model_name=name_part,
+                            base_url=base_url,
+                            api_key=api_key,
+                            fallback_model=fallback_model,
+                        )
+                    )
 
         return models
 
@@ -169,11 +206,13 @@ class SkillCertConfig(BaseModel):
                     api_key = config_parts[1]
                     fallback_model = config_parts[2] if len(config_parts) > 2 else None
 
-                    models.append(ModelConfig(
-                        model_name=name,
-                        base_url=base_url,
-                        api_key=api_key,
-                        fallback_model=fallback_model
-                    ))
+                    models.append(
+                        ModelConfig(
+                            model_name=name,
+                            base_url=base_url,
+                            api_key=api_key,
+                            fallback_model=fallback_model,
+                        )
+                    )
 
         return models

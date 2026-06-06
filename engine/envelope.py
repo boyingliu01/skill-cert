@@ -9,7 +9,14 @@ class EnvelopeResult:
 
 
 class EnvelopeChecker:
-    def __init__(self, max_steps: int = EnvelopeDefaults.MAX_STEPS, max_tool_calls: int = EnvelopeDefaults.MAX_TOOL_CALLS, token_budget: int = EnvelopeDefaults.MAX_TOKENS, timeout_s: int = EnvelopeDefaults.TIMEOUT_S, cost_budget: float = EnvelopeDefaults.COST_BUDGET):
+    def __init__(
+        self,
+        max_steps: int = EnvelopeDefaults.MAX_STEPS,
+        max_tool_calls: int = EnvelopeDefaults.MAX_TOOL_CALLS,
+        token_budget: int = EnvelopeDefaults.MAX_TOKENS,
+        timeout_s: int = EnvelopeDefaults.TIMEOUT_S,
+        cost_budget: float = EnvelopeDefaults.COST_BUDGET,
+    ):
         self.max_steps = max_steps
         self.max_tool_calls = max_tool_calls
         self.token_budget = token_budget

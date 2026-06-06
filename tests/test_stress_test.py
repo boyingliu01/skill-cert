@@ -41,7 +41,9 @@ class TestStressTestResult:
         assert r.error is None
 
     def test_with_values(self):
-        r = StressTestResult(eval_id="t2", model="m2", status="timeout", latency=5.0, error="too slow")
+        r = StressTestResult(
+            eval_id="t2", model="m2", status="timeout", latency=5.0, error="too slow"
+        )
         assert r.status == "timeout"
         assert r.latency == 5.0
         assert r.error == "too slow"
@@ -154,9 +156,7 @@ class TestStressTester:
     async def test_run_fairness_two_models(self):
         st = StressTester(concurrency=10, models=["m1", "m2"])
         cases = [
-            {"id": f"a-{i}", "model": "m1"}
-            if i % 2 == 0
-            else {"id": f"b-{i}", "model": "m2"}
+            {"id": f"a-{i}", "model": "m1"} if i % 2 == 0 else {"id": f"b-{i}", "model": "m2"}
             for i in range(20)
         ]
         adapter = MockAdapter(latency=0.001)

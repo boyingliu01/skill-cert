@@ -1,6 +1,5 @@
 """Tests for engine/trace_models.py — ExecutionTrace, TokenAccounting, TraceEvent."""
 
-
 import pytest
 
 from engine.trace_models import (
@@ -29,8 +28,12 @@ class TestTokenAccounting:
         assert ta.model == ""
 
     def test_merge(self):
-        ta1 = TokenAccounting(input_tokens=100, output_tokens=50, total_tokens=150, cost=0.01, model="gpt-4")
-        ta2 = TokenAccounting(input_tokens=200, output_tokens=100, total_tokens=300, cost=0.02, model="gpt-4")
+        ta1 = TokenAccounting(
+            input_tokens=100, output_tokens=50, total_tokens=150, cost=0.01, model="gpt-4"
+        )
+        ta2 = TokenAccounting(
+            input_tokens=200, output_tokens=100, total_tokens=300, cost=0.02, model="gpt-4"
+        )
         merged = ta1.merge(ta2)
         assert merged.input_tokens == 300
         assert merged.output_tokens == 150
@@ -112,7 +115,9 @@ class TestTraceEvents:
         assert event.turn_index == 3
 
     def test_error_event(self):
-        event = ErrorEvent(error_type="TimeoutError", error_message="Request timed out", recoverable=True)
+        event = ErrorEvent(
+            error_type="TimeoutError", error_message="Request timed out", recoverable=True
+        )
         assert event.event_type == "Error"
         assert event.recoverable is True
 
@@ -158,14 +163,18 @@ class TestExecutionTrace:
         trace = ExecutionTrace()
         trace.events.append(StepCompleteEvent(step_name="step1"))
         trace.events.append(StepCompleteEvent(step_name="step2"))
-        trace.events.append(LLMCallEvent(model="gpt-4", input_tokens=10, output_tokens=5, total_tokens=15))
+        trace.events.append(
+            LLMCallEvent(model="gpt-4", input_tokens=10, output_tokens=5, total_tokens=15)
+        )
         assert trace.step_count == 2
 
     def test_tool_call_count(self):
         trace = ExecutionTrace()
         trace.events.append(ToolCallEvent(tool_name="search"))
         trace.events.append(ToolCallEvent(tool_name="calculate"))
-        trace.events.append(LLMCallEvent(model="gpt-4", input_tokens=10, output_tokens=5, total_tokens=15))
+        trace.events.append(
+            LLMCallEvent(model="gpt-4", input_tokens=10, output_tokens=5, total_tokens=15)
+        )
         assert trace.tool_call_count == 2
 
     def test_add_event(self):

@@ -61,7 +61,7 @@ class TestReliabilityTracker:
 
         report = tracker.generate_report()
         assert report["total_evals"] == 3
-        assert report["error_rate"] == pytest.approx(2/3)
+        assert report["error_rate"] == pytest.approx(2 / 3)
         assert "timeout" in report["errors_by_category"]
         assert "server_error" in report["errors_by_category"]
 

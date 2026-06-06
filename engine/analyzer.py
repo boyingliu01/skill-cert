@@ -290,7 +290,11 @@ def _extract_workflow_steps(content: str) -> list[WorkflowStep]:
     Supports English and Chinese section names, numbered lists,
     and Phase N: NAME patterns in ASCII diagrams.
     """
-    pattern = r"^##\s+[^#\n]*(?:Workflow|Process|Flow|完整流程|核心流程|流程|步骤|工作流程)[^\n]*$\n(.*?)(?=^##\s|\Z)"
+    pattern = (
+        r"^##\s+[^#\n]*"
+        r"(?:Workflow|Process|Flow|完整流程|核心流程|流程|步骤|工作流程)"
+        r"[^\n]*$\n(.*?)(?=^##\s|\Z)"
+    )
     match = re.search(pattern, content, re.IGNORECASE | re.DOTALL | re.MULTILINE)
     if not match:
         return []

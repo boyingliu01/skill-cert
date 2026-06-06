@@ -8,8 +8,15 @@ from engine.multi_skill import (
 )
 
 
-def _make_skill(name, triggers=None, description="", workflow_steps=None,
-                anti_patterns=None, output_format=None, content_length=0):
+def _make_skill(
+    name,
+    triggers=None,
+    description="",
+    workflow_steps=None,
+    anti_patterns=None,
+    output_format=None,
+    content_length=0,
+):
     """Helper to create a minimal skill spec dict."""
     return {
         "name": name,
@@ -24,8 +31,8 @@ def _make_skill(name, triggers=None, description="", workflow_steps=None,
 
 # ─── Trigger Conflict Tests ─────────────────────────────────────────────
 
-class TestTriggerConflicts:
 
+class TestTriggerConflicts:
     def test_no_conflicts_distinct_triggers(self):
         """Skills with completely different triggers should have no conflicts."""
         skills = [
@@ -115,8 +122,8 @@ class TestTriggerConflicts:
 
 # ─── Prompt Contamination Tests ─────────────────────────────────────────
 
-class TestPromptContamination:
 
+class TestPromptContamination:
     def test_no_contamination_disjoint_vocabulary(self):
         """Skills with completely different instruction vocabularies should not contaminate."""
         skills = [
@@ -131,16 +138,22 @@ class TestPromptContamination:
     def test_contamination_shared_workflow_language(self):
         """Skills with same workflow step names may contaminate."""
         skills = [
-            _make_skill("skill-a", workflow_steps=[
-                {"name": "Parse input", "type": "action"},
-                {"name": "Validate", "type": "action"},
-                {"name": "Generate output", "type": "action"},
-            ]),
-            _make_skill("skill-b", workflow_steps=[
-                {"name": "Parse input", "type": "action"},
-                {"name": "Validate", "type": "action"},
-                {"name": "Execute", "type": "action"},
-            ]),
+            _make_skill(
+                "skill-a",
+                workflow_steps=[
+                    {"name": "Parse input", "type": "action"},
+                    {"name": "Validate", "type": "action"},
+                    {"name": "Generate output", "type": "action"},
+                ],
+            ),
+            _make_skill(
+                "skill-b",
+                workflow_steps=[
+                    {"name": "Parse input", "type": "action"},
+                    {"name": "Validate", "type": "action"},
+                    {"name": "Execute", "type": "action"},
+                ],
+            ),
         ]
         analyzer = MultiSkillAnalyzer()
         analyzer.inject_multiple_skills(skills)
@@ -173,8 +186,11 @@ class TestPromptContamination:
     def test_contamination_trigger_in_description(self):
         """If skill A's description mentions skill B's trigger, contamination risk."""
         skills = [
-            _make_skill("skill-a", description="Use this to review code before you deploy",
-                        triggers=["review"]),
+            _make_skill(
+                "skill-a",
+                description="Use this to review code before you deploy",
+                triggers=["review"],
+            ),
             _make_skill("skill-b", triggers=["deploy"]),
         ]
         analyzer = MultiSkillAnalyzer()
@@ -185,8 +201,7 @@ class TestPromptContamination:
     def test_no_contamination_single_skill(self):
         """Single skill cannot contaminate itself."""
         skills = [
-            _make_skill("skill-a", description="Deploy to production",
-                        triggers=["deploy"]),
+            _make_skill("skill-a", description="Deploy to production", triggers=["deploy"]),
         ]
         analyzer = MultiSkillAnalyzer()
         analyzer.inject_multiple_skills(skills)
@@ -207,8 +222,8 @@ class TestPromptContamination:
 
 # ─── Token Overflow Tests ───────────────────────────────────────────────
 
-class TestTokenOverflow:
 
+class TestTokenOverflow:
     def test_no_overflow_small_skills(self):
         """Small combined skills should not exceed token budget."""
         skills = [
@@ -276,7 +291,10 @@ class TestTokenOverflow:
         assert len(conflicts_low) == 1
         assert len(conflicts_high) == 1
         severity_order = {"none": 0, "low": 1, "moderate": 2, "high": 3}
-        assert severity_order[conflicts_high[0].severity.value] >= severity_order[conflicts_low[0].severity.value]
+        assert (
+            severity_order[conflicts_high[0].severity.value]
+            >= severity_order[conflicts_low[0].severity.value]
+        )
 
     def test_token_overflow_single_skill(self):
         """Single skill below budget should not overflow."""
@@ -291,15 +309,20 @@ class TestTokenOverflow:
 
 # ─── Full Analysis Tests ────────────────────────────────────────────────
 
-class TestFullAnalysis:
 
+class TestFullAnalysis:
     def test_full_analysis_no_conflicts(self):
         """Fully disjoint skills produce zero conflicts."""
         skills = [
-            _make_skill("skill-a", triggers=["review"], description="Code review skill",
-                        content_length=100),
-            _make_skill("skill-b", triggers=["deploy"], description="Deploy to kubernetes",
-                        content_length=100),
+            _make_skill(
+                "skill-a", triggers=["review"], description="Code review skill", content_length=100
+            ),
+            _make_skill(
+                "skill-b",
+                triggers=["deploy"],
+                description="Deploy to kubernetes",
+                content_length=100,
+            ),
         ]
         analyzer = MultiSkillAnalyzer()
         analyzer.inject_multiple_skills(skills)
@@ -344,8 +367,8 @@ class TestFullAnalysis:
 
 # ─── SkillConflict Model Tests ──────────────────────────────────────────
 
-class TestSkillConflictModel:
 
+class TestSkillConflictModel:
     def test_conflict_string_representation(self):
         """SkillConflict should have readable string repr."""
         conflict = SkillConflict(
@@ -379,8 +402,8 @@ class TestSkillConflictModel:
 
 # ─── Edge Cases ─────────────────────────────────────────────────────────
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     def test_duplicate_skill_names(self):
         """Two skill dicts with same name should still be analyzed."""
         skills = [
@@ -406,10 +429,7 @@ class TestEdgeCases:
 
     def test_many_skills_stress(self):
         """10 skills with shared triggers should produce many conflicts."""
-        skills = [
-            _make_skill(f"skill-{i}", triggers=["review", "check"])
-            for i in range(10)
-        ]
+        skills = [_make_skill(f"skill-{i}", triggers=["review", "check"]) for i in range(10)]
         analyzer = MultiSkillAnalyzer()
         analyzer.inject_multiple_skills(skills)
         conflicts = analyzer.test_trigger_conflicts()
@@ -430,7 +450,6 @@ class TestEdgeCases:
 
 
 class TestReporterIntegration:
-
     def test_reporter_multi_skill_section(self):
         from engine.reporter import Reporter
 
@@ -451,8 +470,16 @@ class TestReporterIntegration:
             "l3_step_adherence": 0.85,
             "l4_execution_stability": 0.95,
             "metrics_breakdown": {
-                "l1_details": {"total_trigger_evals": 5, "passed_trigger_evals": 5, "trigger_accuracy": 1.0},
-                "l2_details": {"with_skill_avg_pass_rate": 0.9, "without_skill_avg_pass_rate": 0.6, "improvement_percentage": 30.0},
+                "l1_details": {
+                    "total_trigger_evals": 5,
+                    "passed_trigger_evals": 5,
+                    "trigger_accuracy": 1.0,
+                },
+                "l2_details": {
+                    "with_skill_avg_pass_rate": 0.9,
+                    "without_skill_avg_pass_rate": 0.6,
+                    "improvement_percentage": 30.0,
+                },
                 "l3_details": {"step_coverage_ratio": 0.85},
                 "l4_details": {"execution_stability": 0.95, "stdev_deterministic_pass_rate": 0.05},
             },
@@ -503,8 +530,16 @@ class TestReporterIntegration:
             "l3_step_adherence": 0.6,
             "l4_execution_stability": 0.8,
             "metrics_breakdown": {
-                "l1_details": {"total_trigger_evals": 5, "passed_trigger_evals": 3, "trigger_accuracy": 0.6},
-                "l2_details": {"with_skill_avg_pass_rate": 0.7, "without_skill_avg_pass_rate": 0.6, "improvement_percentage": 10.0},
+                "l1_details": {
+                    "total_trigger_evals": 5,
+                    "passed_trigger_evals": 3,
+                    "trigger_accuracy": 0.6,
+                },
+                "l2_details": {
+                    "with_skill_avg_pass_rate": 0.7,
+                    "without_skill_avg_pass_rate": 0.6,
+                    "improvement_percentage": 10.0,
+                },
                 "l3_details": {"step_coverage_ratio": 0.6},
                 "l4_details": {"execution_stability": 0.8, "stdev_deterministic_pass_rate": 0.08},
             },

@@ -1,4 +1,5 @@
 """Rerun only Expert A with glm-5.1 model."""
+
 import json
 import time
 from datetime import datetime, timezone
@@ -6,7 +7,10 @@ from pathlib import Path
 
 import httpx
 
-API_KEY = "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+API_KEY = (
+    "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/"
+    "qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
+)
 PROXY_URL = "https://lab.iwhalecloud.com/gpt-proxy"
 DESIGN_DOC = Path("docs/plans/2026-06-04-comprehensive-redesign.md").read_text(encoding="utf-8")
 OUTPUT_DIR = Path(".sprint-state/phase-outputs")
@@ -47,7 +51,12 @@ SYSTEM_PROMPT = f"""你是一位资深{ROLE}（Expert {EXPERT_ID}），专注于
 
 最后输出 JSON 格式裁决：
 ```json
-{{"expert_id": "{EXPERT_ID}", "round": 1, "mode": "design", "verdict": "APPROVED|REQUEST_CHANGES|REJECTED", "confidence": X, "critical_issues": ["..."], "major_concerns": ["..."], "minor_concerns": ["..."], "consensus_report": {{"agreed_items": ["..."], "disagreed_items": ["..."], "final_verdict": "APPROVED|REQUEST_CHANGES"}}}}
+{{"expert_id": "{EXPERT_ID}", "round": 1, "mode": "design",
+  "verdict": "APPROVED|REQUEST_CHANGES|REJECTED", "confidence": X,
+  "critical_issues": ["..."], "major_concerns": ["..."],
+  "minor_concerns": ["..."], "consensus_report": {{
+    "agreed_items": ["..."], "disagreed_items": ["..."],
+    "final_verdict": "APPROVED|REQUEST_CHANGES"}}}}
 ```"""
 
 print(f"--- Expert {EXPERT_ID} ({MODEL}, {PROVIDER}) ---")
@@ -98,12 +107,12 @@ try:
         json_str = response[json_start:]
         depth = 0
         for i, c in enumerate(json_str):
-            if c == '{':
+            if c == "{":
                 depth += 1
-            elif c == '}':
+            elif c == "}":
                 depth -= 1
                 if depth == 0:
-                    vdata = json.loads(json_str[:i+1])
+                    vdata = json.loads(json_str[: i + 1])
                     verdict = vdata.get("verdict", "UNKNOWN")
                     confidence = vdata.get("confidence", 0)
                     break

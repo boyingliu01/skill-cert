@@ -20,15 +20,17 @@ class OpenAICompatAdapter(ModelAdapter):
         fallback_model: str | None = None,
         fallback_base_url: str | None = None,
         fallback_api_key: str | None = None,
-        rpm_limit: int = 60
+        rpm_limit: int = 60,
     ):
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.fallback_model = fallback_model
-        self.fallback_base_url = fallback_base_url.rstrip('/') if fallback_base_url else None
+        self.fallback_base_url = fallback_base_url.rstrip("/") if fallback_base_url else None
         self.fallback_api_key = fallback_api_key
-        self._has_fallback = bool(self.fallback_model and self.fallback_base_url and self.fallback_api_key)
+        self._has_fallback = bool(
+            self.fallback_model and self.fallback_base_url and self.fallback_api_key
+        )
         self.client = httpx.Client(timeout=httpx.Timeout(120.0))
 
     def _call_with_usage(
@@ -42,22 +44,12 @@ class OpenAICompatAdapter(ModelAdapter):
         use_base = base_url or self.base_url
         use_key = api_key or self.api_key
 
-        headers = {
-            "Authorization": f"Bearer {use_key}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {use_key}", "Content-Type": "application/json"}
 
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.0
-        }
+        payload = {"model": model, "messages": messages, "temperature": 0.0}
 
         response = self.client.post(
-            f"{use_base}/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=timeout
+            f"{use_base}/chat/completions", headers=headers, json=payload, timeout=timeout
         )
 
         if response.status_code == 401:
@@ -80,10 +72,7 @@ class OpenAICompatAdapter(ModelAdapter):
         return content, token_data
 
     def _call_with_usage_sync(
-        self,
-        messages: list[dict[str, str]],
-        system: str = None,
-        timeout: int = 120
+        self, messages: list[dict[str, str]], system: str = None, timeout: int = 120
     ) -> tuple[str, dict[str, int]]:
         prepared_messages = []
         if system:
@@ -93,10 +82,7 @@ class OpenAICompatAdapter(ModelAdapter):
         return self._call_with_usage_with_fallback(prepared_messages, self.model, timeout)
 
     def _call_with_usage_with_fallback(
-        self,
-        messages: list[dict[str, str]],
-        model: str,
-        timeout: int
+        self, messages: list[dict[str, str]], model: str, timeout: int
     ) -> tuple[str, dict[str, int]]:
         try:
             return self._call_with_usage(messages, model, timeout)
@@ -111,7 +97,7 @@ class OpenAICompatAdapter(ModelAdapter):
                     self.fallback_model,
                     timeout,
                     base_url=self.fallback_base_url,
-                    api_key=self.fallback_api_key
+                    api_key=self.fallback_api_key,
                 )
             raise
 
@@ -119,15 +105,28 @@ class OpenAICompatAdapter(ModelAdapter):
         content, _ = self._call_with_usage_sync(messages, system, timeout)
         return content
 
-    def chat_with_usage(self, messages: list[dict[str, str]], system: str = None, timeout: int = 120) -> tuple[str, dict[str, int]]:
+    def chat_with_usage(
+        self,
+        messages: list[dict[str, str]],
+        system: str | None = None,
+        timeout: int = 120,
+    ) -> tuple[str, dict[str, int]]:
         return self._call_with_usage_sync(messages, system, timeout)
 
     def batch_chat(self, requests: list[dict[str, Any]], max_concurrency: int = 5) -> list[str]:
         from concurrent.futures import ThreadPoolExecutor, as_completed
+
         results = [None] * len(requests)
         with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
-            futures = {executor.submit(self.chat, req.get("messages", []), req.get("system"), req.get("timeout", 120)): i
-                      for i, req in enumerate(requests)}
+            futures = {
+                executor.submit(
+                    self.chat,
+                    req.get("messages", []),
+                    req.get("system"),
+                    req.get("timeout", 120),
+                ): i
+                for i, req in enumerate(requests)
+            }
             for future in as_completed(futures):
                 results[futures[future]] = future.result()
         return results

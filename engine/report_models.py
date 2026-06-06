@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 # ── Metadata ──────────────────────────────────────────────────
 
+
 class ReportMetadata(BaseModel):
     """Report metadata: skill, models, timestamp."""
 
@@ -38,6 +39,7 @@ class ReportMetadata(BaseModel):
 
 # ── Verdict ───────────────────────────────────────────────────
 
+
 class VerdictSummary(BaseModel):
     """Overall verdict and reasons."""
 
@@ -49,6 +51,7 @@ class VerdictSummary(BaseModel):
 
 
 # ── Metrics ───────────────────────────────────────────────────
+
 
 class MetricsSection(BaseModel):
     """L1-L8 metrics section."""
@@ -67,6 +70,7 @@ class MetricsSection(BaseModel):
 
 
 # ── Eval Details ──────────────────────────────────────────────
+
 
 class AssertionResult(BaseModel):
     """Single assertion result."""
@@ -99,6 +103,7 @@ class EvalDetail(BaseModel):
 
 # ── Token Analysis ────────────────────────────────────────────
 
+
 class TokenBreakdown(BaseModel):
     """Token breakdown for a single dimension."""
 
@@ -123,6 +128,7 @@ class TokenAnalysisSection(BaseModel):
 
 # ── Observability ─────────────────────────────────────────────
 
+
 class ObservabilitySection(BaseModel):
     """Observability section with trace summary."""
 
@@ -135,6 +141,7 @@ class ObservabilitySection(BaseModel):
 
 
 # ── Improvement Suggestions ───────────────────────────────────
+
 
 class ImprovementSuggestion(BaseModel):
     """Structured improvement suggestion.
@@ -155,6 +162,7 @@ class ImprovementSuggestion(BaseModel):
 
 
 # ── Structured Report (Top-Level) ─────────────────────────────
+
 
 class StructuredReport(BaseModel):
     """Top-level structured evaluation report.

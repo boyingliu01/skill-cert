@@ -141,10 +141,7 @@ class TokenLedger:
             "trace_count": self.trace_count,
             "by_phase": {k: v.model_dump() for k, v in self._phase_totals.items()},
             "by_model": {k: v.model_dump() for k, v in self._model_totals.items()},
-            "by_eval": [
-                {"eval_id": k, **v.model_dump()}
-                for k, v in self._eval_totals.items()
-            ],
+            "by_eval": [{"eval_id": k, **v.model_dump()} for k, v in self._eval_totals.items()],
         }
 
     def check_budget(self, token_budget: int = 0, cost_budget: float = 0.0) -> list[BudgetAlert]:
@@ -163,37 +160,53 @@ class TokenLedger:
             used = self.total_tokens
             utilization = used / token_budget
             if utilization >= 1.0:
-                alerts.append(BudgetAlert(
-                    level="critical",
-                    message=f"Token budget exceeded: {used:,} / {token_budget:,} ({utilization:.0%})",
-                    used=used,
-                    budget=token_budget,
-                ))
+                alerts.append(
+                    BudgetAlert(
+                        level="critical",
+                        message=(
+                            f"Token budget exceeded: {used:,} / {token_budget:,} "
+                            f"({utilization:.0%})"
+                        ),
+                        used=used,
+                        budget=token_budget,
+                    )
+                )
             elif utilization >= 0.8:
-                alerts.append(BudgetAlert(
-                    level="warning",
-                    message=f"Token budget at {utilization:.0%}: {used:,} / {token_budget:,}",
-                    used=used,
-                    budget=token_budget,
-                ))
+                alerts.append(
+                    BudgetAlert(
+                        level="warning",
+                        message=f"Token budget at {utilization:.0%}: {used:,} / {token_budget:,}",
+                        used=used,
+                        budget=token_budget,
+                    )
+                )
 
         if cost_budget > 0:
             used = self.total_cost
             utilization = used / cost_budget
             if utilization >= 1.0:
-                alerts.append(BudgetAlert(
-                    level="critical",
-                    message=f"Cost budget exceeded: ${used:.4f} / ${cost_budget:.4f} ({utilization:.0%})",
-                    used=used,
-                    budget=cost_budget,
-                ))
+                alerts.append(
+                    BudgetAlert(
+                        level="critical",
+                        message=(
+                            f"Cost budget exceeded: ${used:.4f} / ${cost_budget:.4f} "
+                            f"({utilization:.0%})"
+                        ),
+                        used=used,
+                        budget=cost_budget,
+                    )
+                )
             elif utilization >= 0.8:
-                alerts.append(BudgetAlert(
-                    level="warning",
-                    message=f"Cost budget at {utilization:.0%}: ${used:.4f} / ${cost_budget:.4f}",
-                    used=used,
-                    budget=cost_budget,
-                ))
+                alerts.append(
+                    BudgetAlert(
+                        level="warning",
+                        message=(
+                            f"Cost budget at {utilization:.0%}: ${used:.4f} / ${cost_budget:.4f}"
+                        ),
+                        used=used,
+                        budget=cost_budget,
+                    )
+                )
 
         return alerts
 

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 # ── Token Accounting ──────────────────────────────────────────
 
+
 class TokenAccounting(BaseModel):
     """Token usage and cost tracking."""
 
@@ -58,6 +59,7 @@ class TokenAccounting(BaseModel):
 
 # ── Budget Alert ──────────────────────────────────────────────
 
+
 class BudgetAlert(BaseModel):
     """Alert when token/cost budget threshold is crossed."""
 
@@ -68,6 +70,7 @@ class BudgetAlert(BaseModel):
 
 
 # ── Trace Events (Discriminated Union) ───────────────────────
+
 
 class _BaseTraceEvent(BaseModel):
     """Base class for all trace events."""
@@ -134,16 +137,12 @@ class ErrorEvent(_BaseTraceEvent):
 
 # Discriminated union type for all trace events
 TraceEvent = (
-    LLMCallEvent
-    | ToolCallEvent
-    | ToolResultEvent
-    | StepCompleteEvent
-    | TurnStartEvent
-    | ErrorEvent
+    LLMCallEvent | ToolCallEvent | ToolResultEvent | StepCompleteEvent | TurnStartEvent | ErrorEvent
 )
 
 
 # ── Envelope Compatibility DTO ───────────────────────────────
+
 
 @dataclass(frozen=True)
 class EnvelopeTraceDTO:
@@ -161,6 +160,7 @@ class EnvelopeTraceDTO:
 
 
 # ── Execution Trace ──────────────────────────────────────────
+
 
 class ExecutionTrace(BaseModel):
     """Complete execution trace for a single eval run.

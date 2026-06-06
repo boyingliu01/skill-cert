@@ -92,9 +92,7 @@ class GoalChangeTester:
         """
         results = []
         for scenario in self.scenarios:
-            result = await self._test_single_scenario(
-                scenario, run_conversation, evaluate_response
-            )
+            result = await self._test_single_scenario(scenario, run_conversation, evaluate_response)
             results.append(result)
         return results
 
@@ -134,10 +132,12 @@ class GoalChangeTester:
 
             # Add follow-up if provided
             if turn_idx < len(scenario.follow_up_messages):
-                messages.append({
-                    "role": "user",
-                    "content": scenario.follow_up_messages[turn_idx],
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": scenario.follow_up_messages[turn_idx],
+                    }
+                )
 
         # Final alignment check
         final_alignment = evaluate_response(last_response, scenario.changed_goal)
@@ -145,7 +145,12 @@ class GoalChangeTester:
         # Calculate overall score
         adaptation_score = 1.0 if adapted else 0.3
         speed_bonus = max(0, 0.2 - (adaptation_turns - scenario.expected_adaptation_turns) * 0.1)
-        score = 0.5 * adaptation_score + 0.3 * final_alignment + 0.2 * (1.0 if context_retained else 0.0) + speed_bonus
+        score = (
+            0.5 * adaptation_score
+            + 0.3 * final_alignment
+            + 0.2 * (1.0 if context_retained else 0.0)
+            + speed_bonus
+        )
         score = min(1.0, max(0.0, score))
 
         return GoalChangeResult(
@@ -165,9 +170,8 @@ class GoalChangeTester:
         passed = sum(1 for r in results if r.passed)
         avg_score = sum(r.score for r in results) / len(results)
         adaptation_rate = sum(1 for r in results if r.adapted) / len(results)
-        avg_adaptation_turns = (
-            sum(r.adaptation_turns for r in results if r.adapted)
-            / max(1, sum(1 for r in results if r.adapted))
+        avg_adaptation_turns = sum(r.adaptation_turns for r in results if r.adapted) / max(
+            1, sum(1 for r in results if r.adapted)
         )
 
         return {
