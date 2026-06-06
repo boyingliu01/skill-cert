@@ -14,7 +14,7 @@ class DialogueRunner:
                  completion_signals: list[str] | None = None):
         """
         Initialize the DialogueRunner
-        
+
         Args:
             simulator: UserSimulator instance to generate user messages
             evaluator: DialogueEvaluator instance to evaluate conversations
@@ -33,11 +33,11 @@ class DialogueRunner:
     async def run_dialogue_eval(self, eval_case: dict, skill_context: str) -> dict:
         """
         Run multi-turn dialogue evaluation.
-        
+
         Args:
             eval_case: The evaluation case to execute
             skill_context: Context about the skill being evaluated
-            
+
         Returns:
             Dictionary with conversation history, evaluation result and turns count
         """
@@ -130,7 +130,7 @@ class DialogueRunner:
     def _is_conversation_complete(self, history: list[dict]) -> bool:
         """
         Check if the conversation should terminate early.
-        
+
         Returns True if:
         - History length is at least 4 messages
         - The last message (should be assistant) contains any completion signal

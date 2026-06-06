@@ -1,6 +1,5 @@
 """Tests for engine/report_models.py — StructuredReport and related models."""
 
-import pytest
 
 from engine.report_models import (
     AssertionResult,

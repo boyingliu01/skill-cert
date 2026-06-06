@@ -4,9 +4,9 @@ import pytest
 
 from engine.stability import (
     StabilityRunner,
-    calculate_l4_stability,
-    _get_t_value,
     _compute_confidence_interval,
+    _get_t_value,
+    calculate_l4_stability,
 )
 
 

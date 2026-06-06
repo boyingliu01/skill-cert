@@ -2,11 +2,14 @@
 
 import sys
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING
 
 import yaml
 
 from engine.config import ModelConfig
+
+if TYPE_CHECKING:
+    from argparse import Namespace
 
 CONFIG_DIR = Path.home() / ".skill-cert"
 CONFIG_FILE = CONFIG_DIR / "models.yaml"
@@ -248,7 +251,7 @@ def _setup_non_interactive(
     return EXIT_OK
 
 
-def run_setup(args: "argparse.Namespace | None" = None) -> int:
+def run_setup(args: "Namespace | None" = None) -> int:
     """Entry point for the setup subcommand.
 
     Supports both interactive (wizard) and non-interactive (--model-name) modes.

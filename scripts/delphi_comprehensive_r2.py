@@ -5,8 +5,9 @@ Present the fix report addressing all R1 issues to both experts.
 import json
 import sys
 import time
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
+
 import httpx
 
 API_KEY = "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
@@ -250,7 +251,8 @@ def main():
                 json_str = response[json_start:]
                 depth = 0
                 for i, c in enumerate(json_str):
-                    if c == '{': depth += 1
+                    if c == '{':
+                        depth += 1
                     elif c == '}':
                         depth -= 1
                         if depth == 0:

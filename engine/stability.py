@@ -6,7 +6,6 @@ from typing import Any
 
 from engine.constants import StabilityThresholds
 
-
 # ── t-distribution approximation (no scipy dependency) ──────────────────────
 
 # Lookup table for common confidence levels and degrees of freedom (1-30)

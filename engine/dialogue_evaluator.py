@@ -28,9 +28,9 @@ class DialogueEvaluator:
     def __init__(self, judge_callback: Callable | None = None):
         """
         Initialize the DialogueEvaluator.
-        
+
         Args:
-            judge_callback: Optional callback for LLM judge functionality  
+            judge_callback: Optional callback for LLM judge functionality
                            (typically used for testing with mocks)
         """
         self.judge_callback = judge_callback
@@ -60,12 +60,12 @@ class DialogueEvaluator:
     ) -> dict[str, Any]:
         """
         Evaluate a multi-turn conversation across 5 dimensions.
-        
+
         Args:
             conversation: List of message dictionaries with 'role' and 'content'
                          [{'role': 'user', 'content': '...'}, {'role': 'assistant', 'content': '...'}]
             workflow_steps: Optional list of workflow steps to check adherence
-            
+
         Returns:
             Dictionary with scores for all five dimensions and overall metrics
         """
@@ -238,8 +238,6 @@ class DialogueEvaluator:
         """
         Score the overall output quality of the skill response.
         """
-        response_lower = skill_response.lower()
-
         # Check for clarity and structure
         has_bullet_points = '*' in skill_response or '-' in skill_response and '#' in skill_response
         has_numbered_list = any(char.isdigit() and f'{char}.' in skill_response for char in '0123456789')
@@ -322,7 +320,7 @@ class DialogueEvaluator:
     def _calculate_overall(self, round_scores: list[float], final_score_dict: dict[str, float]) -> float:
         """
         Calculate overall score as weighted average of 5 dimensions.
-        Weights: intent_recognition (0.25), guidance_quality (0.20), 
+        Weights: intent_recognition (0.25), guidance_quality (0.20),
                  workflow_adherence (0.25), exception_handling (0.15), output_quality (0.15)
         """
         intent_score = final_score_dict.get('intent_recognition', 0.0)
@@ -340,8 +338,8 @@ class DialogueEvaluator:
     def _determine_verdict(self, round_scores: list[float], final_score: float) -> str:
         """
         Determine the verdict based on final score:
-        PASS if final_score >= 0.70, 
-        CAVEATS if final_score >= 0.50, 
+        PASS if final_score >= 0.70,
+        CAVEATS if final_score >= 0.50,
         FAIL otherwise
         """
         if final_score >= 0.70:

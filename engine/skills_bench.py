@@ -6,7 +6,7 @@ Identifies optimal skill loading configurations:
 - Conflict zones: skill combinations that interfere with each other
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 

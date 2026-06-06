@@ -1,6 +1,5 @@
 """Tests for engine/trace_models.py — ExecutionTrace, TokenAccounting, TraceEvent."""
 
-import time
 
 import pytest
 

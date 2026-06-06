@@ -1,16 +1,12 @@
 """Tests for skill_cert.cli.setup — setup subcommand."""
 
 import argparse
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 import yaml
 
 from engine.config import ModelConfig
 from skill_cert.cli.setup import (
-    CONFIG_DIR,
-    CONFIG_FILE,
     EXIT_ERROR,
     EXIT_OK,
     _load_existing_models,
@@ -22,7 +18,6 @@ from skill_cert.cli.setup import (
     _write_config,
     run_setup,
 )
-
 
 # ---------------------------------------------------------------------------
 # Validation helpers

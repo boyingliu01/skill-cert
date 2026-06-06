@@ -9,13 +9,13 @@ Design decisions (Delphi Review consensus):
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from engine.trace_models import ExecutionTrace
 

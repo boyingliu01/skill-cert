@@ -1,19 +1,16 @@
 """Tests for engine/observability.py — EventBus and TraceExporter."""
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
 from engine.observability import (
-    BaseTraceExporter,
     EventBus,
     JSONLTraceExporter,
     NoOpTraceExporter,
     create_trace_exporter,
 )
-from engine.trace_models import ExecutionTrace, LLMCallEvent, TokenAccounting
+from engine.trace_models import ExecutionTrace, TokenAccounting
 
 
 class TestEventBus:

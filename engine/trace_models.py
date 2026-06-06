@@ -19,10 +19,9 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
 
 # ── Token Accounting ──────────────────────────────────────────
 
@@ -134,14 +133,14 @@ class ErrorEvent(_BaseTraceEvent):
 
 
 # Discriminated union type for all trace events
-TraceEvent = Union[
-    LLMCallEvent,
-    ToolCallEvent,
-    ToolResultEvent,
-    StepCompleteEvent,
-    TurnStartEvent,
-    ErrorEvent,
-]
+TraceEvent = (
+    LLMCallEvent
+    | ToolCallEvent
+    | ToolResultEvent
+    | StepCompleteEvent
+    | TurnStartEvent
+    | ErrorEvent
+)
 
 
 # ── Envelope Compatibility DTO ───────────────────────────────

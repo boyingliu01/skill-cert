@@ -1,8 +1,8 @@
 """Round 1 Delphi Review — anonymous independent expert reviews."""
-import httpx
 import json
-import sys
 from pathlib import Path
+
+import httpx
 
 API_KEY = "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
 BASE_URL = "https://lab.iwhalecloud.com/gpt-proxy"

@@ -6,11 +6,10 @@ Expert B: kimi-k2.6 (Moonshot) — Implementation Engineer
 """
 
 import json
-import os
 import sys
 import time
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────
 PROXY_URL = "https://lab.iwhalecloud.com/gpt-proxy"

@@ -254,11 +254,11 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
             from pathlib import Path as _Path
             schema_path = _Path(__file__).parent.parent.parent / "schemas" / "report.schema.json"
             if schema_path.exists():
-                schema = _json.loads(schema_path.read_text(encoding="utf-8"))
                 # Use Pydantic for validation (no jsonschema dependency)
-                from engine.report_models import StructuredReport as SR
+                from engine.report_models import StructuredReport
+
                 try:
-                    SR.model_validate(_json.loads(json_str))
+                    StructuredReport.model_validate(_json.loads(json_str))
                     print("  Schema validation: PASS")
                 except Exception as e:
                     print(f"  Schema validation: FAIL - {e}")

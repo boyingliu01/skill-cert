@@ -210,12 +210,12 @@ For detailed results, see the JSON output.
     ) -> tuple[str, dict[str, Any]]:
         """
         Generate Markdown and JSON reports from metrics and drift analysis.
-        
+
         Args:
             metrics: Metrics calculation results from MetricsCalculator
             drift: Drift analysis results from DriftDetector
             config: Configuration parameters
-            
+
         Returns:
             Tuple of (markdown_report, json_report)
         """

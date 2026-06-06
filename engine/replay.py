@@ -10,7 +10,7 @@ class HistoryReplay:
     def __init__(self, skill_runner):
         """
         Initialize with a skill runner instance.
-        
+
         Args:
             skill_runner: An EvalRunner instance that has run_with_skill method
         """
@@ -19,10 +19,10 @@ class HistoryReplay:
     def load_session(self, file_path: str | Path) -> list[dict[str, Any]]:
         """
         Load JSONL file and parse each line as JSON.
-        
+
         Args:
             file_path: Path to JSONL session file
-            
+
         Returns:
             List of message dictionaries
         """
@@ -61,11 +61,11 @@ class HistoryReplay:
     async def replay_session(self, session: list[dict], skill_context: str) -> list[dict]:
         """
         Replay session against skill, collecting results for user messages.
-        
+
         Args:
             session: List of message dictionaries
             skill_context: Context for running the skill
-            
+
         Returns:
             Results with user message, new response, and context length
         """

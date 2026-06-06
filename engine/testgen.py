@@ -376,7 +376,7 @@ Current Coverage: {coverage:.2f}
 
 Analyze the eval cases and identify:
 1. Which workflow steps are NOT covered by any eval case assertions
-2. Which anti-patterns are NOT covered by any eval case assertions  
+2. Which anti-patterns are NOT covered by any eval case assertions
 3. Which output formats are NOT covered by any eval case assertions
 4. Whether the eval cases are diverse enough (normal, boundary, failure, trigger)
 5. Whether the assertions are meaningful and verifiable

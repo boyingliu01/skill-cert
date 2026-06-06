@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from engine.constants import TimingLimits
-from engine.envelope import EnvelopeChecker, EnvelopeResult
+from engine.envelope import EnvelopeChecker
 
 
 class _DictTrace:

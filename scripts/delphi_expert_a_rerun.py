@@ -1,9 +1,9 @@
 """Rerun only Expert A with glm-5.1 model."""
 import json
-import sys
 import time
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
+
 import httpx
 
 API_KEY = "ailab_YL+F7NNalGHNiJUHB46TaCAiMPJk2Q9PrgOcdm2aSqbEHUtxgnQjudORt2Z5BxP2BZ/qMmtBdRHHxCg6rcDlWf+CpV6em2iubEdJzVy5AiDQ"
@@ -79,7 +79,7 @@ except Exception as e:
 elapsed = time.time() - start
 print(f"  Response received in {elapsed:.1f}s ({len(response)} chars)")
 
-output_file = OUTPUT_DIR / f"delphi-r1-expert-A.md"
+output_file = OUTPUT_DIR / "delphi-r1-expert-A.md"
 output_file.write_text(
     f"# Delphi Review Round 1 — Expert A\n\n"
     f"**Model**: {MODEL} ({PROVIDER})\n"
@@ -98,7 +98,8 @@ try:
         json_str = response[json_start:]
         depth = 0
         for i, c in enumerate(json_str):
-            if c == '{': depth += 1
+            if c == '{':
+                depth += 1
             elif c == '}':
                 depth -= 1
                 if depth == 0:

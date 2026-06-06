@@ -34,12 +34,12 @@ class DriftDetector:
     ) -> list[DriftResult]:
         """
         Run same evals across multiple models and detect drift.
-        
+
         Args:
             eval_cases: List of evaluation cases to run
             model_adapters: Dictionary mapping model names to adapter objects
             grader: Grader instance to evaluate outputs
-            
+
         Returns:
             List of drift results comparing model pairs
         """

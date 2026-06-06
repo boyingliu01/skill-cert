@@ -9,7 +9,7 @@ class UserSimulator:
     def __init__(self, persona_profiles: dict | None = None):
         """
         Initialize the UserSimulator.
-        
+
         Args:
             persona_profiles: Optional dictionary with different persona characteristics
         """
@@ -41,12 +41,12 @@ class UserSimulator:
     ) -> dict:
         """
         Generate the next simulated user message based on the conversation history.
-        
+
         Args:
             eval_case: The original evaluation case being simulated
             context_history: List of conversation turns [{"role": "user"/"assistant", "content": "..."}]
             skill_context: Additional context about the skill evaluation
-        
+
         Returns:
             Dictionary with the simulated user message
         """
