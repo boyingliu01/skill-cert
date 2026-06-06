@@ -418,10 +418,18 @@ class TestCLI:
             exit_code = main()
             assert exit_code == EXIT_ERROR
 
-    def test_cli_valid_skill_no_models(self):
-        spec_path = str(Path(__file__).parent.parent / 'examples' / 'minimum-skill.md')
-        if not Path(spec_path).exists():
-            pytest.skip('minimum-skill.md not found')
+    def test_cli_valid_skill_no_models(self, monkeypatch, tmp_path):
+        """Real SKILL.md at project root, no models configured → EXIT_ERROR.
+
+        Uses monkeypatch/tmp_path to isolate from local ~/.skill-cert/models.yaml.
+        """
+        spec_path = str(Path(__file__).parent.parent / 'SKILL.md')
+        assert Path(spec_path).exists(), f"SKILL.md not found at {spec_path}"
+
+        # Isolate from any existing config: empty HOME means no ~/.skill-cert/models.yaml
+        monkeypatch.setenv('HOME', str(tmp_path))
+        monkeypatch.delenv('SKILL_CERT_MODELS', raising=False)
+
         with patch.object(sys, 'argv', ['skill_cert', '--skill', spec_path]):
             exit_code = main()
             assert exit_code == EXIT_ERROR
