@@ -20,6 +20,19 @@ from engine.report_models import (
 class Reporter:
     """Generates Markdown and JSON reports for skill certification results."""
 
+    @staticmethod
+    def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
+        """Strip sensitive fields (api_key) from config dict for safe reporting."""
+        redacted = dict(config)
+        models_raw = redacted.get("models")
+        if isinstance(models_raw, list):
+            redacted["models"] = [
+                {k: v for k, v in m.items() if k != "api_key"}
+                for m in models_raw
+                if isinstance(m, dict)
+            ]
+        return redacted
+
     def __init__(self):
         """Initialize reporter with Jinja2 templates."""
         # Define templates inline for simplicity
@@ -232,6 +245,12 @@ For detailed results, see the JSON output.
         self.env = Environment()
         self.markdown_template = self.env.from_string(self.markdown_template_str)
 
+    @staticmethod
+    def _num(value: Any, default: float = 0.0) -> float:
+        if value is None:
+            return default
+        return float(value)
+
     def generate_report(
         self,
         metrics: dict[str, Any],
@@ -250,12 +269,11 @@ For detailed results, see the JSON output.
         Returns:
             Tuple of (markdown_report, json_report)
         """
-        # Extract metrics
-        overall_score = metrics.get("overall_score", 0.0)
-        l1_score = metrics.get("l1_trigger_accuracy", 0.0)
-        l2_score = metrics.get("l2_with_without_skill_delta", 0.0)
-        l3_score = metrics.get("l3_step_adherence", 0.0)
-        l4_score = metrics.get("l4_execution_stability", 0.0)
+        overall_score = self._num(metrics.get("overall_score", 0.0))
+        l1_score = self._num(metrics.get("l1_trigger_accuracy", 0.0))
+        l2_score = self._num(metrics.get("l2_with_without_skill_delta", 0.0))
+        l3_score = self._num(metrics.get("l3_step_adherence", 0.0))
+        l4_score = self._num(metrics.get("l4_execution_stability", 0.0))
 
         metrics_breakdown = metrics.get("metrics_breakdown", {})
         l1_details = metrics_breakdown.get("l1_details", {})
@@ -323,7 +341,7 @@ For detailed results, see the JSON output.
             "evaluation_coverage": coverage_data,
             "improvement_suggestions": suggestions,
             "timestamp": config.get("timestamp", ""),
-            "config": config,
+            "config": self._redact_config(config),
             "config_summary": config_info,
             "benchmark": benchmark_info,
         }
@@ -523,24 +541,24 @@ For detailed results, see the JSON output.
     def _get_metric_suggestions(self, metrics: dict[str, Any]) -> list[str]:
         """Get suggestions for L1-L4 metrics."""
         suggestions = []
-        l1_score = metrics.get("l1_trigger_accuracy", 0.0)
+        l1_score = self._num(metrics.get("l1_trigger_accuracy", 0.0))
         if l1_score < 0.7:
             suggestions.append(
                 "Improve trigger accuracy - skill may not be properly detecting trigger conditions"
             )
 
-        l2_score = metrics.get("l2_with_without_skill_delta", 0.0)
+        l2_score = self._num(metrics.get("l2_with_without_skill_delta", 0.0))
         if l2_score < 0.5:
             suggestions.append(
                 "Skill may not be providing sufficient value - "
                 "consider enhancing core functionality"
             )
 
-        l3_score = metrics.get("l3_step_adherence", 0.0)
+        l3_score = self._num(metrics.get("l3_step_adherence", 0.0))
         if l3_score < 0.7:
             suggestions.append("Improve adherence to expected workflow steps")
 
-        l4_score = metrics.get("l4_execution_stability", 0.0)
+        l4_score = self._num(metrics.get("l4_execution_stability", 0.0))
         if l4_score < 0.8:
             suggestions.append(
                 "Address execution instability - results vary significantly across runs"
@@ -738,17 +756,18 @@ For detailed results, see the JSON output.
 
         This is the canonical structured output for skill-cert evaluation.
         """
-        # Build metadata
+        # Build metadata (redact config to prevent credential leaks)
+        redacted_config = self._redact_config(config)
         metadata = ReportMetadata(
             skill_name=config.get("skill_name", ""),
             skill_path=config.get("skill_path", ""),
-            models=config.get("models", []),
+            models=redacted_config.get("models", []),
             timestamp=config.get("timestamp", datetime.now(timezone.utc).isoformat()),
             engine_version=config.get("engine_version", "0.1.0"),
         )
 
         # Build verdict
-        overall_score = metrics.get("overall_score", 0.0)
+        overall_score = self._num(metrics.get("overall_score", 0.0))
         verdict = self._determine_verdict(overall_score, drift)
         verdict_summary = VerdictSummary(
             verdict=verdict,  # type: ignore[arg-type]
@@ -792,16 +811,12 @@ For detailed results, see the JSON output.
         latency_analysis = metrics.get("latency_analysis")
 
         return MetricsSection(
-            l1_trigger_accuracy=metrics.get("l1_trigger_accuracy", 0.0) * 100,
-            l2_output_delta=metrics.get("l2_with_without_skill_delta", 0.0),
-            l3_step_adherence=metrics.get("l3_step_adherence", 0.0) * 100,
-            l4_stability_std=l4_details.get("stdev_deterministic_pass_rate", 0.0),
-            l5_step_efficiency=metrics.get("l5_step_efficiency", 0.0) * 100
-            if "l5_step_efficiency" in metrics
-            else 0.0,
-            l6_trajectory_quality=metrics.get("l6_trajectory_quality", 0.0) * 100
-            if "l6_trajectory_quality" in metrics
-            else 0.0,
+            l1_trigger_accuracy=self._num(metrics.get("l1_trigger_accuracy", 0.0)) * 100,
+            l2_output_delta=self._num(metrics.get("l2_with_without_skill_delta", 0.0)),
+            l3_step_adherence=self._num(metrics.get("l3_step_adherence", 0.0)) * 100,
+            l4_stability_std=self._num(l4_details.get("stdev_deterministic_pass_rate", 0.0)),
+            l5_step_efficiency=self._num(metrics.get("l5_step_efficiency", 0.0)) * 100,
+            l6_trajectory_quality=self._num(metrics.get("l6_trajectory_quality", 0.0)) * 100,
             l7_cost_efficiency=cost_analysis.get("cost_efficiency", 0.0) if cost_analysis else 0.0,
             l8_latency_p50=latency_analysis.get("with_skill", {}).get("p50", 0.0) * 1000
             if latency_analysis and latency_analysis.get("with_skill")
@@ -866,9 +881,9 @@ For detailed results, see the JSON output.
     def _build_verdict_reasons(self, metrics: dict[str, Any], drift: dict[str, Any]) -> list[str]:
         """Build verdict reasons from metrics and drift."""
         reasons = []
-        l1 = metrics.get("l1_trigger_accuracy", 0.0)
-        l2 = metrics.get("l2_with_without_skill_delta", 0.0)
-        l3 = metrics.get("l3_step_adherence", 0.0)
+        l1 = self._num(metrics.get("l1_trigger_accuracy", 0.0))
+        l2 = self._num(metrics.get("l2_with_without_skill_delta", 0.0))
+        l3 = self._num(metrics.get("l3_step_adherence", 0.0))
         if l1 >= 0.9:
             reasons.append(f"L1 trigger accuracy: {l1:.0%}")
         if l2 >= 0.2:

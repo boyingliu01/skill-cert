@@ -1,5 +1,7 @@
 """Tests for engine/report_models.py — StructuredReport and related models."""
 
+from typing import Any, cast
+
 from engine.report_models import (
     AssertionResult,
     EvalDetail,
@@ -31,6 +33,19 @@ class TestReportMetadata:
         assert meta.skill_name == "test-skill"
         assert len(meta.models) == 2
 
+    def test_models_rejects_dict_config(self):
+        import pytest
+
+        invalid_models = cast(list[str], cast(Any, [{"model_name": "gpt-4", "api_key": "secret"}]))
+        with pytest.raises(Exception):
+            ReportMetadata(skill_name="test", models=invalid_models)
+
+        meta = ReportMetadata(
+            skill_name="test",
+            models=["gpt-4", "claude-3"],
+        )
+        assert all(isinstance(m, str) for m in meta.models)
+
 
 class TestVerdictSummary:
     """Tests for VerdictSummary model."""
@@ -48,6 +63,10 @@ class TestVerdictSummary:
         )
         assert verdict.verdict == "PASS"
         assert len(verdict.reasons) == 2
+
+    def test_pass_with_caveats_verdict(self):
+        verdict = VerdictSummary(verdict="PASS_WITH_CAVEATS", confidence=0.65)
+        assert verdict.verdict == "PASS_WITH_CAVEATS"
 
 
 class TestMetricsSection:

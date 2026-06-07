@@ -8,6 +8,7 @@ from typing import Any
 from engine.constants import StabilityThresholds, VerdictThresholds
 from engine.grader import EvalAssertion, EvalCase
 from engine.token_ledger import TokenLedger
+from engine.report_models import StructuredReport
 
 from .helpers import EXIT_ERROR, EXIT_FAIL_WITH_CAVEATS, EXIT_PASS, _print_metric, _print_phase
 
@@ -312,11 +313,10 @@ def _write_json_report(
     args,
     output_dir: Path,
     skill_name: str,
-    structured_report: dict[str, str],
+    structured_report: StructuredReport,
     report_format: str,
 ) -> tuple[Path | None, str | None]:
     """Write JSON report if format allows. Return path and JSON string."""
-    from engine.report_models import StructuredReport
     from skill_cert.cli import Reporter
 
     if report_format not in ("json", "both"):
@@ -395,8 +395,8 @@ def _generate_and_write_reports(
         config={
             "skill_name": skill_name,
             "skill_path": spec_path,
-            "models": list(adapters.keys()),
             **config.model_dump(),
+            "models": list(adapters.keys()),
         },
         maintainability=spec.get("maintainability"),
         token_analysis=token_analysis,

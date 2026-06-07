@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ class MockModelAdapter:
     def __init__(self, responses=None):
         self.responses = responses or []
         self.call_count = 0
+        self.skill_spec: dict[str, Any] = {}
 
     def chat(self, messages):
         if self.call_count < len(self.responses):
@@ -347,6 +349,8 @@ def test_review_evals_error_handling():
 
     # Mock adapter that raises an exception
     class ErrorMockAdapter:
+        skill_spec: dict[str, Any] = {}
+
         def chat(self, messages):
             raise Exception("API Error")
 
@@ -533,6 +537,46 @@ def test_merge_evals_edge_cases():
 
     merged = generator._merge_evals(current_evals, supplementary_evals)
     assert len(merged["eval_cases"]) == 1  # Should remain unchanged
+
+
+def test_fill_gaps_receives_adapter_not_dict():
+    generator = EvalGenerator()
+    generator.coverage_threshold = 0.9
+    generator.degrade_threshold = 0.7
+    generator.consecutive_no_improvement = 3
+
+    skill_spec = {
+        "name": "test-skill",
+        "description": "A test skill",
+        "triggers": ["test"],
+        "workflow_steps": [{"name": "step1"}],
+        "anti_patterns": ["skip_validation"],
+        "output_format": ["json"],
+    }
+
+    mock_adapter = MockModelAdapter(
+        [
+            '{"eval_cases": [{"id": 1, "name": "test-case", "category": "normal", '
+            '"input": "test input", "expected_triggers": true, '
+            '"assertions": [{"type": "contains", "value": "test", "weight": 1}]}]}'
+        ]
+    )
+
+    mock_review_adapter = MockModelAdapter(
+        [
+            '{"coverage": 0.5, "gaps": ["workflow not covered"], "needs_improvement": true}',
+            '{"coverage": 0.95, "gaps": [], "needs_improvement": false}',
+        ]
+    )
+    mock_review_adapter.skill_spec = skill_spec
+
+    result = generator.generate_evals_with_convergence(
+        skill_spec, mock_adapter, mock_review_adapter
+    )
+
+    assert "eval_cases" in result or "evals" in result
+    eval_cases = result.get("eval_cases", result.get("evals", []))
+    assert len(eval_cases) >= 2, f"Expected at least 2 eval cases, got {len(eval_cases)}"
 
 
 def test_generate_evals_with_convergence_error_scenario():

@@ -6,6 +6,65 @@ from engine.reporter import Reporter
 class TestReporter:
     """Test the Reporter class and its report generation functionality."""
 
+    def test_generate_report_redacts_api_key(self):
+        """RED: API key must NOT appear in generated JSON report.
+
+        The config dict may contain models with api_key values.
+        generate_report() must redact them from the output.
+        """
+        reporter = Reporter()
+
+        metrics = {
+            "overall_score": 0.85,
+            "l1_trigger_accuracy": 0.9,
+            "l2_with_without_skill_delta": 0.75,
+            "l3_step_adherence": 0.8,
+            "l4_execution_stability": 0.95,
+            "metrics_breakdown": {
+                "l1_details": {"total_trigger_evals": 10, "passed_trigger_evals": 9, "trigger_accuracy": 0.9},
+                "l2_details": {"with_skill_avg_pass_rate": 0.85, "without_skill_avg_pass_rate": 0.6, "delta": 0.25, "improvement_percentage": 41.67},
+                "l3_details": {"total_evaluations": 20, "passing_evaluations": 16, "step_coverage_ratio": 0.8},
+                "l4_details": {"deterministic_evals_count": 15, "avg_deterministic_pass_rate": 0.9, "stdev_deterministic_pass_rate": 0.05, "execution_stability": 0.95},
+            },
+        }
+        drift = {
+            "drift_detected": False,
+            "highest_severity": "none",
+            "average_variance": 0.05,
+            "max_variance": 0.1,
+            "model_pairs_compared": 1,
+            "severity_distribution": {"none": 1, "low": 0, "moderate": 0, "high": 0},
+            "overall_verdict": "PASS",
+            "summary": "No significant drift detected",
+        }
+
+        # Config dict with models that contain api_key (secrets that must be redacted)
+        config = {
+            "total_evaluations": 20,
+            "avg_pass_rate": 0.85,
+            "models": [
+                {"model_name": "gpt-4", "base_url": "https://api.openai.com/v1", "api_key": "sk-secret-12345"},
+                {"model_name": "claude-3", "base_url": "https://api.anthropic.com/v1", "api_key": "sk-ant-secret-67890"},
+            ],
+            "timestamp": "2023-10-01T12:00:00Z",
+        }
+
+        _, json_report = reporter.generate_report(metrics, drift, config)
+
+        # Assert api_key is NOT leaked into the JSON report
+        assert "api_key" not in str(json_report.get("config", {})), (
+            "api_key must be redacted from JSON report config"
+        )
+        assert "sk-secret-12345" not in str(json_report), (
+            "API key values must not appear anywhere in the report"
+        )
+
+        # Assert model names and other config fields are preserved
+        config_section = json_report.get("config", {})
+        models_in_report = config_section.get("models", [])
+        assert len(models_in_report) == 2, "model count should be preserved"
+        assert models_in_report[0]["model_name"] == "gpt-4", "model_name should be preserved"
+
     def test_generate_report_basic(self):
         """Test basic report generation."""
         reporter = Reporter()
@@ -796,6 +855,106 @@ class TestReporter:
         assert ab["critical"] == {"passed": 1, "total": 2}
         assert ab["important"] == {"passed": 2, "total": 2}
         assert ab["normal"] == {"passed": 1, "total": 2}
+
+    def test_build_structured_report_tolerates_none_metrics(self):
+        reporter = Reporter()
+        report = reporter.build_structured_report(
+            metrics={
+                "l1_trigger_accuracy": None,
+                "l2_with_without_skill_delta": None,
+                "l3_step_adherence": None,
+                "l5_step_efficiency": None,
+                "l6_trajectory_quality": None,
+            },
+            drift={"overall_verdict": "FAIL"},
+            config={"models": ["m1"]},
+        )
+        assert report.metrics.l1_trigger_accuracy == 0.0
+        assert report.metrics.l2_output_delta == 0.0
+        assert report.metrics.l3_step_adherence == 0.0
+
+    def test_generate_report_with_maintainability_details(self):
+        reporter = Reporter()
+
+        metrics = {
+            "overall_score": 0.85,
+            "l1_trigger_accuracy": 0.90,
+            "l2_with_without_skill_delta": 0.75,
+            "l3_step_adherence": 0.80,
+            "l4_execution_stability": 0.95,
+            "metrics_breakdown": {
+                "l1_details": {
+                    "total_trigger_evals": 10,
+                    "passed_trigger_evals": 9,
+                    "trigger_accuracy": 0.90,
+                },
+                "l2_details": {
+                    "with_skill_avg_pass_rate": 0.85,
+                    "without_skill_avg_pass_rate": 0.60,
+                    "improvement_percentage": 41.67,
+                },
+                "l3_details": {"step_coverage_ratio": 0.80},
+                "l4_details": {"execution_stability": 0.95, "stdev_deterministic_pass_rate": 0.05},
+            },
+        }
+        drift = {
+            "drift_detected": False,
+            "highest_severity": "none",
+            "average_variance": 0.0,
+            "max_variance": 0.0,
+            "overall_verdict": "PASS",
+        }
+        config = {"total_evaluations": 20, "avg_pass_rate": 0.85, "timestamp": ""}
+
+        # Maintainability with nested detail objects (as returned by MaintainabilityScorer)
+        maintainability = {
+            "total_score": 75.0,
+            "grade": "C",
+            "readability_score": 70.0,
+            "completeness_score": 80.0,
+            "freshness_score": 75.0,
+            "readability_details": {
+                "avg_line_length": 105.5,
+                "max_depth": 4,
+                "todo_count": 2,
+                "length_score": 0.95,
+                "depth_score": 0.8,
+                "todo_score": 0.7,
+                "score": 0.817,
+            },
+            "completeness_details": {
+                "has_name": True,
+                "has_description": True,
+                "has_triggers": True,
+                "has_workflow": False,
+                "has_anti_patterns": False,
+                "score": 0.6,
+            },
+            "freshness_details": {
+                "outdated_refs": 1,
+                "has_version": False,
+                "is_beta": False,
+                "score": 0.9,
+            },
+        }
+
+        markdown_report, json_report = reporter.generate_report(
+            metrics, drift, config, maintainability=maintainability
+        )
+
+        # Check that markdown renders nested details
+        assert "Maintainability" in markdown_report
+        assert "**Score**: 75.0/100 (Grade: C)" in markdown_report
+        assert "Average line length exceeds 100 characters" in markdown_report
+        assert "Section nesting exceeds 3 levels" in markdown_report
+        assert "Contains 2 TODO/FIXME marker(s)" in markdown_report
+        assert "Missing Workflow section" in markdown_report
+        assert "Missing Anti-Patterns section" in markdown_report
+
+        # Check JSON report includes maintainability
+        assert "maintainability" in json_report
+        assert json_report["maintainability"]["total_score"] == 75.0
+        assert json_report["maintainability"]["readability_details"]["avg_line_length"] == 105.5
 
     # ── Multi-skill with to_dict conflict ───────────────────
 

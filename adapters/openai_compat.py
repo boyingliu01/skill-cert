@@ -33,6 +33,18 @@ class OpenAICompatAdapter(ModelAdapter):
         )
         self.client = httpx.Client(timeout=httpx.Timeout(120.0))
 
+    @staticmethod
+    def _extract_error_detail(response: httpx.Response) -> str:
+        """Extract error detail from API response body, if available."""
+        try:
+            body = response.json()
+            msg = body.get("error", {}).get("message", "") or body.get("message", "")
+            if msg:
+                return msg[:200]
+        except Exception:
+            pass
+        return response.text[:200] if response.text else "No detail provided"
+
     def _call_with_usage(
         self,
         messages: list[dict[str, str]],
@@ -54,6 +66,13 @@ class OpenAICompatAdapter(ModelAdapter):
 
         if response.status_code == 401:
             raise RuntimeError("Invalid API key")
+        elif response.status_code == 400:
+            detail = self._extract_error_detail(response)
+            raise RuntimeError(
+                f"API returned 400 for model '{model}'. "
+                f"Verify the model name matches the API endpoint's expected format. "
+                f"Detail: {detail}"
+            )
         elif response.status_code == 404:
             raise RuntimeError("Model not found")
         elif response.status_code == 429:

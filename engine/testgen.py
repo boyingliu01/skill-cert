@@ -161,7 +161,7 @@ class EvalGenerator:
             supplementary_evals = self.fill_gaps(
                 review_result,
                 skill_spec,
-                current_evals,
+                review_adapter,
             )
             if self._has_sufficient_evals(supplementary_evals):
                 current_evals = self._merge_evals(current_evals, supplementary_evals)

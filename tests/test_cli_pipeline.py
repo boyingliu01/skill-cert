@@ -1902,6 +1902,75 @@ description: "A test skill"
                 main()
             assert exc.value.code == 0
 
+    def test_generate_structured_report_with_models_string(self):
+        from unittest.mock import MagicMock, patch
+
+        from engine.report_models import StructuredReport
+        from skill_cert.cli.evals import _generate_and_write_reports
+
+        mock_config = MagicMock()
+        mock_config.model_name = "mock-model"
+        mock_config.base_url = "http://mock.api.com/v1"
+        mock_config.api_key = "secret-key"
+
+        mock_config.model_dump.return_value = {
+            "model_name": "mock-model",
+            "base_url": "http://mock.api.com/v1",
+            "api_key": "secret-key",
+            "models": [{"model_name": "gpt-4", "api_key": "secret"}],
+        }
+
+        mock_adapter = MagicMock()
+
+        with patch("skill_cert.cli.Reporter") as MockReporter:
+            mock_reporter_instance = MagicMock()
+            MockReporter.return_value = mock_reporter_instance
+
+            def capture_build_structured_report(*args, **kwargs):
+                config_arg = kwargs.get("config", {})
+                assert "models" in config_arg
+                assert isinstance(config_arg["models"], list)
+                assert all(isinstance(m, str) for m in config_arg["models"]), (
+                    f"models should be strings, got: {config_arg['models']}"
+                )
+                assert "api_key" not in str(config_arg.get("models", []))
+                return MagicMock(spec=StructuredReport)
+
+            mock_reporter_instance.build_structured_report.side_effect = (
+                capture_build_structured_report
+            )
+            mock_reporter_instance.generate_report.return_value = ("# MD", '{"json": "report"}')
+
+            args = MagicMock()
+            args.format = "json"
+            args.trace_dir = None
+            args.json_schema_validate = False
+
+            output_dir = MagicMock()
+            output_dir.__truediv__ = MagicMock(return_value=MagicMock())
+
+            spec = {"evals": [], "maintainability": None}
+            adapters = {"mock-model": mock_adapter}
+
+            _generate_and_write_reports(
+                args=args,
+                output_dir=output_dir,
+                skill_name="test-skill",
+                spec=spec,
+                spec_path="/path/to/skill.md",
+                adapters=adapters,
+                metrics={},
+                drift_report={},
+                config=mock_config,
+            )
+
+            assert mock_reporter_instance.build_structured_report.called
+            call_kwargs = mock_reporter_instance.build_structured_report.call_args[1]
+            config_passed = call_kwargs.get("config", {})
+            assert config_passed["models"] == ["mock-model"], (
+                f"Expected ['mock-model'], got {config_passed['models']}"
+            )
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

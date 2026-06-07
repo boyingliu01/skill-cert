@@ -43,7 +43,7 @@ class ReportMetadata(BaseModel):
 class VerdictSummary(BaseModel):
     """Overall verdict and reasons."""
 
-    verdict: Literal["PASS", "FAIL"] = "FAIL"
+    verdict: Literal["PASS", "PASS_WITH_CAVEATS", "FAIL"] = "FAIL"
     confidence: float = 0.0
     reasons: list[str] = Field(default_factory=list)
     blocking_issues: list[str] = Field(default_factory=list)

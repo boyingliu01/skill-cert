@@ -47,6 +47,9 @@ def _setup_single_mode(args, config):
         "readability_score": maintainability.readability_score,
         "completeness_score": maintainability.completeness_score,
         "freshness_score": maintainability.freshness_score,
+        "readability_details": maintainability.readability_details,
+        "completeness_details": maintainability.completeness_details,
+        "freshness_details": maintainability.freshness_details,
     }
     print(
         f"  Maintainability Score: {maintainability.total_score:.1f}/100 "
@@ -91,7 +94,7 @@ def run_single_mode(args, config) -> int:
 
     result = _setup_single_mode(args, config)
     spec_path, output_dir, skill_name, spec, evals, adapters = result
-    if spec_path is None:
+    if spec_path is None or spec is None:
         return EXIT_ERROR
     spec["evals"] = evals
     return _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, adapters)

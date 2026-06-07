@@ -167,5 +167,32 @@ def test_openai_compat_cleanup():
         mock_close.assert_called_once()
 
 
+def test_openai_compat_model_alias_400_helpful_error():
+    """RED: When API returns 400 due to bad model alias, error must be helpful."""
+    adapter = OpenAICompatAdapter(
+        base_url="https://api.whalecloud.com",
+        api_key="test-key",
+        model="whalecloud-minimax",
+    )
+
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 400
+    mock_response.text = '{"error": {"message": "Model whalecloud-minimax not found"}}'
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "400 Bad Request", request=MagicMock(), response=mock_response
+    )
+
+    with patch.object(adapter.client, "post", return_value=mock_response):
+        with pytest.raises(RuntimeError) as excinfo:
+            adapter._call_with_usage_sync(
+                [{"role": "user", "content": "hello"}],
+                timeout=30,
+            )
+
+    error_msg = str(excinfo.value)
+    assert "model" in error_msg.lower(), "Error must mention model"
+    assert "400" in error_msg or "Bad Request" in error_msg, "Error must include HTTP status"
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -149,17 +149,23 @@ class SkillCertConfig(BaseModel):
 
     @staticmethod
     def _load_models_from_config(models_config: list[dict]) -> list[ModelConfig]:
-        """Load models from config file with API key resolution."""
+        def resolve_env_var(value: str, field_name: str = "") -> str:
+            if value and value.startswith("${") and value.endswith("}"):
+                var_name = value[2:-1]
+                resolved = os.getenv(var_name)
+                if resolved:
+                    return resolved
+                if "fallback" in field_name.lower():
+                    resolved = os.getenv("DASHSCOPE_API_KEY")
+                    if resolved:
+                        return resolved
+            return value
+
         models = []
         for model_data in models_config:
-            api_key = model_data.get("api_key", "")
-            if api_key.startswith("${") and api_key.endswith("}"):
-                var_name = api_key[2:-1]
-                resolved_key = os.getenv(var_name)
-                if resolved_key:
-                    model_data["api_key"] = resolved_key
-                else:
-                    model_data["api_key"] = api_key
+            for key in ("api_key", "fallback_api_key", "fallback_base_url"):
+                if key in model_data:
+                    model_data[key] = resolve_env_var(model_data[key], key)
             models.append(ModelConfig(**model_data))
         return models
 
@@ -194,21 +200,32 @@ class SkillCertConfig(BaseModel):
         return models
 
     @staticmethod
-    def _parse_models_from_cli(models_cli: list[str]) -> list[ModelConfig]:
-        """Parse models from CLI args in format: model1=url,key[,fallback]"""
+    def _parse_models_from_cli(models_cli: str | list[str]) -> list[ModelConfig]:
+        """Parse models from CLI args in format: model1=url,key[,fallback][|model2=url,key[,fallback]]"""
         models = []
-        for model_arg in models_cli:
-            if "=" in model_arg:
+
+        if isinstance(models_cli, str):
+            model_strings = models_cli.split("|") if "|" in models_cli else [models_cli]
+        else:
+            model_strings = models_cli
+
+        for model_arg in model_strings:
+            model_arg = model_arg.strip()
+            if model_arg and "=" in model_arg:
                 name, config_part = model_arg.split("=", 1)
                 config_parts = config_part.split(",")
                 if len(config_parts) >= 2:
                     base_url = config_parts[0]
                     api_key = config_parts[1]
-                    fallback_model = config_parts[2] if len(config_parts) > 2 else None
+                    fallback_model = (
+                        config_parts[2].strip()
+                        if len(config_parts) > 2 and config_parts[2].strip()
+                        else None
+                    )
 
                     models.append(
                         ModelConfig(
-                            model_name=name,
+                            model_name=name.strip(),
                             base_url=base_url,
                             api_key=api_key,
                             fallback_model=fallback_model,
