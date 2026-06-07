@@ -21,10 +21,28 @@ class TestReporter:
             "l3_step_adherence": 0.8,
             "l4_execution_stability": 0.95,
             "metrics_breakdown": {
-                "l1_details": {"total_trigger_evals": 10, "passed_trigger_evals": 9, "trigger_accuracy": 0.9},
-                "l2_details": {"with_skill_avg_pass_rate": 0.85, "without_skill_avg_pass_rate": 0.6, "delta": 0.25, "improvement_percentage": 41.67},
-                "l3_details": {"total_evaluations": 20, "passing_evaluations": 16, "step_coverage_ratio": 0.8},
-                "l4_details": {"deterministic_evals_count": 15, "avg_deterministic_pass_rate": 0.9, "stdev_deterministic_pass_rate": 0.05, "execution_stability": 0.95},
+                "l1_details": {
+                    "total_trigger_evals": 10,
+                    "passed_trigger_evals": 9,
+                    "trigger_accuracy": 0.9,
+                },
+                "l2_details": {
+                    "with_skill_avg_pass_rate": 0.85,
+                    "without_skill_avg_pass_rate": 0.6,
+                    "delta": 0.25,
+                    "improvement_percentage": 41.67,
+                },
+                "l3_details": {
+                    "total_evaluations": 20,
+                    "passing_evaluations": 16,
+                    "step_coverage_ratio": 0.8,
+                },
+                "l4_details": {
+                    "deterministic_evals_count": 15,
+                    "avg_deterministic_pass_rate": 0.9,
+                    "stdev_deterministic_pass_rate": 0.05,
+                    "execution_stability": 0.95,
+                },
             },
         }
         drift = {
@@ -43,8 +61,16 @@ class TestReporter:
             "total_evaluations": 20,
             "avg_pass_rate": 0.85,
             "models": [
-                {"model_name": "gpt-4", "base_url": "https://api.openai.com/v1", "api_key": "sk-secret-12345"},
-                {"model_name": "claude-3", "base_url": "https://api.anthropic.com/v1", "api_key": "sk-ant-secret-67890"},
+                {
+                    "model_name": "gpt-4",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key": "sk-secret-12345",
+                },
+                {
+                    "model_name": "claude-3",
+                    "base_url": "https://api.anthropic.com/v1",
+                    "api_key": "sk-ant-secret-67890",
+                },
             ],
             "timestamp": "2023-10-01T12:00:00Z",
         }
@@ -461,6 +487,143 @@ class TestReporter:
         drift = {"drift_detected": False}
         suggestions = reporter._generate_suggestions(metrics, drift, "PASS", 0.95)
         assert any("strong" in s.lower() for s in suggestions)
+
+    # ── Degraded mode verdict cap (AC-019-07) ───────────────
+
+    def test_degraded_verdict_cap_via_generate_report(self):
+        """AC-019-07: degraded=True in metrics caps verdict at PASS_WITH_CAVEATS through generate_report."""
+        reporter = Reporter()
+
+        metrics = {
+            "degraded": True,
+            "overall_score": 0.85,
+            "l1_trigger_accuracy": 0.90,
+            "l2_with_without_skill_delta": 0.80,
+            "l3_step_adherence": 0.88,
+            "l4_execution_stability": 0.95,
+            "metrics_breakdown": {
+                "l1_details": {
+                    "total_trigger_evals": 10,
+                    "passed_trigger_evals": 9,
+                    "trigger_accuracy": 0.90,
+                },
+                "l2_details": {
+                    "with_skill_avg_pass_rate": 0.85,
+                    "without_skill_avg_pass_rate": 0.60,
+                    "improvement_percentage": 41.67,
+                },
+                "l3_details": {"step_coverage_ratio": 0.88},
+                "l4_details": {
+                    "execution_stability": 0.95,
+                    "stdev_deterministic_pass_rate": 0.05,
+                },
+            },
+        }
+        drift = {
+            "drift_detected": False,
+            "highest_severity": "none",
+            "average_variance": 0.0,
+            "max_variance": 0.0,
+            "overall_verdict": "PASS",
+        }
+        config = {"total_evaluations": 10, "avg_pass_rate": 0.85, "timestamp": ""}
+
+        md_report, json_report = reporter.generate_report(metrics, drift, config)
+
+        # degraded=True + all metrics pass → PASS_WITH_CAVEATS, not PASS
+        assert json_report["verdict"] == "PASS_WITH_CAVEATS", (
+            f"Expected PASS_WITH_CAVEATS when degraded=True, got {json_report['verdict']}"
+        )
+        assert "PASS_WITH_CAVEATS" in md_report
+
+    def test_non_degraded_verdict_is_pass(self):
+        """AC-019-07: Without degraded flag, passing metrics yield PASS."""
+        reporter = Reporter()
+
+        metrics = {
+            "overall_score": 0.85,
+            "l1_trigger_accuracy": 0.90,
+            "l2_with_without_skill_delta": 0.80,
+            "l3_step_adherence": 0.88,
+            "l4_execution_stability": 0.95,
+            "metrics_breakdown": {
+                "l1_details": {
+                    "total_trigger_evals": 10,
+                    "passed_trigger_evals": 9,
+                    "trigger_accuracy": 0.90,
+                },
+                "l2_details": {
+                    "with_skill_avg_pass_rate": 0.85,
+                    "without_skill_avg_pass_rate": 0.60,
+                    "improvement_percentage": 41.67,
+                },
+                "l3_details": {"step_coverage_ratio": 0.88},
+                "l4_details": {
+                    "execution_stability": 0.95,
+                    "stdev_deterministic_pass_rate": 0.05,
+                },
+            },
+        }
+        drift = {
+            "drift_detected": False,
+            "highest_severity": "none",
+            "average_variance": 0.0,
+            "max_variance": 0.0,
+            "overall_verdict": "PASS",
+        }
+        config = {"total_evaluations": 10, "avg_pass_rate": 0.85, "timestamp": ""}
+
+        _, json_report = reporter.generate_report(metrics, drift, config)
+
+        # No degraded flag → PASS
+        assert json_report["verdict"] == "PASS", (
+            f"Expected PASS when degraded=False, got {json_report['verdict']}"
+        )
+
+    def test_degraded_verdict_with_fail_drift(self):
+        """AC-019-07: degraded=True but drift says FAIL → verdict is FAIL."""
+        reporter = Reporter()
+
+        metrics = {
+            "degraded": True,
+            "overall_score": 0.85,
+            "l1_trigger_accuracy": 0.90,
+            "l2_with_without_skill_delta": 0.80,
+            "l3_step_adherence": 0.88,
+            "l4_execution_stability": 0.95,
+            "metrics_breakdown": {
+                "l1_details": {
+                    "total_trigger_evals": 10,
+                    "passed_trigger_evals": 9,
+                    "trigger_accuracy": 0.90,
+                },
+                "l2_details": {
+                    "with_skill_avg_pass_rate": 0.85,
+                    "without_skill_avg_pass_rate": 0.60,
+                    "improvement_percentage": 41.67,
+                },
+                "l3_details": {"step_coverage_ratio": 0.88},
+                "l4_details": {
+                    "execution_stability": 0.95,
+                    "stdev_deterministic_pass_rate": 0.05,
+                },
+            },
+        }
+        drift = {
+            "drift_detected": True,
+            "highest_severity": "high",
+            "average_variance": 0.40,
+            "max_variance": 0.50,
+            "overall_verdict": "FAIL",
+        }
+        config = {"total_evaluations": 10, "avg_pass_rate": 0.85, "timestamp": ""}
+
+        _, json_report = reporter.generate_report(metrics, drift, config)
+
+        # Drift FAIL overrides degraded cap
+        assert json_report["verdict"] == "FAIL", (
+            f"Expected FAIL when drift says FAIL despite degraded, got {json_report['verdict']}"
+        )
 
     # ── Verdict with drift_verdict=PASS_WITH_CAVEATS ────────
 

@@ -3,6 +3,8 @@
 import math
 import time
 
+import pytest
+
 from engine.deadline import Deadline, PhaseTimer
 
 
@@ -128,6 +130,92 @@ def test_deadline_repr():
     assert "elapsed=" in r
     assert "remaining=" in r
     assert "expired=" in r
+
+
+# ── Mock time.monotonic tests (AC-019-02, AC-019-03) ──────────────────────
+#
+# NOTE: patch targets `engine.deadline.time.monotonic` (the module-level
+# reference) rather than `time.monotonic` (the global) because the
+# dataclass ``field(default_factory=time.monotonic)`` captures the function
+# reference at class-definition time — patching the global later has no
+# effect on ``start_time``.  By patching the module-level name we affect
+# the ``elapsed`` / ``remaining`` / ``expired`` property reads.
+
+
+def test_deadline_expired_mock_monotonic():
+    """AC-019-02: Use mock time.monotonic to verify deadline.expired transitions."""
+    from unittest.mock import patch
+
+    dl = Deadline(max_total_time=10.0)
+    real_start = dl.start_time
+
+    with patch("engine.deadline.time.monotonic") as mock_time:
+        mock_time.return_value = real_start + 5.0
+        assert not dl.expired
+        assert abs(dl.remaining - 5.0) < 0.01, f"Expected ~5.0 remaining, got {dl.remaining}"
+
+        mock_time.return_value = real_start + 10.0
+        assert dl.expired
+        assert dl.remaining == 0.0
+
+        mock_time.return_value = real_start + 15.0
+        assert dl.expired
+        assert dl.remaining == 0.0
+
+
+def test_deadline_elapsed_mock_monotonic():
+    """AC-019-02: Verify elapsed property reflects simulated time passage."""
+    from unittest.mock import patch
+
+    dl = Deadline(max_total_time=60.0)
+    real_start = dl.start_time
+
+    with patch("engine.deadline.time.monotonic") as mock_time:
+        mock_time.return_value = real_start + 3.5
+        assert abs(dl.elapsed - 3.5) < 0.01, f"Expected ~3.5s elapsed, got {dl.elapsed}"
+
+        mock_time.return_value = real_start + 10.0
+        assert abs(dl.elapsed - 10.0) < 0.01, f"Expected 10.0s elapsed, got {dl.elapsed}"
+
+
+@pytest.mark.parametrize(
+    "remaining_input,expected_timeout",
+    [
+        (3.0, 5),  # AC-019-03: ceil(3)=3, max(5,3)=5, min(120,5)=5
+        (0.5, 5),  # ceil(0.5)=1, max(5,1)=5, min(120,5)=5
+        (5.0, 5),  # ceil(5)=5, max(5,5)=5, min(120,5)=5
+        (10.0, 10),  # ceil(10)=10, max(5,10)=10, min(120,10)=10
+    ],
+)
+def test_adapter_timeout_floor_parametrized(remaining_input, expected_timeout):
+    """AC-019-03: adapter_timeout respects 5s floor for various remaining values."""
+    from unittest.mock import patch
+
+    dl = Deadline(max_total_time=remaining_input + 5.0)
+    real_start = dl.start_time
+
+    with patch("engine.deadline.time.monotonic") as mock_time:
+        # Simulate elapsed = max_total_time - remaining_input
+        mock_time.return_value = real_start + (dl.max_total_time - remaining_input)
+
+        result = dl.adapter_timeout(default=120)
+        assert result == expected_timeout, (
+            f"adapter_timeout(remaining_input={remaining_input}) = {result}, "
+            f"expected {expected_timeout}"
+        )
+
+
+def test_adapter_timeout_floor_remaining_1():
+    """AC-019-03: adapter_timeout returns 5 when remaining=1 (below 5s floor)."""
+    from unittest.mock import patch
+
+    dl = Deadline(max_total_time=10.0)
+    real_start = dl.start_time
+
+    with patch("engine.deadline.time.monotonic") as mock_time:
+        mock_time.return_value = real_start + 9.0
+        result = dl.adapter_timeout(default=120)
+        assert result == 5, f"Expected 5 (floor), got {result}"
 
 
 # ── PhaseTimer tests ────────────────────────────────────────────────────────

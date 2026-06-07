@@ -701,6 +701,24 @@ def test_fail_fast_gate():
     assert evals.get("degraded", False) is True
 
 
+def test_coverage_result_importable_from_eval_generator():
+    """AC-019-01: Verify CoverageResult is accessible via EvalGenerator.CoverageResult."""
+    from engine.testgen import EvalGenerator
+
+    # Must be importable as EvalGenerator.CoverageResult.PASS
+    assert EvalGenerator.CoverageResult.PASS.value == "PASS"
+    assert EvalGenerator.CoverageResult.DEGRADED.value == "DEGRADED"
+    assert EvalGenerator.CoverageResult.BLOCKED.value == "BLOCKED"
+    assert EvalGenerator.CoverageResult.FAILED.value == "FAILED"
+
+    # Verify check_coverage_or_abort returns the enum member, not raw string
+    gen = EvalGenerator()
+    assert gen.check_coverage_or_abort(0.95) is EvalGenerator.CoverageResult.PASS
+    assert gen.check_coverage_or_abort(0.85) is EvalGenerator.CoverageResult.DEGRADED
+    assert gen.check_coverage_or_abort(0.55) is EvalGenerator.CoverageResult.BLOCKED
+    assert gen.check_coverage_or_abort(0.49) is EvalGenerator.CoverageResult.FAILED
+
+
 def test_degraded_mode_verdict_cap():
     """Verify that degraded=True caps verdict to PASS_WITH_CAVEATS."""
     from engine.reporter import Reporter
