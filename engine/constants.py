@@ -6,7 +6,7 @@ class CoverageThresholds:
 
     COVERAGE_TARGET = 0.9
     COVERAGE_DEGRADE = 0.7
-    COVERAGE_BLOCK = 0.7
+    COVERAGE_BLOCK = 0.5
 
 
 class TestGenLimits:
@@ -16,6 +16,7 @@ class TestGenLimits:
     MAX_NO_IMPROVEMENT = 2
     MIN_EVAL_CASES = 4
     MIN_TRIGGER_CASES = 5
+    GAP_FILL_TIMEOUT = 120
 
 
 class SecurityLimits:

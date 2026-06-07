@@ -1,5 +1,6 @@
 import json
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,18 @@ from engine.deadline import PhaseTimer
 logger = logging.getLogger(__name__)
 
 
+class CoverageResult(Enum):
+    """Result of coverage check — used for fail-fast decisions."""
+
+    PASS = "PASS"
+    DEGRADED = "DEGRADED"
+    BLOCKED = "BLOCKED"
+    FAILED = "FAILED"
+
+
 class EvalGenerator:
+    CoverageResult = CoverageResult
+
     def __init__(self):
         self.max_rounds = TestGenLimits.MAX_REVIEW_ROUNDS
         self.consecutive_no_improvement = TestGenLimits.MAX_NO_IMPROVEMENT
@@ -68,6 +80,17 @@ class EvalGenerator:
                 ]
             }
 
+    @staticmethod
+    def check_coverage_or_abort(coverage: float) -> "CoverageResult":
+        """Classify coverage into PASS / DEGRADED / BLOCKED / FAILED."""
+        if coverage >= CoverageThresholds.COVERAGE_TARGET:
+            return CoverageResult.PASS
+        if coverage >= CoverageThresholds.COVERAGE_DEGRADE:
+            return CoverageResult.DEGRADED
+        if coverage >= CoverageThresholds.COVERAGE_BLOCK:
+            return CoverageResult.BLOCKED
+        return CoverageResult.FAILED
+
     def generate_initial_evals(self, skill_spec: dict[str, Any], model_adapter) -> dict[str, Any]:
         try:
             prompt = self._prepare_generation_prompt(skill_spec)
@@ -95,11 +118,19 @@ class EvalGenerator:
             return {"coverage": 0.0, "gaps": ["Failed to review evals"], "needs_improvement": True}
 
     def fill_gaps(
-        self, gaps: dict[str, Any], skill_spec: dict[str, Any], model_adapter
+        self,
+        gaps: dict[str, Any],
+        skill_spec: dict[str, Any],
+        model_adapter,
+        timeout: int | None = None,
     ) -> dict[str, Any]:
         try:
             prompt = self._prepare_gap_filling_prompt(gaps, skill_spec)
-            response = model_adapter.chat([{"role": "user", "content": prompt}])
+            kwargs = [{"role": "user", "content": prompt}]
+            if timeout is not None:
+                response = model_adapter.chat(kwargs, timeout=timeout)
+            else:
+                response = model_adapter.chat(kwargs)
             supplementary_evals = self._parse_evals_response(response)
             return supplementary_evals
         except Exception as e:
@@ -130,7 +161,7 @@ class EvalGenerator:
                 return result
 
             should_stop, current_evals, current_coverage = self._run_convergence_round(
-                current_evals, review_adapter, prev_coverage, round_num
+                current_evals, review_adapter, prev_coverage, round_num, deadline=deadline
             )
 
             timer.items_completed = round_num + 1
@@ -149,6 +180,7 @@ class EvalGenerator:
         review_adapter,
         prev_coverage: float,
         round_num: int,
+        deadline: Any | None = None,
     ) -> tuple[bool, dict[str, Any], float]:
         """Run one convergence round. Returns (should_stop, updated_evals, current_coverage)."""
         review_result = self.review_evals(current_evals, review_adapter)
@@ -173,11 +205,21 @@ class EvalGenerator:
             return True, current_evals, current_coverage
 
         if review_result.get("needs_improvement", False):
+            if deadline is not None and deadline.must_stop():
+                logger.info("Deadline approaching, skipping gap fill")
+                return True, current_evals, current_coverage
+
             skill_spec = self._get_skill_spec_from_adapter(review_adapter)
+            timeout = (
+                deadline.adapter_timeout(default=TestGenLimits.GAP_FILL_TIMEOUT)
+                if deadline
+                else None
+            )
             supplementary_evals = self.fill_gaps(
                 review_result,
                 skill_spec,
                 review_adapter,
+                timeout=timeout,
             )
             if self._has_sufficient_evals(supplementary_evals):
                 current_evals = self._merge_evals(current_evals, supplementary_evals)
@@ -192,27 +234,37 @@ class EvalGenerator:
         self, current_evals: dict[str, Any], current_coverage: float
     ) -> dict[str, Any]:
         """Finalize evals generation and return result based on coverage."""
+        result = self.check_coverage_or_abort(current_coverage)
+        degraded = result in (
+            CoverageResult.DEGRADED,
+            CoverageResult.BLOCKED,
+            CoverageResult.FAILED,
+        )
+        failed = result in (CoverageResult.BLOCKED, CoverageResult.FAILED)
+
         if current_coverage >= self.coverage_threshold:
             logger.info("Eval generation completed with sufficient coverage")
-            return current_evals
         elif current_coverage >= self.degrade_threshold:
             logger.warning(
                 f"Eval generation completed with degraded coverage "
                 f"({current_coverage}), below target but above degrade threshold"
             )
-            return current_evals
         elif current_evals.get("eval_cases") or self._get_eval_cases(current_evals):
             logger.warning(
                 f"Eval generation with degraded coverage ({current_coverage}), "
                 "using generated evals"
             )
-            return current_evals
         else:
             logger.error(
                 f"Eval generation failed with insufficient coverage "
                 f"({current_coverage}), below block threshold"
             )
-            return self.minimum_evals_template
+            current_evals = self.minimum_evals_template
+
+        if isinstance(current_evals, dict):
+            current_evals["degraded"] = degraded
+            current_evals["failed"] = failed
+        return current_evals
 
     def _prepare_generation_prompt(self, skill_spec: dict[str, Any]) -> str:
         return f"""

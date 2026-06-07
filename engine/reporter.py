@@ -281,8 +281,9 @@ For detailed results, see the JSON output.
         l3_details = metrics_breakdown.get("l3_details", {})
         l4_details = metrics_breakdown.get("l4_details", {})
 
-        # Determine verdict
-        verdict = self._determine_verdict(overall_score, drift)
+        # Determine verdict (degraded mode caps at PASS_WITH_CAVEATS)
+        degraded = metrics.get("degraded", False)
+        verdict = self._determine_verdict(overall_score, drift, degraded=degraded)
 
         # Prepare data sections
         drift_data = self._prepare_drift_data(drift)
@@ -357,14 +358,22 @@ For detailed results, see the JSON output.
 
         return markdown_report, json_report
 
-    def _determine_verdict(self, overall_score: float, drift: dict[str, Any]) -> str:
-        """Determine verdict based on overall score and drift analysis."""
+    def _determine_verdict(
+        self, overall_score: float, drift: dict[str, Any], degraded: bool = False
+    ) -> str:
+        """Determine verdict based on overall score and drift analysis.
+
+        When ``degraded=True`` (coverage < 90% but above block threshold),
+        the verdict is capped at PASS_WITH_CAVEATS — it cannot be PASS.
+        """
         drift_verdict = drift.get("overall_verdict", "PASS")
         if drift_verdict == "FAIL":
             return "FAIL"
         if drift_verdict == "PASS_WITH_CAVEATS" and overall_score < 0.8:
             return "PASS_WITH_CAVEATS"
         if overall_score >= 0.8:
+            if degraded:
+                return "PASS_WITH_CAVEATS"
             return "PASS"
         if overall_score >= 0.6:
             return "PASS_WITH_CAVEATS"
@@ -768,7 +777,8 @@ For detailed results, see the JSON output.
 
         # Build verdict
         overall_score = self._num(metrics.get("overall_score", 0.0))
-        verdict = self._determine_verdict(overall_score, drift)
+        degraded = metrics.get("degraded", False)
+        verdict = self._determine_verdict(overall_score, drift, degraded=degraded)
         verdict_summary = VerdictSummary(
             verdict=verdict,  # type: ignore[arg-type]
             confidence=overall_score,

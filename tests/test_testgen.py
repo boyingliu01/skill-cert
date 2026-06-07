@@ -1,5 +1,5 @@
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -27,7 +27,7 @@ def test_test_generator_initialization():
     assert generator.consecutive_no_improvement == 2
     assert generator.coverage_threshold == 0.9
     assert generator.degrade_threshold == 0.7
-    assert generator.block_threshold == 0.7
+    assert generator.block_threshold == 0.5
     assert (
         "eval_cases" in generator.minimum_evals_template
         or "evals" in generator.minimum_evals_template
@@ -634,6 +634,96 @@ def test_generate_evals_with_convergence_error_scenario():
 
     # Should return minimum template when coverage is below block threshold and no evals generated
     assert "eval_cases" in result or "evals" in result or "cases" in result
+
+
+# ── CoverageResult tests (REQ-017) ──────────────────────────────────────
+
+
+def test_coverage_result_all_paths():
+    """Test CoverageResult enum returns correct value for each boundary."""
+    from engine.constants import CoverageThresholds
+    from engine.testgen import CoverageResult
+
+    gen = EvalGenerator()
+
+    # PASS: coverage >= 0.9
+    assert gen.check_coverage_or_abort(0.95) == CoverageResult.PASS
+    assert gen.check_coverage_or_abort(0.9) == CoverageResult.PASS
+
+    # DEGRADED: 0.7 <= coverage < 0.9
+    assert gen.check_coverage_or_abort(0.85) == CoverageResult.DEGRADED
+    assert gen.check_coverage_or_abort(0.7) == CoverageResult.DEGRADED
+
+    # BLOCKED: 0.5 <= coverage < 0.7
+    assert gen.check_coverage_or_abort(0.65) == CoverageResult.BLOCKED
+    assert gen.check_coverage_or_abort(0.5) == CoverageResult.BLOCKED
+
+    # FAILED: coverage < 0.5
+    assert gen.check_coverage_or_abort(0.22) == CoverageResult.FAILED
+    assert gen.check_coverage_or_abort(0.0) == CoverageResult.FAILED
+
+    # Verify constants match
+    assert CoverageThresholds.COVERAGE_BLOCK == 0.5
+    assert CoverageThresholds.COVERAGE_DEGRADE == 0.7
+    assert CoverageThresholds.COVERAGE_TARGET == 0.9
+
+
+def test_fail_fast_gate():
+    """Verify that coverage=0.22 (FAILED) produces failed=True in result."""
+    gen = EvalGenerator()
+    skill_spec = {
+        "name": "test-skill",
+        "description": "A test skill",
+        "triggers": ["test"],
+        "workflow_steps": [{"name": "step1"}],
+        "anti_patterns": ["skip_validation"],
+        "output_format": ["json"],
+    }
+
+    mock_adapter = MockModelAdapter(
+        [
+            '{"eval_cases": [{"id": 1, "name": "test-case", "category": "normal", '
+            '"input": "test input", "expected_triggers": true, '
+            '"assertions": [{"type": "contains", "value": "test", "weight": 1}]}]}'
+        ]
+    )
+
+    mock_review_adapter = MockModelAdapter(
+        ['{"coverage": 0.22, "gaps": ["many gaps"], "needs_improvement": true}']
+    )
+    mock_review_adapter.skill_spec = skill_spec
+
+    evals = gen.generate_evals_with_convergence(skill_spec, mock_adapter, mock_review_adapter)
+
+    # Should have failed flag set
+    assert evals.get("failed", False) is True
+    # Degraded should be True (since BLOCKED < 0.22 < TARGET)
+    assert evals.get("degraded", False) is True
+
+
+def test_degraded_mode_verdict_cap():
+    """Verify that degraded=True caps verdict to PASS_WITH_CAVEATS."""
+    from engine.reporter import Reporter
+
+    reporter = Reporter()
+
+    # When degraded=True and overall_score >= 0.8 (would be PASS)
+    verdict = reporter._determine_verdict(0.85, {"overall_verdict": "PASS"}, degraded=True)
+    assert verdict == "PASS_WITH_CAVEATS", (
+        f"Expected PASS_WITH_CAVEATS when degraded, got {verdict}"
+    )
+
+    # When degraded=False and overall_score >= 0.8 → PASS
+    verdict = reporter._determine_verdict(0.85, {"overall_verdict": "PASS"}, degraded=False)
+    assert verdict == "PASS"
+
+    # When degraded=True and overall_score < 0.8 → still PASS_WITH_CAVEATS (not FAIL)
+    verdict = reporter._determine_verdict(0.75, {"overall_verdict": "PASS"}, degraded=True)
+    assert verdict == "PASS_WITH_CAVEATS"
+
+    # When degraded=True but drift says FAIL → FAIL
+    verdict = reporter._determine_verdict(0.85, {"overall_verdict": "FAIL"}, degraded=True)
+    assert verdict == "FAIL"
 
 
 if __name__ == "__main__":

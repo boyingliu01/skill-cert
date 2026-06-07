@@ -466,6 +466,12 @@ def _run_single_phase(
     metrics["reliability"] = reliability_report
     metrics["_results"] = all_results
 
+    # REQ-017: Propagate degraded flag from Phase 1 for verdict capping
+    if isinstance(spec.get("evals"), dict) and spec["evals"].get("degraded"):
+        metrics["degraded"] = True
+        cov = spec["evals"].get("_coverage", 0.0)
+        print(f"\n  WARNING: Evaluation ran in degraded mode (coverage={cov:.0%})")
+
     # Print metrics summary
     _print_metrics_summary(metrics, args)
 
