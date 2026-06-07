@@ -32,4 +32,12 @@ Thumbs.db
 *~
 .worktrees/
 
-.coverage.mypy_cache/
+.coverage
+.mypy_cache/
+
+# Local tooling artifacts
+.omo/
+.xp-gate/
+.quality-history.jsonl
+.sprint-state/
+MagicMock/

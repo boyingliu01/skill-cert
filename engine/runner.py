@@ -59,120 +59,150 @@ class EvalRunner:
                 time.sleep(wait_time)
             self._last_request_time = time.time()
 
-    def _run_single(self, eval_case, skill_path: str, model_adapter, with_skill: bool):
+    def _prepare_input(self, eval_case: dict, skill_path: str | None, with_skill: bool) -> str:
+        """Prepare input text with or without skill context."""
+        input_text = eval_case.get("input", "") or eval_case.get("prompt", "")
+        if isinstance(input_text, dict):
+            input_text = str(input_text)
+
+        if not with_skill or skill_path is None:
+            return input_text
+
+        try:
+            with open(skill_path, encoding="utf-8") as f:
+                lines = f.readlines()
+                skill_header = "".join(lines[:20])[:1000]
+        except (OSError, FileNotFoundError):
+            skill_header = skill_path
+
+        skill_context = f"Skill file: {skill_path}\n{skill_header}\n\n---\nTask: {input_text}"
+        return skill_context
+
+    def _execute_llm_call(self, model_adapter, messages: list) -> tuple[str, dict]:
+        """Execute LLM call and return response with token usage."""
+        cls = type(model_adapter)
+        usage_method = getattr(cls, "chat_with_usage", None)
+        is_mock = hasattr(model_adapter, "_mock_name")
+        has_usage = usage_method is not None and not is_mock
+
+        if has_usage:
+            response, token_usage = model_adapter.chat_with_usage(messages)
+        else:
+            response = model_adapter.chat(messages)
+            token_usage = {
+                "prompt_tokens": 0,
+                "completion_tokens": len(response.split()) if response else 0,
+                "total_tokens": len(response.split()) if response else 0,
+            }
+
+        return response, token_usage
+
+    def _build_success_result(
+        self,
+        eval_case: dict,
+        trace: ExecutionTrace,
+        response: str,
+        token_usage: dict,
+        perf_elapsed: float,
+        cost: float,
+    ) -> dict:
+        """Build success result dictionary."""
+        end_time = time.time()
+        trace.end_time = end_time
+
+        return {
+            "eval_id": eval_case.get("id"),
+            "eval_name": eval_case.get("name"),
+            "eval_category": eval_case.get("category"),
+            "model": trace.token_usage.model,
+            "run": trace.phase.replace("_", "-"),
+            "skill_used": trace.phase == "with_skill",
+            "input": eval_case.get("input") or eval_case.get("prompt"),
+            "output": response,
+            "execution_time": end_time - trace.start_time,
+            "error": None,
+            "tokens_used": token_usage.get("total_tokens", 0),
+            "token_breakdown": token_usage,
+            "security": self._check_security(response),
+            "output_length_ok": self._check_output_length(response),
+            "cost": cost,
+            "trace": trace.model_dump(mode="json"),
+        }
+
+    def _build_error_result(
+        self,
+        eval_case: dict,
+        trace: ExecutionTrace,
+        error: str,
+    ) -> dict:
+        """Build error result dictionary."""
+        end_time = time.time()
+        trace.end_time = end_time
+        trace.error = error
+
+        return {
+            "eval_id": eval_case.get("id"),
+            "eval_name": eval_case.get("name"),
+            "eval_category": eval_case.get("category"),
+            "model": trace.token_usage.model,
+            "run": trace.phase.replace("_", "-"),
+            "skill_used": trace.phase == "with_skill",
+            "input": eval_case.get("input") or eval_case.get("prompt"),
+            "output": None,
+            "execution_time": 0,
+            "error": error,
+            "tokens_used": 0,
+            "cost": 0.0,
+            "trace": trace.model_dump(mode="json"),
+        }
+
+    def _run_single(self, eval_case, skill_path: str | None, model_adapter, with_skill: bool):
+        """Run a single eval case with execution phases extracted."""
         with self._semaphore:
             self._wait_rate_limit()
-            # Create ExecutionTrace for observability
+
             model_name = getattr(model_adapter, "model_name", "unknown")
             trace = ExecutionTrace(
                 eval_id=eval_case.get("id", 0),
                 phase="with_skill" if with_skill else "without_skill",
                 token_usage=TokenAccounting(model=model_name),
             )
-            try:
-                input_text = eval_case.get("input", "") or eval_case.get("prompt", "")
-                if isinstance(input_text, dict):
-                    input_text = str(input_text)
 
-                if with_skill:
-                    try:
-                        with open(skill_path, encoding="utf-8") as f:
-                            lines = f.readlines()
-                            skill_header = "".join(lines[:20])[:1000]
-                    except (OSError, FileNotFoundError):
-                        skill_header = skill_path
-                    skill_context = (
-                        f"Skill file: {skill_path}\n{skill_header}\n\n---\nTask: {input_text}"
-                    )
-                    input_text = skill_context
+            try:
+                input_text = self._prepare_input(eval_case, skill_path, with_skill)
 
                 trace.start_time = time.time()
                 perf_start = time.perf_counter()
                 messages = [{"role": "user", "content": input_text}]
 
-                cls = type(model_adapter)
-                usage_method = getattr(cls, "chat_with_usage", None)
-                is_mock = hasattr(model_adapter, "_mock_name")
-                has_usage = usage_method is not None and not is_mock
-
-                if has_usage:
-                    response, token_usage = model_adapter.chat_with_usage(messages)
-                else:
-                    response = model_adapter.chat(messages)
-                    token_usage = {
-                        "prompt_tokens": 0,
-                        "completion_tokens": len(response.split()) if response else 0,
-                        "total_tokens": len(response.split()) if response else 0,
-                    }
-
+                response, token_usage = self._execute_llm_call(model_adapter, messages)
                 perf_elapsed = (time.perf_counter() - perf_start) * 1000
-                end_time = time.time()
-                trace.end_time = end_time
+                cost = self._calc_cost(token_usage) if self.model_name else 0.0
 
-                # Record LLM call in trace (single source of truth for tokens)
                 trace.record_llm_call(
                     model=model_name,
                     input_tokens=token_usage.get("prompt_tokens", 0),
                     output_tokens=token_usage.get("completion_tokens", 0),
                     latency_ms=perf_elapsed,
                 )
-                cost = self._calc_cost(token_usage) if self.model_name else 0.0
                 trace.token_usage.cost = cost
 
-                # Store trace for later aggregation
                 with self._traces_lock:
                     self._traces.append(trace)
                 if self.token_ledger:
                     self.token_ledger.record_trace(trace)
-
-                result = {
-                    "eval_id": eval_case.get("id"),
-                    "eval_name": eval_case.get("name"),
-                    "eval_category": eval_case.get("category"),
-                    "model": model_name,
-                    "run": "with-skill" if with_skill else "without-skill",
-                    "skill_used": with_skill,
-                    "input": input_text,
-                    "output": response,
-                    "execution_time": end_time - trace.start_time,
-                    "error": None,
-                    "tokens_used": token_usage.get("total_tokens", 0),
-                    "token_breakdown": token_usage,
-                    "security": self._check_security(response),
-                    "output_length_ok": self._check_output_length(response),
-                    "cost": cost,
-                    "trace": trace.model_dump(mode="json"),
-                }
 
                 self.total_tokens += token_usage.get("total_tokens", 0)
                 self.total_cost += cost
 
-                return result
+                return self._build_success_result(
+                    eval_case, trace, response, token_usage, perf_elapsed, cost
+                )
             except Exception as e:
                 logger.error(
                     f"Error running eval {eval_case.get('id')}: {type(e).__name__}: {str(e)}"
                 )
-                trace.end_time = time.time()
-                trace.error = str(e)
-                with self._traces_lock:
-                    self._traces.append(trace)
-                if self.token_ledger:
-                    self.token_ledger.record_trace(trace)
-                return {
-                    "eval_id": eval_case.get("id"),
-                    "eval_name": eval_case.get("name"),
-                    "eval_category": eval_case.get("category"),
-                    "model": model_name,
-                    "run": "with-skill" if with_skill else "without-skill",
-                    "skill_used": with_skill,
-                    "input": eval_case.get("input") or eval_case.get("prompt"),
-                    "output": None,
-                    "execution_time": 0,
-                    "error": str(e),
-                    "tokens_used": 0,
-                    "cost": 0.0,
-                    "trace": trace.model_dump(mode="json"),
-                }
+                return self._build_error_result(eval_case, trace, str(e))
 
     def run_with_skill(
         self, evals: list[dict[str, Any]], skill_path: str, model_adapter

@@ -71,6 +71,54 @@ class CalibrationRunner:
         """Initialize with optional grader for automated evaluation."""
         self.grader = grader
 
+    def _build_confusion_matrix(
+        self, cases: list[GoldenEvalCase], auto_results: list[bool]
+    ) -> dict[str, int]:
+        """Build confusion matrix from human and automated results."""
+        n = min(len(cases), len(auto_results))
+        tp = tn = fp = fn = 0
+
+        for i in range(n):
+            human = cases[i].human_passed
+            auto = auto_results[i]
+            if auto and human:
+                tp += 1
+            elif not auto and not human:
+                tn += 1
+            elif auto and not human:
+                fp += 1
+            elif not auto and human:
+                fn += 1
+
+        return {"tp": tp, "tn": tn, "fp": fp, "fn": fn}
+
+    def _calculate_metrics(
+        self, tp: int, tn: int, fp: int, fn: int, n: int
+    ) -> tuple[float, float, float, float]:
+        """Calculate agreement rate, FPR, FNR, and kappa."""
+        agreement_rate = (tp + tn) / n if n > 0 else 0.0
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+        fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
+        kappa = self._cohens_kappa(tp, tn, fp, fn)
+        return agreement_rate, fpr, fnr, kappa
+
+    def _build_calibration_report(
+        self, tp: int, tn: int, fp: int, fn: int, n: int
+    ) -> CalibrationReport:
+        """Build CalibrationReport from confusion matrix."""
+        agreement_rate, fpr, fnr, kappa = self._calculate_metrics(tp, tn, fp, fn, n)
+        return CalibrationReport(
+            agreement_rate=round(agreement_rate, 4),
+            false_positive_rate=round(fpr, 4),
+            false_negative_rate=round(fnr, 4),
+            cohens_kappa=round(kappa, 4),
+            total_cases=n,
+            true_positives=tp,
+            true_negatives=tn,
+            false_positives=fp,
+            false_negatives=fn,
+        )
+
     def calibrate(
         self,
         golden_set: GoldenEvalSet,
@@ -104,38 +152,13 @@ class CalibrationRunner:
         if auto_results is None:
             auto_results = self._evaluate_cases(cases)
 
-        # Ensure same length
+        # Build confusion matrix
         n = min(len(cases), len(auto_results))
+        matrix = self._build_confusion_matrix(cases, auto_results)
 
-        # Confusion matrix
-        tp = tn = fp = fn = 0
-        for i in range(n):
-            human = cases[i].human_passed
-            auto = auto_results[i]
-            if auto and human:
-                tp += 1
-            elif not auto and not human:
-                tn += 1
-            elif auto and not human:
-                fp += 1
-            elif not auto and human:
-                fn += 1
-
-        agreement_rate = (tp + tn) / n if n > 0 else 0.0
-        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
-        fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
-        kappa = self._cohens_kappa(tp, tn, fp, fn)
-
-        return CalibrationReport(
-            agreement_rate=round(agreement_rate, 4),
-            false_positive_rate=round(fpr, 4),
-            false_negative_rate=round(fnr, 4),
-            cohens_kappa=round(kappa, 4),
-            total_cases=n,
-            true_positives=tp,
-            true_negatives=tn,
-            false_positives=fp,
-            false_negatives=fn,
+        # Build and return report
+        return self._build_calibration_report(
+            matrix["tp"], matrix["tn"], matrix["fp"], matrix["fn"], n
         )
 
     def _evaluate_cases(self, cases: list[GoldenEvalCase]) -> list[bool]:

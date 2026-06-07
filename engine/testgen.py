@@ -113,42 +113,69 @@ class EvalGenerator:
         current_evals = self.generate_initial_evals(skill_spec, model_adapter)
 
         prev_coverage = 0.0
-        no_improvement_count = 0
         round_num = 0
+        current_coverage: float = 0.0
 
         while round_num < self.max_rounds:
-            review_result = self.review_evals(current_evals, review_adapter)
-            current_coverage = review_result.get("coverage", 0.0)
-
-            logger.info(f"Round {round_num + 1}: Coverage = {current_coverage:.2f}")
-
-            if current_coverage >= self.coverage_threshold:
-                logger.info(
-                    f"Coverage target ({self.coverage_threshold}) reached at round {round_num + 1}"
-                )
+            should_stop, current_evals, current_coverage = self._run_convergence_round(
+                current_evals, review_adapter, prev_coverage, round_num
+            )
+            if should_stop:
                 break
-
-            if current_coverage <= prev_coverage:
-                no_improvement_count += 1
-            else:
-                no_improvement_count = 0
-
-            if no_improvement_count >= self.consecutive_no_improvement:
-                logger.info(
-                    f"No improvement for {self.consecutive_no_improvement} "
-                    "consecutive rounds, stopping"
-                )
-                break
-
-            if review_result.get("needs_improvement", False):
-                supplementary_evals = self.fill_gaps(review_result, skill_spec, model_adapter)
-
-                if self._has_sufficient_evals(supplementary_evals):
-                    current_evals = self._merge_evals(current_evals, supplementary_evals)
-
             prev_coverage = current_coverage
             round_num += 1
 
+        return self._finalize_evals_result(current_evals, current_coverage)
+
+    def _run_convergence_round(
+        self,
+        current_evals: dict[str, Any],
+        review_adapter,
+        prev_coverage: float,
+        round_num: int,
+    ) -> tuple[bool, dict[str, Any], float]:
+        """Run one convergence round. Returns (should_stop, updated_evals, current_coverage)."""
+        review_result = self.review_evals(current_evals, review_adapter)
+        current_coverage = review_result.get("coverage", 0.0)
+
+        logger.info(f"Round {round_num + 1}: Coverage = {current_coverage:.2f}")
+
+        if current_coverage >= self.coverage_threshold:
+            logger.info(
+                f"Coverage target ({self.coverage_threshold}) reached at round {round_num + 1}"
+            )
+            return True, current_evals, current_coverage
+
+        no_improvement_count = (
+            self.consecutive_no_improvement if current_coverage <= prev_coverage else 0
+        )
+
+        if no_improvement_count >= self.consecutive_no_improvement:
+            logger.info(
+                f"No improvement for {self.consecutive_no_improvement} consecutive rounds, stopping"
+            )
+            return True, current_evals, current_coverage
+
+        if review_result.get("needs_improvement", False):
+            skill_spec = self._get_skill_spec_from_adapter(review_adapter)
+            supplementary_evals = self.fill_gaps(
+                review_result,
+                skill_spec,
+                current_evals,
+            )
+            if self._has_sufficient_evals(supplementary_evals):
+                current_evals = self._merge_evals(current_evals, supplementary_evals)
+
+        return False, current_evals, current_coverage
+
+    def _get_skill_spec_from_adapter(self, review_adapter) -> dict[str, Any]:
+        """Extract skill_spec from review_adapter."""
+        return getattr(review_adapter, "skill_spec", {})
+
+    def _finalize_evals_result(
+        self, current_evals: dict[str, Any], current_coverage: float
+    ) -> dict[str, Any]:
+        """Finalize evals generation and return result based on coverage."""
         if current_coverage >= self.coverage_threshold:
             logger.info("Eval generation completed with sufficient coverage")
             return current_evals
@@ -470,18 +497,16 @@ Return a JSON object with an array of eval_cases in the same format as before.
                 merged[key] = value
 
         # Find the eval_cases key in current evals
-        current_eval_cases = None
-        for key in ["eval_cases", "evals", "cases", "test_cases", "evaluations", "eval"]:
-            if key in merged and isinstance(merged[key], list):
-                current_eval_cases = merged[key]
-                break
+        current_eval_cases_key = self._find_eval_cases_key(merged)
+        current_eval_cases = merged[current_eval_cases_key] if current_eval_cases_key else None
 
         # Find the eval_cases key in supplementary evals
-        supplementary_eval_cases = None
-        for key in ["eval_cases", "evals", "cases", "test_cases", "evaluations", "eval"]:
-            if key in supplementary_evals and isinstance(supplementary_evals[key], list):
-                supplementary_eval_cases = supplementary_evals[key]
-                break
+        supplementary_eval_cases_key = self._find_eval_cases_key(supplementary_evals)
+        supplementary_eval_cases = (
+            supplementary_evals[supplementary_eval_cases_key]
+            if supplementary_eval_cases_key
+            else None
+        )
 
         if current_eval_cases is not None and supplementary_eval_cases:
             # Assign new IDs to supplementary evals to avoid conflicts
@@ -492,3 +517,10 @@ Return a JSON object with an array of eval_cases in the same format as before.
                 current_eval_cases.append(case_copy)
 
         return merged
+
+    def _find_eval_cases_key(self, evals: dict[str, Any]) -> str | None:
+        """Find the eval_cases key in evals dict. Returns key name or None."""
+        for key in ["eval_cases", "evals", "cases", "test_cases", "evaluations", "eval"]:
+            if key in evals and isinstance(evals[key], list):
+                return key
+        return None

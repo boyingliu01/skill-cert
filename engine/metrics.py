@@ -108,37 +108,33 @@ class MetricsCalculator:
         passed_triggers = sum(1 for r in trigger_results if r.get("final_passed", False))
         return passed_triggers / len(trigger_results) if trigger_results else 0.0
 
+    @staticmethod
+    def _extract_with_without_groups(eval_results):
+        with_skill = [r for r in eval_results if r.get("skill_used", True)]
+        without_skill = [r for r in eval_results if not r.get("skill_used", True)]
+        return with_skill, without_skill
+
+    @staticmethod
+    def _avg_pass_rate(results):
+        if not results:
+            return 0.0
+        return sum(r.get("pass_rate", 0.0) for r in results) / len(results)
+
+    @staticmethod
+    def _compute_normalized_gain(with_avg, without_avg):
+        if without_avg > 0:
+            return (with_avg - without_avg) / without_avg
+        return with_avg - without_avg
+
     def _calculate_l2_with_without_skill_delta(self, eval_results: list[dict[str, Any]]) -> float:
-        """L2: With/without skill normalized gain.
-
-        Formula: Δ = (with - without) / without (normalized gain)
-        When without=0, falls back to absolute delta.
-        Result capped to [0.0, 1.0].
-        """
-        with_skill_results = [r for r in eval_results if r.get("skill_used", True)]
-        without_skill_results = [r for r in eval_results if not r.get("skill_used", True)]
-
-        if not with_skill_results or not without_skill_results:
-            # If we don't have both types, return average of all results
+        with_skill, without_skill = self._extract_with_without_groups(eval_results)
+        if not with_skill or not without_skill:
             if not eval_results:
                 return 0.0
-            return sum(r.get("pass_rate", 0.0) for r in eval_results) / len(eval_results)
-
-        with_skill_avg = sum(r.get("pass_rate", 0.0) for r in with_skill_results) / len(
-            with_skill_results
-        )
-        without_skill_avg = sum(r.get("pass_rate", 0.0) for r in without_skill_results) / len(
-            without_skill_results
-        )
-
-        # Normalized gain: Δ = (with - without) / without
-        if without_skill_avg > 0:
-            normalized_gain = (with_skill_avg - without_skill_avg) / without_skill_avg
-        else:
-            # Fallback to absolute delta when baseline is 0
-            normalized_gain = with_skill_avg - without_skill_avg
-
-        # Cap to [0.0, 1.0] - negative gain treated as 0
+            return self._avg_pass_rate(eval_results)
+        with_avg = self._avg_pass_rate(with_skill)
+        without_avg = self._avg_pass_rate(without_skill)
+        normalized_gain = self._compute_normalized_gain(with_avg, without_avg)
         return max(0.0, min(1.0, normalized_gain))
 
     def _calculate_l3_step_adherence(
@@ -238,45 +234,34 @@ class MetricsCalculator:
             return None
         return relevant_turns / total_turns
 
-    def _calculate_l4_execution_stability(self, eval_results: list[dict[str, Any]]) -> float:
-        """L4: Execution stability via std of pass_rate across multiple runs."""
-        if not eval_results:
-            # No results at all, return perfect stability
-            return 1.0
-
-        # Filter to only use deterministic assertions (confidence == 1.0)
-        deterministic_results = []
-
+    @staticmethod
+    def _extract_deterministic_pass_rates(eval_results):
+        rates = []
         for result in eval_results:
-            # Only consider results with deterministic assertions
             det_assertions = [
                 ar for ar in result.get("assertion_results", []) if ar.get("confidence", 0.0) == 1.0
             ]
-
             if det_assertions:
-                # Calculate pass rate for deterministic assertions only
                 det_passed = sum(1 for ar in det_assertions if ar.get("passed", False))
-                det_pass_rate = det_passed / len(det_assertions) if det_assertions else 0.0
-                deterministic_results.append(det_pass_rate)
+                rates.append(det_passed / len(det_assertions))
+        return rates
 
+    @staticmethod
+    def _compute_std_dev(values):
+        if len(values) < 2:
+            return 0.0
+        avg = sum(values) / len(values)
+        variance = sum((x - avg) ** 2 for x in values) / len(values)
+        return variance**0.5
+
+    def _calculate_l4_execution_stability(self, eval_results: list[dict[str, Any]]) -> float:
+        if not eval_results:
+            return 1.0
+        deterministic_results = self._extract_deterministic_pass_rates(eval_results)
         if len(deterministic_results) < 2:
-            # Not enough data points to calculate stability - return 1.0 for perfect stability
-            # if we have at least one result, otherwise 0.0
             return 1.0 if deterministic_results else 0.0
-
-        # Calculate standard deviation of pass rates
-        avg_pass_rate = sum(deterministic_results) / len(deterministic_results)
-
-        # Calculate standard deviation
-        variance = sum((x - avg_pass_rate) ** 2 for x in deterministic_results) / len(
-            deterministic_results
-        )
-        std_dev = variance**0.5
-
-        # Convert to stability score (inverse relationship: lower std dev = higher stability)
-        # Cap at 1.0 for maximum stability
-        stability_score = max(0.0, 1.0 - std_dev)
-        return stability_score
+        std_dev = self._compute_std_dev(deterministic_results)
+        return max(0.0, 1.0 - std_dev)
 
     def _get_l1_details(self, eval_results: list[dict[str, Any]]) -> dict[str, Any]:
         """Get detailed information for L1 metric."""
@@ -319,44 +304,49 @@ class MetricsCalculator:
     def _get_l3_details(
         self, eval_results: list[dict[str, Any]], workflow_steps: list[str] | None = None
     ) -> dict[str, Any]:
-        """Get detailed information for L3 metric."""
         passing_evals = [r for r in eval_results if r.get("final_passed", False)]
         total_evals = len(eval_results)
         l3_value = self._calculate_l3_step_adherence(eval_results, workflow_steps)
-
-        # Calculate sub-metrics
         step_coverage = (
             self._calculate_step_coverage(passing_evals, workflow_steps) if passing_evals else 0.0
         )
         tool_call_accuracy = self._calculate_tool_call_accuracy(passing_evals)
         turn_relevance = self._calculate_turn_relevance(passing_evals)
+        details = self._build_l3_base_details(
+            total_evals, passing_evals, step_coverage, tool_call_accuracy, turn_relevance
+        )
+        details = self._apply_l3_workflow_details(details, passing_evals, workflow_steps, l3_value)
+        return details
 
-        details: dict[str, Any] = {
+    @staticmethod
+    def _build_l3_base_details(total_evals, passing_evals, step_cov, tool_acc, turn_rel):
+        method = (
+            "weighted_composite"
+            if (tool_acc is not None and turn_rel is not None)
+            else "pass_rate_proxy"
+        )
+        details = {
             "total_evaluations": total_evals,
             "passing_evaluations": len(passing_evals),
             "step_coverage_ratio": len(passing_evals) / total_evals if total_evals > 0 else 0.0,
-            "method": "pass_rate_proxy",
-            "step_coverage": step_coverage,
-            "tool_call_accuracy": tool_call_accuracy,
-            "turn_relevance": turn_relevance,
+            "method": method,
+            "step_coverage": step_cov,
+            "tool_call_accuracy": tool_acc,
+            "turn_relevance": turn_rel,
         }
-
-        if tool_call_accuracy is not None and turn_relevance is not None:
-            details["method"] = "weighted_composite"
+        if method == "weighted_composite":
             details["weights"] = {
                 "step_coverage": 0.5,
                 "tool_call_accuracy": 0.3,
                 "turn_relevance": 0.2,
             }
+        return details
 
-        # Add workflow step coverage details when available
+    @staticmethod
+    def _apply_l3_workflow_details(details, passing_evals, workflow_steps, l3_value):
         has_workflow_step_info = any(r.get("workflow_step") is not None for r in passing_evals)
         if has_workflow_step_info and workflow_steps is not None:
-            covered_steps = set()
-            for r in passing_evals:
-                ws = r.get("workflow_step")
-                if ws:
-                    covered_steps.add(ws)
+            covered_steps = {r["workflow_step"] for r in passing_evals if r.get("workflow_step")}
             if details["method"] == "pass_rate_proxy":
                 details["method"] = "workflow_step_coverage"
             details["workflow_step_coverage"] = l3_value
@@ -365,23 +355,10 @@ class MetricsCalculator:
             details["uncovered_workflow_steps"] = sorted(set(workflow_steps) - covered_steps)
         else:
             details["workflow_step_coverage"] = None
-
         return details
 
     def _get_l4_details(self, eval_results: list[dict[str, Any]]) -> dict[str, Any]:
-        """Get detailed information for L4 metric."""
-        deterministic_results = []
-
-        for result in eval_results:
-            det_assertions = [
-                ar for ar in result.get("assertion_results", []) if ar.get("confidence", 0.0) == 1.0
-            ]
-
-            if det_assertions:
-                det_passed = sum(1 for ar in det_assertions if ar.get("passed", False))
-                det_pass_rate = det_passed / len(det_assertions) if det_assertions else 0.0
-                deterministic_results.append(det_pass_rate)
-
+        deterministic_results = self._extract_deterministic_pass_rates(eval_results)
         if not deterministic_results:
             return {
                 "deterministic_evals_count": 0,
@@ -389,18 +366,9 @@ class MetricsCalculator:
                 "stdev_deterministic_pass_rate": 0.0,
                 "execution_stability": 0.0,
             }
-
         avg_pass_rate = sum(deterministic_results) / len(deterministic_results)
-        if len(deterministic_results) > 1:
-            variance = sum((x - avg_pass_rate) ** 2 for x in deterministic_results) / len(
-                deterministic_results
-            )
-            std_dev = variance**0.5
-        else:
-            std_dev = 0.0
-
+        std_dev = self._compute_std_dev(deterministic_results)
         stability_score = max(0.0, 1.0 - std_dev)
-
         return {
             "deterministic_evals_count": len(deterministic_results),
             "avg_deterministic_pass_rate": avg_pass_rate,
@@ -408,37 +376,39 @@ class MetricsCalculator:
             "execution_stability": stability_score,
         }
 
-    def _calculate_l5_step_efficiency(
-        self, eval_results, envelope: EnvelopeChecker | None = None
-    ) -> float | None:
-        """L5: Step efficiency — envelope check scoring.
-
-        Uses EnvelopeChecker to validate execution traces against limits.
-        Scoring: passed=1.0, 1 violation=0.7, 2+ violations=0.3
-        """
-        checker = envelope or EnvelopeChecker()
+    @staticmethod
+    def _count_envelope_violations(eval_results, checker) -> tuple[bool, int]:
         violations = 0
         trace_found = False
         for r in eval_results:
             trace = r.get("trace")
             if trace is not None:
                 trace_found = True
-                # Legacy format: dict with explicit "violations" list
                 if isinstance(trace, dict) and "violations" in trace:
                     violations += len(trace["violations"])
                 else:
-                    # Use EnvelopeChecker for object/dict traces
                     trace_obj = trace if not isinstance(trace, dict) else _DictTrace(trace)
                     result = checker.check(trace_obj)
                     if not result.passed:
                         violations += len(result.violations)
-        if not trace_found:
-            return None
+        return trace_found, violations
+
+    @staticmethod
+    def _score_l5_from_violations(violations: int) -> float:
         if violations == 0:
             return 1.0
         if violations == 1:
             return 0.7
         return 0.3
+
+    def _calculate_l5_step_efficiency(
+        self, eval_results, envelope: EnvelopeChecker | None = None
+    ) -> float | None:
+        checker = envelope or EnvelopeChecker()
+        trace_found, violations = self._count_envelope_violations(eval_results, checker)
+        if not trace_found:
+            return None
+        return self._score_l5_from_violations(violations)
 
     def _calculate_l6_trajectory_quality(self, eval_results) -> float | None:
         dialogue_results = [r for r in eval_results if r.get("mode") == "dialogue"]
@@ -483,23 +453,18 @@ class MetricsCalculator:
         costs = [r.get("cost") for r in eval_results if "cost" in r]
         if not costs:
             return None
-
         with_skill = [r for r in eval_results if r.get("skill_used") and "cost" in r]
         without_skill = [r for r in eval_results if not r.get("skill_used") and "cost" in r]
+        return self._build_cost_result(costs, with_skill, without_skill, eval_results)
 
+    def _build_cost_result(self, costs, with_skill, without_skill, eval_results):
         total_cost = sum(costs)
-        cost_per_eval = total_cost / len(costs) if costs else 0.0
-
-        cost_with = sum(r["cost"] for r in with_skill) / len(with_skill) if with_skill else 0.0
-        cost_without = (
-            sum(r["cost"] for r in without_skill) / len(without_skill) if without_skill else 0.0
-        )
-
+        cost_per_eval = total_cost / len(costs)
+        cost_with = self._avg_cost(with_skill)
+        cost_without = self._avg_cost(without_skill)
         cost_delta_pct = (cost_with - cost_without) / cost_without if cost_without > 0 else 0.0
-
         l2_delta = self._calculate_l2_with_without_skill_delta(eval_results)
         cost_efficiency = round(l2_delta / cost_delta_pct, 4) if cost_delta_pct > 0 else 0.0
-
         return {
             "cost_per_eval": round(cost_per_eval, 4),
             "total_cost": round(total_cost, 4),
@@ -509,44 +474,50 @@ class MetricsCalculator:
             "cost_efficiency": cost_efficiency,
         }
 
+    @staticmethod
+    def _avg_cost(results):
+        if not results:
+            return 0.0
+        return sum(r["cost"] for r in results) / len(results)
+
     # ── L8: Latency Metrics ──────────────────────────────────────
 
     def _calculate_l8_latency_metrics(self, eval_results) -> dict | None:
-        """Calculate latency metrics: P50, P95, P99, with/without overhead."""
-        with_times = [
-            r["execution_time"]
-            for r in eval_results
-            if r.get("skill_used") and "execution_time" in r and r["execution_time"] > 0
-        ]
-        without_times = [
-            r["execution_time"]
-            for r in eval_results
-            if not r.get("skill_used") and "execution_time" in r and r["execution_time"] > 0
-        ]
-
+        with_times = self._extract_times(eval_results, skill_used=True)
+        without_times = self._extract_times(eval_results, skill_used=False)
         if not with_times and not without_times:
             return None
-
         stats = {}
         if with_times:
             stats["with_skill"] = self._compute_latency_stats(with_times)
         if without_times:
             stats["without_skill"] = self._compute_latency_stats(without_times)
-
         if with_times and without_times:
-            with_avg = sum(with_times) / len(with_times)
-            without_avg = sum(without_times) / len(without_times)
-            overhead_pct = ((with_avg - without_avg) / max(without_avg, 0.001)) * 100
-            stats["overhead_pct"] = round(overhead_pct, 1)
-            stats["slow_threshold_sec"] = TimingLimits.SLOW_REQUEST_THRESHOLD
-            stats["slow_with_skill"] = len(
-                [t for t in with_times if t > TimingLimits.SLOW_REQUEST_THRESHOLD]
-            )
-            stats["slow_without_skill"] = len(
-                [t for t in without_times if t > TimingLimits.SLOW_REQUEST_THRESHOLD]
-            )
-
+            stats.update(self._compute_overhead(with_times, without_times))
         return stats
+
+    @staticmethod
+    def _extract_times(eval_results, skill_used):
+        return [
+            r["execution_time"]
+            for r in eval_results
+            if r.get("skill_used") == skill_used
+            and "execution_time" in r
+            and r["execution_time"] > 0
+        ]
+
+    @staticmethod
+    def _compute_overhead(with_times, without_times):
+        with_avg = sum(with_times) / len(with_times)
+        without_avg = sum(without_times) / len(without_times)
+        overhead_pct = ((with_avg - without_avg) / max(without_avg, 0.001)) * 100
+        threshold = TimingLimits.SLOW_REQUEST_THRESHOLD
+        return {
+            "overhead_pct": round(overhead_pct, 1),
+            "slow_threshold_sec": threshold,
+            "slow_with_skill": sum(1 for t in with_times if t > threshold),
+            "slow_without_skill": sum(1 for t in without_times if t > threshold),
+        }
 
     def _compute_latency_stats(self, times: list[float]) -> dict:
         """Compute P50, P95, P99 for a list of execution times."""

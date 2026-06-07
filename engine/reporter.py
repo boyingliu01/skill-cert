@@ -250,141 +250,40 @@ For detailed results, see the JSON output.
         Returns:
             Tuple of (markdown_report, json_report)
         """
-        # Prepare data for the template
+        # Extract metrics
         overall_score = metrics.get("overall_score", 0.0)
         l1_score = metrics.get("l1_trigger_accuracy", 0.0)
         l2_score = metrics.get("l2_with_without_skill_delta", 0.0)
         l3_score = metrics.get("l3_step_adherence", 0.0)
         l4_score = metrics.get("l4_execution_stability", 0.0)
 
-        l1_details = metrics.get("metrics_breakdown", {}).get("l1_details", {})
-        l2_details = metrics.get("metrics_breakdown", {}).get("l2_details", {})
-        l3_details = metrics.get("metrics_breakdown", {}).get("l3_details", {})
-        l4_details = metrics.get("metrics_breakdown", {}).get("l4_details", {})
+        metrics_breakdown = metrics.get("metrics_breakdown", {})
+        l1_details = metrics_breakdown.get("l1_details", {})
+        l2_details = metrics_breakdown.get("l2_details", {})
+        l3_details = metrics_breakdown.get("l3_details", {})
+        l4_details = metrics_breakdown.get("l4_details", {})
 
-        # Determine verdict based on overall score and drift analysis
-        # If drift analysis indicates failure, use that verdict regardless of score
-        drift_verdict = drift.get("overall_verdict", "PASS")
-        if drift_verdict == "FAIL":
-            verdict = "FAIL"
-        elif drift_verdict == "PASS_WITH_CAVEATS" and overall_score < 0.8:
-            verdict = "PASS_WITH_CAVEATS"
-        elif overall_score >= 0.8:
-            verdict = "PASS"
-        elif overall_score >= 0.6:
-            verdict = "PASS_WITH_CAVEATS"
-        else:
-            verdict = "FAIL"
+        # Determine verdict
+        verdict = self._determine_verdict(overall_score, drift)
 
-        # Prepare drift data
-        drift_detected = drift.get("drift_detected", False)
-        highest_severity = drift.get("highest_severity", "none")
-        average_variance = drift.get("average_variance", 0.0)
-        max_variance = drift.get("max_variance", 0.0)
-        drift_results = drift.get("drift_results", [])  # This would come from drift analysis
-
-        # Calculate evaluation coverage stats
-        total_evaluations = config.get("total_evaluations", 0)
-        avg_pass_rate = config.get("avg_pass_rate", 0.0)
-        critical_passed = config.get("critical_passed", 0)
-        critical_total = config.get("critical_total", 0)
-        important_passed = config.get("important_passed", 0)
-        important_total = config.get("important_total", 0)
-        normal_passed = config.get("normal_passed", 0)
-        normal_total = config.get("normal_total", 0)
-
-        # Cost analysis
-        cost_analysis = metrics.get("l7_cost_efficiency")
-
-        # Latency analysis
-        latency_analysis = metrics.get("l8_latency", {})
-
-        # Reliability analysis
-        reliability = metrics.get("reliability", {})
-
-        # Generate improvement suggestions
-        suggestions = self._generate_suggestions(
-            metrics, drift, verdict, overall_score, cost_analysis, latency_analysis, reliability
-        )
-
-        # Evaluation coverage
-        _results = metrics.get("_results", [])
-        total_evaluations = len(_results) or config.get("total_evaluations", 0)
-        avg_pass_rate = (
-            sum(r.get("pass_rate", 0) for r in _results) / len(_results)
-            if _results
-            else config.get("avg_pass_rate", 0.0)
-        )
-
-        # Assertion breakdown from results or config fallback
-        critical_passed = 0
-        critical_total = 0
-        important_passed = 0
-        important_total = 0
-        normal_passed = 0
-        normal_total = 0
-
-        if _results:
-            for r in _results:
-                for a in r.get("grade", {}).get("assertion_results", []):
-                    weight = a.get("assertion", {}).get("weight", 1)
-                    if weight >= 3:
-                        critical_total += 1
-                        if a.get("passed"):
-                            critical_passed += 1
-                    elif weight == 2:
-                        important_total += 1
-                        if a.get("passed"):
-                            important_passed += 1
-                    else:
-                        normal_total += 1
-                        if a.get("passed"):
-                            normal_passed += 1
-        else:
-            critical_passed = config.get("critical_passed", 0)
-            critical_total = config.get("critical_total", 0)
-            important_passed = config.get("important_passed", 0)
-            important_total = config.get("important_total", 0)
-            normal_passed = config.get("normal_passed", 0)
-            normal_total = config.get("normal_total", 0)
-
-        # Create summary
+        # Prepare data sections
+        drift_data = self._prepare_drift_data(drift)
+        coverage_data = self._prepare_coverage_data(metrics, config)
+        config_info = self._prepare_config_info(config)
+        benchmark_info = self._prepare_benchmark_info(metrics, config)
         summary = self._create_summary(
             verdict, overall_score, l1_score, l2_score, l3_score, l4_score
         )
 
-        # Prepare config info for report
-        config_info = None
-        if config:
-            models = config.get("models", [])
-            model_names = (
-                ", ".join(m.get("model_name", m.get("name", "unknown")) for m in models)
-                if isinstance(models, list)
-                else str(models)
-            )
-            config_info = {
-                "models": model_names or "Not specified",
-                "max_concurrency": config.get("max_concurrency", 5),
-                "rate_limit_rpm": config.get("rate_limit_rpm", 60),
-                "request_timeout": config.get("request_timeout", 120),
-                "judge_temperature": config.get("judge_temperature", 0.0),
-                "max_testgen_rounds": config.get("max_testgen_rounds", 3),
-            }
+        # Get analysis data
+        cost_analysis = metrics.get("l7_cost_efficiency")
+        latency_analysis = metrics.get("l8_latency", {})
+        reliability = metrics.get("reliability", {})
 
-        # Prepare benchmark info
-        total_tokens = config.get("total_tokens", 0)
-        if not total_tokens:
-            total_tokens = config.get("total_evaluator_tokens", 0)
-        _results = metrics.get("_results", [])
-        total_eval_tokens = sum(r.get("tokens_used", 0) for r in _results) if _results else 0
-        benchmark_info = {
-            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "spec_version": "v2.0",
-            "total_requirements": 11,
-            "total_acceptance_criteria": 74,
-            "test_coverage": f"{len(_results)} evals, L1-L7 metrics computed",
-            "total_tokens": f"{total_eval_tokens:,}" if total_eval_tokens else "N/A (local models)",
-        }
+        # Generate suggestions
+        suggestions = self._generate_suggestions(
+            metrics, drift, verdict, overall_score, cost_analysis, latency_analysis, reliability
+        )
 
         # Render markdown
         markdown_report = self.markdown_template.render(
@@ -399,19 +298,8 @@ For detailed results, see the JSON output.
             l2_details=l2_details,
             l3_details=l3_details,
             l4_details=l4_details,
-            drift_detected=drift_detected,
-            highest_severity=highest_severity,
-            average_variance=average_variance,
-            max_variance=max_variance,
-            drift_results=drift_results,
-            total_evaluations=total_evaluations,
-            avg_pass_rate=avg_pass_rate,
-            critical_passed=critical_passed,
-            critical_total=critical_total,
-            important_passed=important_passed,
-            important_total=important_total,
-            normal_passed=normal_passed,
-            normal_total=normal_total,
+            **drift_data,
+            **coverage_data,
             suggestions=suggestions,
             config_info=config_info,
             benchmark_info=benchmark_info,
@@ -432,15 +320,7 @@ For detailed results, see the JSON output.
                 "l4_execution_stability": l4_score,
             },
             "drift_analysis": drift,
-            "evaluation_coverage": {
-                "total_evaluations": total_evaluations,
-                "avg_pass_rate": avg_pass_rate,
-                "assertion_breakdown": {
-                    "critical": {"passed": critical_passed, "total": critical_total},
-                    "important": {"passed": important_passed, "total": important_total},
-                    "normal": {"passed": normal_passed, "total": normal_total},
-                },
-            },
+            "evaluation_coverage": coverage_data,
             "improvement_suggestions": suggestions,
             "timestamp": config.get("timestamp", ""),
             "config": config,
@@ -459,6 +339,144 @@ For detailed results, see the JSON output.
 
         return markdown_report, json_report
 
+    def _determine_verdict(self, overall_score: float, drift: dict[str, Any]) -> str:
+        """Determine verdict based on overall score and drift analysis."""
+        drift_verdict = drift.get("overall_verdict", "PASS")
+        if drift_verdict == "FAIL":
+            return "FAIL"
+        if drift_verdict == "PASS_WITH_CAVEATS" and overall_score < 0.8:
+            return "PASS_WITH_CAVEATS"
+        if overall_score >= 0.8:
+            return "PASS"
+        if overall_score >= 0.6:
+            return "PASS_WITH_CAVEATS"
+        return "FAIL"
+
+    def _prepare_drift_data(self, drift: dict[str, Any]) -> dict[str, Any]:
+        """Prepare drift data for template rendering."""
+        return {
+            "drift_detected": drift.get("drift_detected", False),
+            "highest_severity": drift.get("highest_severity", "none"),
+            "average_variance": drift.get("average_variance", 0.0),
+            "max_variance": drift.get("max_variance", 0.0),
+            "drift_results": drift.get("drift_results", []),
+        }
+
+    def _prepare_coverage_data(
+        self,
+        metrics: dict[str, Any],
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Prepare evaluation coverage data from results or config fallback."""
+        _results = metrics.get("_results", [])
+        total_evaluations = len(_results) or config.get("total_evaluations", 0)
+        avg_pass_rate = (
+            sum(r.get("pass_rate", 0) for r in _results) / len(_results)
+            if _results
+            else config.get("avg_pass_rate", 0.0)
+        )
+
+        # Assertion breakdown from results or config fallback
+        if _results:
+            assertion_breakdown = self._compute_assertion_breakdown(_results)
+        else:
+            assertion_breakdown = {
+                "critical": {
+                    "passed": config.get("critical_passed", 0),
+                    "total": config.get("critical_total", 0),
+                },
+                "important": {
+                    "passed": config.get("important_passed", 0),
+                    "total": config.get("important_total", 0),
+                },
+                "normal": {
+                    "passed": config.get("normal_passed", 0),
+                    "total": config.get("normal_total", 0),
+                },
+            }
+
+        return {
+            "total_evaluations": total_evaluations,
+            "avg_pass_rate": avg_pass_rate,
+            "critical_passed": assertion_breakdown["critical"]["passed"],
+            "critical_total": assertion_breakdown["critical"]["total"],
+            "important_passed": assertion_breakdown["important"]["passed"],
+            "important_total": assertion_breakdown["important"]["total"],
+            "normal_passed": assertion_breakdown["normal"]["passed"],
+            "normal_total": assertion_breakdown["normal"]["total"],
+            "assertion_breakdown": assertion_breakdown,
+        }
+
+    def _compute_assertion_breakdown(self, results: list[dict]) -> dict[str, dict[str, int]]:
+        """Compute assertion breakdown by weight category from results."""
+        critical_passed = 0
+        critical_total = 0
+        important_passed = 0
+        important_total = 0
+        normal_passed = 0
+        normal_total = 0
+
+        for r in results:
+            for a in r.get("grade", {}).get("assertion_results", []):
+                weight = a.get("assertion", {}).get("weight", 1)
+                if weight >= 3:
+                    critical_total += 1
+                    if a.get("passed"):
+                        critical_passed += 1
+                elif weight == 2:
+                    important_total += 1
+                    if a.get("passed"):
+                        important_passed += 1
+                else:
+                    normal_total += 1
+                    if a.get("passed"):
+                        normal_passed += 1
+
+        return {
+            "critical": {"passed": critical_passed, "total": critical_total},
+            "important": {"passed": important_passed, "total": important_total},
+            "normal": {"passed": normal_passed, "total": normal_total},
+        }
+
+    def _prepare_config_info(self, config: dict[str, Any]) -> dict[str, Any] | None:
+        """Prepare configuration info for report."""
+        if not config:
+            return None
+        models = config.get("models", [])
+        model_names = (
+            ", ".join(m.get("model_name", m.get("name", "unknown")) for m in models)
+            if isinstance(models, list)
+            else str(models)
+        )
+        return {
+            "models": model_names or "Not specified",
+            "max_concurrency": config.get("max_concurrency", 5),
+            "rate_limit_rpm": config.get("rate_limit_rpm", 60),
+            "request_timeout": config.get("request_timeout", 120),
+            "judge_temperature": config.get("judge_temperature", 0.0),
+            "max_testgen_rounds": config.get("max_testgen_rounds", 3),
+        }
+
+    def _prepare_benchmark_info(
+        self,
+        metrics: dict[str, Any],
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Prepare benchmark info for report."""
+        total_tokens = config.get("total_tokens", 0)
+        if not total_tokens:
+            total_tokens = config.get("total_evaluator_tokens", 0)
+        _results = metrics.get("_results", [])
+        total_eval_tokens = sum(r.get("tokens_used", 0) for r in _results) if _results else 0
+        return {
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "spec_version": "v2.0",
+            "total_requirements": 11,
+            "total_acceptance_criteria": 74,
+            "test_coverage": f"{len(_results)} evals, L1-L7 metrics computed",
+            "total_tokens": f"{total_eval_tokens:,}" if total_eval_tokens else "N/A (local models)",
+        }
+
     def _generate_suggestions(
         self,
         metrics: dict[str, Any],
@@ -472,32 +490,8 @@ For detailed results, see the JSON output.
         """Generate improvement suggestions based on metrics and drift analysis."""
         suggestions = []
 
-        # L1 suggestions
-        l1_score = metrics.get("l1_trigger_accuracy", 0.0)
-        if l1_score < 0.7:
-            suggestions.append(
-                "Improve trigger accuracy - skill may not be properly detecting trigger conditions"
-            )
-
-        # L2 suggestions
-        l2_score = metrics.get("l2_with_without_skill_delta", 0.0)
-        if l2_score < 0.5:
-            suggestions.append(
-                "Skill may not be providing sufficient value - "
-                "consider enhancing core functionality"
-            )
-
-        # L3 suggestions
-        l3_score = metrics.get("l3_step_adherence", 0.0)
-        if l3_score < 0.7:
-            suggestions.append("Improve adherence to expected workflow steps")
-
-        # L4 suggestions
-        l4_score = metrics.get("l4_execution_stability", 0.0)
-        if l4_score < 0.8:
-            suggestions.append(
-                "Address execution instability - results vary significantly across runs"
-            )
+        # L1-L4 suggestions
+        suggestions.extend(self._get_metric_suggestions(metrics))
 
         # Drift suggestions
         if drift.get("drift_detected", False):
@@ -506,63 +500,115 @@ For detailed results, see the JSON output.
                 f"(highest severity: {drift.get('highest_severity', 'none')})"
             )
 
-        # Overall suggestions
-        if overall_score < 0.6:
-            suggestions.append("Major improvements needed across multiple areas")
-        elif overall_score < 0.8:
-            suggestions.append("Several areas need improvement to reach optimal performance")
+        # Overall performance suggestions
+        suggestions.extend(self._get_overall_suggestions(overall_score))
 
         # Cost suggestions
-        if cost_analysis and cost_analysis.get("cost_delta_pct", 0) > 0.5:
+        if cost_analysis:
+            suggestions.extend(self._get_cost_suggestions(cost_analysis))
+
+        # Latency suggestions
+        if latency_analysis:
+            suggestions.extend(self._get_latency_suggestions(latency_analysis))
+
+        # Reliability suggestions
+        if reliability:
+            suggestions.extend(self._get_reliability_suggestions(reliability))
+
+        if not suggestions:
+            suggestions.append("Performance is strong across all metrics")
+
+        return suggestions
+
+    def _get_metric_suggestions(self, metrics: dict[str, Any]) -> list[str]:
+        """Get suggestions for L1-L4 metrics."""
+        suggestions = []
+        l1_score = metrics.get("l1_trigger_accuracy", 0.0)
+        if l1_score < 0.7:
+            suggestions.append(
+                "Improve trigger accuracy - skill may not be properly detecting trigger conditions"
+            )
+
+        l2_score = metrics.get("l2_with_without_skill_delta", 0.0)
+        if l2_score < 0.5:
+            suggestions.append(
+                "Skill may not be providing sufficient value - "
+                "consider enhancing core functionality"
+            )
+
+        l3_score = metrics.get("l3_step_adherence", 0.0)
+        if l3_score < 0.7:
+            suggestions.append("Improve adherence to expected workflow steps")
+
+        l4_score = metrics.get("l4_execution_stability", 0.0)
+        if l4_score < 0.8:
+            suggestions.append(
+                "Address execution instability - results vary significantly across runs"
+            )
+        return suggestions
+
+    def _get_overall_suggestions(self, overall_score: float) -> list[str]:
+        """Get suggestions based on overall score."""
+        if overall_score >= 0.8:
+            return []
+        if overall_score >= 0.6:
+            return ["Several areas need improvement to reach optimal performance"]
+        return ["Major improvements needed across multiple areas"]
+
+    def _get_cost_suggestions(self, cost_analysis: dict[str, Any]) -> list[str]:
+        """Get suggestions based on cost analysis."""
+        suggestions = []
+        if cost_analysis.get("cost_delta_pct", 0) > 0.5:
             suggestions.append(
                 f"Skill increases costs by "
                 f"{cost_analysis['cost_delta_pct']:.0%} — "
                 "consider optimizing prompt or reducing verbosity"
             )
         if (
-            cost_analysis
-            and cost_analysis.get("cost_efficiency", 0) < 0.1
+            cost_analysis.get("cost_efficiency", 0) < 0.1
             and cost_analysis.get("cost_delta_pct", 0) > 0
         ):
             suggestions.append("Low cost efficiency — quality gains don't justify cost increase")
+        return suggestions
 
-        # Latency suggestions
-        if latency_analysis and latency_analysis.get("overhead_pct", 0) > 50:
+    def _get_latency_suggestions(self, latency_analysis: dict[str, Any]) -> list[str]:
+        """Get suggestions based on latency analysis."""
+        suggestions = []
+        if latency_analysis.get("overhead_pct", 0) > 50:
             suggestions.append(
                 f"Skill adds {latency_analysis['overhead_pct']}% "
                 "latency overhead — "
                 "optimize prompt or reduce steps"
             )
-        slow_count = latency_analysis.get("slow_with_skill", 0) if latency_analysis else 0
+        slow_count = latency_analysis.get("slow_with_skill", 0)
         if slow_count > 0:
             suggestions.append(
                 f"{slow_count} requests exceeded 30s threshold — "
                 "consider async processing or timeouts"
             )
+        return suggestions
 
-        # Reliability suggestions
-        if reliability and reliability.get("error_rate", 0) > 0.2:
+    def _get_reliability_suggestions(self, reliability: dict[str, Any]) -> list[str]:
+        """Get suggestions based on reliability analysis."""
+        suggestions = []
+        if reliability.get("error_rate", 0) > 0.2:
             suggestions.append(
                 f"Error rate is {reliability['error_rate']:.0%} — "
                 "implement retry logic or fallback models"
             )
-        if reliability and reliability.get("retry_stats", {}).get("max_retries", 0) > 2:
+        if reliability.get("retry_stats", {}).get("max_retries", 0) > 2:
             suggestions.append(
                 f"Max retries of {reliability['retry_stats']['max_retries']} detected — "
                 "consider backoff or circuit breaker"
             )
-        if reliability and reliability.get("errors_by_category"):
-            cats = list(reliability["errors_by_category"].keys())
-            if "timeout" in cats:
+        errors_by_category = reliability.get("errors_by_category", {})
+        if errors_by_category:
+            if "timeout" in errors_by_category:
                 suggestions.append("Timeout errors detected — increase timeout or optimize prompts")
-            if "rate_limit" in cats:
+            if "rate_limit" in errors_by_category:
                 suggestions.append(
                     "Rate limit errors detected — reduce concurrency or request rate"
                 )
-
-        if not suggestions:
-            suggestions.append("Performance is strong across all metrics")
-
         return suggestions
 
     def _create_summary(
@@ -703,31 +749,49 @@ For detailed results, see the JSON output.
 
         # Build verdict
         overall_score = metrics.get("overall_score", 0.0)
-        drift_verdict = drift.get("overall_verdict", "PASS")
-        if drift_verdict == "FAIL":
-            verdict = "FAIL"
-        elif overall_score >= 0.8:
-            verdict = "PASS"
-        elif overall_score >= 0.6:
-            verdict = "PASS_WITH_CAVEATS"
-        else:
-            verdict = "FAIL"
-
+        verdict = self._determine_verdict(overall_score, drift)
         verdict_summary = VerdictSummary(
-            verdict=verdict if verdict != "PASS_WITH_CAVEATS" else "PASS",
+            verdict=verdict,  # type: ignore[arg-type]
             confidence=overall_score,
             reasons=self._build_verdict_reasons(metrics, drift),
             blocking_issues=self._build_blocking_issues(drift),
             caveats=self._build_caveats(metrics, drift),
         )
 
-        # Build metrics
+        # Build sections
         metrics_breakdown = metrics.get("metrics_breakdown", {})
+        metrics_section = self._build_metrics_section(metrics, metrics_breakdown)
+        token_section = self._build_token_section(token_analysis)
+        obs_section = self._build_observability_section(observability)
+
+        # Build improvements
+        cost_analysis = metrics.get("cost_analysis")
+        latency_analysis = metrics.get("latency_analysis")
+        suggestions = self._generate_suggestions(
+            metrics, drift, verdict, overall_score, cost_analysis, latency_analysis
+        )
+        improvements = self._convert_suggestions(suggestions)
+
+        return StructuredReport(
+            metadata=metadata,
+            verdict=verdict_summary,
+            metrics=metrics_section,
+            token_analysis=token_section,
+            observability=obs_section,
+            improvements=improvements,
+            drift=drift,
+            extras={"raw_metrics": metrics},
+        )
+
+    def _build_metrics_section(
+        self, metrics: dict[str, Any], metrics_breakdown: dict[str, Any]
+    ) -> MetricsSection:
+        """Build MetricsSection from metrics data."""
         l4_details = metrics_breakdown.get("l4_details", {})
         cost_analysis = metrics.get("cost_analysis")
         latency_analysis = metrics.get("latency_analysis")
 
-        metrics_section = MetricsSection(
+        return MetricsSection(
             l1_trigger_accuracy=metrics.get("l1_trigger_accuracy", 0.0) * 100,
             l2_output_delta=metrics.get("l2_with_without_skill_delta", 0.0),
             l3_step_adherence=metrics.get("l3_step_adherence", 0.0) * 100,
@@ -750,43 +814,45 @@ For detailed results, see the JSON output.
             else 0.0,
         )
 
-        # Build token analysis
-        token_section = TokenAnalysisSection()
-        if token_analysis:
-            token_section = TokenAnalysisSection(
-                total_tokens=token_analysis.get("total_tokens", 0),
-                total_cost=token_analysis.get("total_cost", 0.0),
-                by_phase={
-                    k: TokenBreakdown(**v) for k, v in token_analysis.get("by_phase", {}).items()
-                },
-                by_model={
-                    k: TokenBreakdown(**v) for k, v in token_analysis.get("by_model", {}).items()
-                },
-                by_eval=token_analysis.get("by_eval", []),
-            )
-
-        # Build observability
-        obs_section = ObservabilitySection()
-        if observability:
-            obs_section = ObservabilitySection(
-                trace_count=observability.get("trace_count", 0),
-                total_events=observability.get("total_events", 0),
-                total_duration_ms=observability.get("total_duration_ms", 0.0),
-                total_tool_calls=observability.get("total_tool_calls", 0),
-                trace_export_path=observability.get("trace_export_path", ""),
-                trace_format=observability.get("trace_format", "jsonl"),
-            )
-
-        # Build improvements
-        suggestions = self._generate_suggestions(
-            metrics, drift, verdict, overall_score, cost_analysis, latency_analysis
+    def _build_token_section(self, token_analysis: dict[str, Any] | None) -> TokenAnalysisSection:
+        """Build TokenAnalysisSection from token data."""
+        if not token_analysis:
+            return TokenAnalysisSection()
+        return TokenAnalysisSection(
+            total_tokens=token_analysis.get("total_tokens", 0),
+            total_cost=token_analysis.get("total_cost", 0.0),
+            by_phase={
+                k: TokenBreakdown(**v) for k, v in token_analysis.get("by_phase", {}).items()
+            },
+            by_model={
+                k: TokenBreakdown(**v) for k, v in token_analysis.get("by_model", {}).items()
+            },
+            by_eval=token_analysis.get("by_eval", []),
         )
+
+    def _build_observability_section(
+        self,
+        observability: dict[str, Any] | None,
+    ) -> ObservabilitySection:
+        """Build ObservabilitySection from observability data."""
+        if not observability:
+            return ObservabilitySection()
+        return ObservabilitySection(
+            trace_count=observability.get("trace_count", 0),
+            total_events=observability.get("total_events", 0),
+            total_duration_ms=observability.get("total_duration_ms", 0.0),
+            total_tool_calls=observability.get("total_tool_calls", 0),
+            trace_export_path=observability.get("trace_export_path", ""),
+            trace_format=observability.get("trace_format", "jsonl"),
+        )
+
+    def _convert_suggestions(self, suggestions: list[str]) -> list[ImprovementSuggestion]:
+        """Convert string suggestions to ImprovementSuggestion objects."""
         improvements = []
         for s in suggestions:
             if isinstance(s, ImprovementSuggestion):
                 improvements.append(s)
             else:
-                # Convert string suggestions to ImprovementSuggestion
                 improvements.append(
                     ImprovementSuggestion(
                         category="general",
@@ -795,17 +861,7 @@ For detailed results, see the JSON output.
                         description=s,
                     )
                 )
-
-        return StructuredReport(
-            metadata=metadata,
-            verdict=verdict_summary,
-            metrics=metrics_section,
-            token_analysis=token_section,
-            observability=obs_section,
-            improvements=improvements,
-            drift=drift,
-            extras={"raw_metrics": metrics},
-        )
+        return improvements
 
     def _build_verdict_reasons(self, metrics: dict[str, Any], drift: dict[str, Any]) -> list[str]:
         """Build verdict reasons from metrics and drift."""

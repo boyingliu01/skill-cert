@@ -62,19 +62,9 @@ class Grader:
 
     def grade_output(self, eval_case: EvalCase, model_output: str) -> dict[str, Any]:
         """Evaluate a single model output against eval case assertions."""
-        results = []
-        total_weighted_score = 0
-        total_possible_score = 0
-
-        for assertion in eval_case.assertions:
-            result = self._evaluate_assertion(assertion, model_output)
-            results.append(result)
-
-            # Calculate weighted score
-            weight_multiplier = self._get_weight_multiplier(assertion.weight)
-            if result.passed:
-                total_weighted_score += weight_multiplier
-            total_possible_score += weight_multiplier
+        results, total_weighted_score, total_possible_score = self._evaluate_all_assertions(
+            eval_case, model_output
+        )
 
         # Calculate pass rate
         pass_rate = total_weighted_score / total_possible_score if total_possible_score > 0 else 0.0
@@ -93,6 +83,49 @@ class Grader:
         if use_llm_judge and self.llm_client:
             judge_result = self._llm_judge(eval_case, model_output, results)
 
+        return self._build_grade_result(
+            eval_case,
+            model_output,
+            results,
+            total_weighted_score,
+            total_possible_score,
+            pass_rate,
+            judge_result,
+        )
+
+    def _evaluate_all_assertions(
+        self,
+        eval_case: EvalCase,
+        model_output: str,
+    ) -> tuple[list[AssertionResult], int, int]:
+        """Evaluate all assertions and calculate weighted scores."""
+        results = []
+        total_weighted_score = 0
+        total_possible_score = 0
+
+        for assertion in eval_case.assertions:
+            result = self._evaluate_assertion(assertion, model_output)
+            results.append(result)
+
+            # Calculate weighted score
+            weight_multiplier = self._get_weight_multiplier(assertion.weight)
+            if result.passed:
+                total_weighted_score += weight_multiplier
+            total_possible_score += weight_multiplier
+
+        return results, total_weighted_score, total_possible_score
+
+    def _build_grade_result(
+        self,
+        eval_case: EvalCase,
+        model_output: str,
+        results: list[AssertionResult],
+        total_weighted_score: int,
+        total_possible_score: int,
+        pass_rate: float,
+        judge_result: JudgeResult | None,
+    ) -> dict[str, Any]:
+        """Build the final grade result dictionary."""
         return {
             "eval_id": eval_case.id,
             "eval_name": eval_case.name,
@@ -192,24 +225,91 @@ class Grader:
 
         # Fallback to simplified logic if LLM client is None or LLM judge is disabled
         if self.llm_client is None or not llm_judge_enabled:
-            passed_assertions = sum(1 for r in assertion_results if r.passed)
-            total_assertions = len(assertion_results)
-            passed_ratio = passed_assertions / total_assertions
-            return JudgeResult(
-                passed=passed_ratio >= 0.5,
-                confidence=passed_ratio,
-                reasoning=(
-                    f"LLM evaluation: "
-                    f"{passed_assertions}/{total_assertions} "
-                    f"assertions passed ({passed_ratio:.2f})"
-                ),
-                judge_version="1.0",
-                judge_model="",
-            )
+            return self._llm_judge_fallback(assertion_results)
 
+        return self._llm_judge_with_call(eval_case, model_output, assertion_results)
+
+    def _llm_judge_fallback(self, assertion_results: list[AssertionResult]) -> JudgeResult:
+        """Fallback logic when LLM judge is disabled or unavailable."""
+        passed_assertions = sum(1 for r in assertion_results if r.passed)
+        total_assertions = len(assertion_results)
+        passed_ratio = passed_assertions / total_assertions
+        return JudgeResult(
+            passed=passed_ratio >= 0.5,
+            confidence=passed_ratio,
+            reasoning=(
+                f"LLM evaluation: "
+                f"{passed_assertions}/{total_assertions} "
+                f"assertions passed ({passed_ratio:.2f})"
+            ),
+            judge_version="1.0",
+            judge_model="",
+        )
+
+    def _llm_judge_with_call(
+        self,
+        eval_case: EvalCase,
+        model_output: str,
+        assertion_results: list[AssertionResult],
+    ) -> JudgeResult:
+        """Execute LLM judge with API call."""
+        try:
+            result = self._execute_llm_judge(eval_case, model_output, assertion_results)
+            # Position debias: for borderline cases (confidence < 0.8), run swap
+            if result.confidence < 0.8 and self.llm_client:
+                result = self._debias_position(eval_case, model_output, assertion_results, result)
+            return result
+        except Exception as e:
+            # Fallback to simplified logic on any error (network, parse, etc.)
+            return self._llm_judge_error_fallback(assertion_results, e)
+
+    def _execute_llm_judge(
+        self,
+        eval_case: EvalCase,
+        model_output: str,
+        assertion_results: list[AssertionResult],
+    ) -> JudgeResult:
+        """Execute the main LLM judge call."""
         expected_behavior = eval_case.expected_output or eval_case.prompt
+        prompt = self._build_judge_prompt(
+            eval_case,
+            model_output,
+            assertion_results,
+            expected_behavior,
+        )
 
-        prompt = f"""# LLM-as-Judge Prompt
+        # Call LLM with judge prompt — temperature=0 for deterministic results
+        response_text = self.llm_client.chat(
+            messages=[{"role": "user", "content": prompt}],
+            timeout=30,
+        )
+
+        # Parse JSON response — handle possible Markdown code block wrapping
+        response_text = self._parse_judge_response(response_text)
+        judge_data = json.loads(response_text)
+
+        failure_reasons = judge_data.get("failure_reasons", [])
+        if not isinstance(failure_reasons, list):
+            failure_reasons = []
+
+        return JudgeResult(
+            passed=bool(judge_data.get("passed", False)),
+            confidence=float(judge_data.get("confidence", 0.5)),
+            reasoning=str(judge_data.get("reasoning", "")),
+            failure_reasons=failure_reasons,
+            judge_version="2.0",
+            judge_model="llm",
+        )
+
+    def _build_judge_prompt(
+        self,
+        eval_case: EvalCase,
+        model_output: str,
+        assertion_results: list[AssertionResult],
+        expected_behavior: str,
+    ) -> str:
+        """Build the LLM judge prompt."""
+        return f"""# LLM-as-Judge Prompt
 
 你是一个严格的评测裁判。评估以下模型输出是否满足指定的行为要求。
 
@@ -248,63 +348,42 @@ class Grader:
 }}
 ```"""
 
-        try:
-            # Call LLM with judge prompt — temperature=0 for deterministic results
-            response_text = self.llm_client.chat(
-                messages=[{"role": "user", "content": prompt}],
-                timeout=30,
-            )
+    def _parse_judge_response(self, response_text: str) -> str:
+        """Parse JSON response — handle possible Markdown code block wrapping."""
+        response_text = response_text.strip()
+        if "```json" in response_text:
+            start = response_text.find("```json") + 7
+            end = response_text.find("```", start)
+            if end > start:
+                response_text = response_text[start:end].strip()
+        elif response_text.startswith("```") and "```" in response_text[3:]:
+            start = 3
+            end = response_text.find("```", start)
+            if end > start:
+                response_text = response_text[start:end].strip()
+        return response_text
 
-            # Parse JSON response — handle possible Markdown code block wrapping
-            response_text = response_text.strip()
-            if "```json" in response_text:
-                start = response_text.find("```json") + 7
-                end = response_text.find("```", start)
-                if end > start:
-                    response_text = response_text[start:end].strip()
-            elif response_text.startswith("```") and "```" in response_text[3:]:
-                start = 3
-                end = response_text.find("```", start)
-                if end > start:
-                    response_text = response_text[start:end].strip()
-
-            judge_data = json.loads(response_text)
-
-            failure_reasons = judge_data.get("failure_reasons", [])
-            if not isinstance(failure_reasons, list):
-                failure_reasons = []
-
-            result = JudgeResult(
-                passed=bool(judge_data.get("passed", False)),
-                confidence=float(judge_data.get("confidence", 0.5)),
-                reasoning=str(judge_data.get("reasoning", "")),
-                failure_reasons=failure_reasons,
-                judge_version="2.0",
-                judge_model="llm",
-            )
-
-            # Position debias: for borderline cases (confidence < 0.8), run swap
-            if result.confidence < 0.8 and self.llm_client:
-                result = self._debias_position(eval_case, model_output, assertion_results, result)
-
-            return result
-        except Exception as e:
-            # Fallback to simplified logic on any error (network, parse, etc.)
-            passed_assertions = sum(1 for r in assertion_results if r.passed)
-            total_assertions = len(assertion_results)
-            passed_ratio = passed_assertions / total_assertions if total_assertions > 0 else 0.0
-            return JudgeResult(
-                passed=passed_ratio >= 0.5,
-                confidence=passed_ratio,
-                reasoning=(
-                    f"LLM judge call failed ({e}), "
-                    f"fallback to assertion-based: "
-                    f"{passed_assertions}/{total_assertions} "
-                    f"passed ({passed_ratio:.2f})"
-                ),
-                judge_version="2.0",
-                judge_model="",
-            )
+    def _llm_judge_error_fallback(
+        self,
+        assertion_results: list[AssertionResult],
+        error: Exception,
+    ) -> JudgeResult:
+        """Fallback logic when LLM judge call fails."""
+        passed_assertions = sum(1 for r in assertion_results if r.passed)
+        total_assertions = len(assertion_results)
+        passed_ratio = passed_assertions / total_assertions if total_assertions > 0 else 0.0
+        return JudgeResult(
+            passed=passed_ratio >= 0.5,
+            confidence=passed_ratio,
+            reasoning=(
+                f"LLM judge call failed ({error}), "
+                f"fallback to assertion-based: "
+                f"{passed_assertions}/{total_assertions} "
+                f"passed ({passed_ratio:.2f})"
+            ),
+            judge_version="2.0",
+            judge_model="",
+        )
 
     def _debias_position(
         self,

@@ -18,8 +18,44 @@ class MaintainabilityResult:
     freshness_details: dict
 
 
+def _calc_line_length_score(avg_line_length: float) -> float:
+    return round(max(0.0, 1.0 - (max(0, avg_line_length - 100) / 100)), 3)
+
+
+def _calc_depth_score(max_depth: int) -> float:
+    return round(1.0 if max_depth <= 3 else max(0.0, 1.0 - (max_depth - 3) * 0.5), 3)
+
+
+def _calc_todo_score(todo_count: int) -> float:
+    return round(max(0.0, 1.0 - todo_count * 0.15), 3)
+
+
+def _extract_heading_depths(lines: list[str]) -> list[int]:
+    depths = []
+    for line in lines:
+        match = re.match(r"^(#{2,6})\s", line)
+        if match:
+            depths.append(len(match.group(1)) - 1)
+    return depths
+
+
+TODO_PATTERN = re.compile(r"\b(TODO|FIXME|HACK|XXX|TBD)\b", re.IGNORECASE)
+
+
+def _compute_readability_metrics(lines: list[str]) -> dict:
+    line_lengths = [len(line) for line in lines if line.strip()]
+    avg_line_length = sum(line_lengths) / len(line_lengths) if line_lengths else 0
+    heading_depths = _extract_heading_depths(lines)
+    max_depth = max(heading_depths) if heading_depths else 0
+    todo_count = sum(1 for line in lines if TODO_PATTERN.search(line))
+    return {
+        "avg_line_length": avg_line_length,
+        "max_depth": max_depth,
+        "todo_count": todo_count,
+    }
+
+
 def readability_score(content: str) -> dict:
-    """Score readability (0.0-1.0) based on line length, nesting depth, TODOs."""
     if not content or not content.strip():
         return {
             "avg_line_length": 0,
@@ -29,38 +65,50 @@ def readability_score(content: str) -> dict:
         }
 
     lines = content.split("\n")
-    line_lengths = [len(line) for line in lines if line.strip()]
-    avg_line_length = sum(line_lengths) / len(line_lengths) if line_lengths else 0
-
-    heading_depths = []
-    for line in lines:
-        match = re.match(r"^(#{2,6})\s", line)
-        if match:
-            heading_depths.append(len(match.group(1)) - 1)
-    max_depth = max(heading_depths) if heading_depths else 0
-
-    todo_pattern = re.compile(r"\b(TODO|FIXME|HACK|XXX|TBD)\b", re.IGNORECASE)
-    todo_count = sum(1 for line in lines if todo_pattern.search(line))
-
-    length_score = max(0.0, 1.0 - (max(0, avg_line_length - 100) / 100))
-    depth_score = 1.0 if max_depth <= 3 else max(0.0, 1.0 - (max_depth - 3) * 0.5)
-    todo_score = max(0.0, 1.0 - todo_count * 0.15)
-
+    metrics = _compute_readability_metrics(lines)
+    avg_line_length = metrics["avg_line_length"]
+    max_depth = metrics["max_depth"]
+    todo_count = metrics["todo_count"]
+    length_score = _calc_line_length_score(avg_line_length)
+    depth_score = _calc_depth_score(max_depth)
+    todo_score = _calc_todo_score(todo_count)
     combined = (length_score + depth_score + todo_score) / 3.0
 
     return {
         "avg_line_length": round(avg_line_length, 1),
         "max_depth": max_depth,
         "todo_count": todo_count,
-        "length_score": round(length_score, 3),
-        "depth_score": round(depth_score, 3),
-        "todo_score": round(todo_score, 3),
+        "length_score": length_score,
+        "depth_score": depth_score,
+        "todo_score": todo_score,
         "score": round(combined, 3),
     }
 
 
+def _check_has_name(fm, content: str) -> bool:
+    return bool((fm and fm.get("name")) or re.search(r"^#\s+\S", content, re.MULTILINE))
+
+
+def _check_has_triggers(fm, content: str) -> bool:
+    return bool(_has_section(content, r"Triggers|TRIGGERS?|触发")) or bool(
+        fm and (fm.get("triggers") or fm.get("TRIGGERS") or fm.get("TRIGGER"))
+    )
+
+
+def _check_completeness_checks(content: str) -> dict:
+    fm = _extract_frontmatter(content)
+    if not isinstance(fm, dict):
+        fm = None
+    return {
+        "has_name": _check_has_name(fm, content),
+        "has_description": bool(fm and fm.get("description")),
+        "has_triggers": _check_has_triggers(fm, content),
+        "has_workflow": bool(_has_section(content, r"Workflow|Process|Flow|流程|步骤")),
+        "has_anti_patterns": bool(_has_section(content, r"Anti-Patterns|反模式")),
+    }
+
+
 def completeness_score(content: str) -> dict:
-    """Score completeness (0.0-1.0) based on required sections."""
     if not content or not content.strip():
         return {
             "has_name": False,
@@ -71,29 +119,11 @@ def completeness_score(content: str) -> dict:
             "score": 0.0,
         }
 
-    fm = _extract_frontmatter(content)
-    if not isinstance(fm, dict):
-        fm = None
-
-    has_name = bool((fm and fm.get("name")) or re.search(r"^#\s+\S", content, re.MULTILINE))
-    has_description = bool(fm and fm.get("description"))
-    has_triggers = bool(_has_section(content, r"Triggers|TRIGGERS?|触发")) or bool(
-        fm and (fm.get("triggers") or fm.get("TRIGGERS") or fm.get("TRIGGER"))
-    )
-    has_workflow = bool(_has_section(content, r"Workflow|Process|Flow|流程|步骤"))
-    has_anti_patterns = bool(_has_section(content, r"Anti-Patterns|反模式"))
-
-    checks = [has_name, has_description, has_triggers, has_workflow, has_anti_patterns]
+    checks_dict = _check_completeness_checks(content)
+    checks = list(checks_dict.values())[:-1]  # exclude 'score' key
     score = sum(checks) / len(checks) if checks else 0.0
 
-    return {
-        "has_name": has_name,
-        "has_description": has_description,
-        "has_triggers": has_triggers,
-        "has_workflow": has_workflow,
-        "has_anti_patterns": has_anti_patterns,
-        "score": round(score, 3),
-    }
+    return {**checks_dict, "score": round(score, 3)}
 
 
 FRESHNESS_PATTERNS = [

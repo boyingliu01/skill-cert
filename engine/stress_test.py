@@ -134,32 +134,105 @@ class StressTester:
                 )
             )
 
+    async def _run_concurrent_tasks(
+        self,
+        eval_cases: list,
+        model_adapter: Any,
+        semaphore: asyncio.Semaphore,
+        results: list,
+    ) -> None:
+        """Execute all eval cases concurrently."""
+        tasks = [
+            asyncio.create_task(self._execute_single(case, model_adapter, semaphore, results))
+            for case in eval_cases
+        ]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _count_by_status(
+        self,
+        results: list[StressTestResult],
+        status: str,
+    ) -> int:
+        """Count results by status type."""
+        return sum(1 for r in results if r.status == status)
+
+    def _compute_stress_metrics(
+        self,
+        eval_cases: list,
+        results: list[StressTestResult],
+    ) -> tuple[int, int, int, int, int, list[float], dict[str, int], float, float]:
+        """Compute metrics from stress test results."""
+        total = len(eval_cases)
+        completed = self._count_by_status(results, "success")
+        failed = self._count_by_status(results, "failed")
+        timed_out = self._count_by_status(results, "timeout")
+        errored = self._count_by_status(results, "error")
+
+        latencies = [r.latency for r in results if r.latency > 0]
+
+        model_exec_counts = self._count_models(results)
+        fairness_ratio = self._compute_fairness(model_exec_counts)
+        completion_rate = completed / total if total > 0 else 0.0
+
+        return (
+            total,
+            completed,
+            failed,
+            timed_out,
+            errored,
+            latencies,
+            model_exec_counts,
+            fairness_ratio,
+            completion_rate,
+        )
+
+    @staticmethod
+    def _count_models(results: list[StressTestResult]) -> dict[str, int]:
+        """Count executions per model."""
+        counts: dict[str, int] = {}
+        for r in results:
+            counts[r.model] = counts.get(r.model, 0) + 1
+        return counts
+
+    @staticmethod
+    def _compute_fairness(model_exec_counts: dict[str, int]) -> float:
+        """Compute fairness ratio from model execution counts."""
+        if not model_exec_counts:
+            return 1.0
+        max_count = max(model_exec_counts.values())
+        min_count = min(model_exec_counts.values())
+        if max_count <= 0:
+            return 1.0
+        return min_count / max_count
+
     async def run_stress_test(
         self,
         eval_cases: list,
         model_adapter: Any,
         concurrency: int | None = None,
     ) -> StressTestReport:
+        """Run stress test with configurable concurrency."""
         conc = concurrency or self.concurrency
         if not tracemalloc.is_tracing():
             tracemalloc.start()
 
         semaphore = asyncio.Semaphore(conc)
         results: list[StressTestResult] = []
-        tasks = [
-            asyncio.create_task(self._execute_single(case, model_adapter, semaphore, results))
-            for case in eval_cases
-        ]
 
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await self._run_concurrent_tasks(eval_cases, model_adapter, semaphore, results)
 
-        total = len(eval_cases)
-        completed = sum(1 for r in results if r.status == "success")
-        failed = sum(1 for r in results if r.status == "failed")
-        timed_out = sum(1 for r in results if r.status == "timeout")
-        errored = sum(1 for r in results if r.status == "error")
+        (
+            total,
+            completed,
+            failed,
+            timed_out,
+            errored,
+            latencies,
+            model_exec_counts,
+            fairness_ratio,
+            completion_rate,
+        ) = self._compute_stress_metrics(eval_cases, results)
 
-        latencies = [r.latency for r in results if r.latency > 0]
         avg_lat = statistics.mean(latencies) if latencies else 0.0
         min_lat = min(latencies) if latencies else 0.0
         max_lat = max(latencies) if latencies else 0.0
@@ -169,19 +242,6 @@ class StressTester:
 
         current, peak = tracemalloc.get_traced_memory()
         memory_mb_peak = peak / (1024 * 1024)
-
-        model_exec_counts: dict[str, int] = {}
-        for r in results:
-            model_exec_counts[r.model] = model_exec_counts.get(r.model, 0) + 1
-
-        fairness_ratio = 1.0
-        if model_exec_counts:
-            max_count = max(model_exec_counts.values())
-            min_count = min(model_exec_counts.values())
-            if max_count > 0:
-                fairness_ratio = min_count / max_count
-
-        completion_rate = completed / total if total > 0 else 0.0
 
         scalability_score = self._calculate_scalability_score(
             completion_rate, fairness_ratio, avg_lat, concurrency=conc

@@ -103,6 +103,118 @@ def _prompt_input(prompt: str, default: str = "", input_fn=input) -> str:
     return input_fn(f"  {prompt}: ").strip()
 
 
+def _print_setup_header(output_fn: "callable") -> None:
+    """Print setup wizard header."""
+    output_fn("\n=== Skill-Cert Model Setup ===\n")
+    output_fn("Configure LLM models for skill evaluation.")
+    output_fn(f"Config will be saved to: {CONFIG_FILE}\n")
+
+
+def _handle_existing_config(
+    existing: list[ModelConfig], input_fn: "callable", output_fn: "callable"
+) -> bool:
+    """Handle existing config. Return True if user wants to overwrite."""
+    if not existing:
+        return True
+
+    output_fn(f"Found {len(existing)} existing model(s):")
+    for i, m in enumerate(existing, 1):
+        output_fn(f"  {i}. {m.model_name} @ {m.base_url}")
+    answer = input_fn("\nOverwrite existing config? [y/N]: ").strip().lower()
+    if answer != "y":
+        output_fn("Setup cancelled. Existing config preserved.")
+        return False
+    output_fn("")
+    return True
+
+
+def _prompt_model_name(input_fn: "callable", output_fn: "callable") -> str | None:
+    """Prompt for model name. Return None if invalid."""
+    name = _prompt_input(
+        "Model name (e.g. qwen3.6-plus, claude-sonnet-4-20250514)",
+        input_fn=input_fn,
+    )
+    if not name:
+        output_fn("  ERROR: Model name is required")
+        return None
+    return name
+
+
+def _prompt_and_validate_url(input_fn: "callable", output_fn: "callable") -> str | None:
+    """Prompt for URL and validate. Return None if invalid."""
+    url = _prompt_input("API base URL (e.g. https://api.example.com/v1)", input_fn=input_fn)
+    err = _validate_base_url(url)
+    if err:
+        output_fn(f"  ERROR: {err}")
+        return None
+    return url
+
+
+def _prompt_and_validate_key(input_fn: "callable", output_fn: "callable") -> str | None:
+    """Prompt for API key and validate. Return None if invalid."""
+    key = _prompt_input("API key (or $ENV_VAR_NAME)", input_fn=input_fn)
+    err = _validate_api_key(key)
+    if err:
+        output_fn(f"  ERROR: {err}")
+        return None
+    return key
+
+
+def _prompt_fallback_model(input_fn: "callable") -> str | None:
+    """Prompt for fallback model. Return None if skipped."""
+    fallback = _prompt_input(
+        "Fallback model name (optional, press Enter to skip)",
+        default="",
+        input_fn=input_fn,
+    )
+    return fallback if fallback else None
+
+
+def _test_and_confirm_model(
+    model: ModelConfig,
+    input_fn: "callable",
+    output_fn: "callable",
+    test_fn: "callable | None",
+) -> bool:
+    """Test connectivity and confirm with user. Return True if should save."""
+    output_fn(f"  Testing connectivity to {model.model_name}...")
+    if test_fn:
+        success, msg = test_fn(model)
+    else:
+        success, msg = _test_connectivity(model)
+
+    if success:
+        output_fn(f"  OK: {msg}")
+        return True
+
+    output_fn(f"  WARN: Connection failed — {msg}")
+    answer = input_fn("  Save this model anyway? [y/N]: ").strip().lower()
+    if answer != "y":
+        output_fn("  Skipped.\n")
+        return False
+    return True
+
+
+def _prompt_add_another_model(model_num: int, input_fn: "callable") -> bool:
+    """Prompt if user wants to add another model. Return True if yes."""
+    if model_num < 2:
+        return True
+
+    answer = (
+        input_fn("Add another model? (recommended for drift detection) [y/N]: ").strip().lower()
+    )
+    return answer == "y"
+
+
+def _print_setup_summary(models: list[ModelConfig], path: Path, output_fn: "callable") -> None:
+    """Print setup completion summary."""
+    output_fn(f"\nSetup complete! {len(models)} model(s) saved to {path}")
+    output_fn("\nQuick start:")
+    output_fn("  skill-cert --skill path/to/SKILL.md")
+    if len(models) >= 2:
+        output_fn("\nDrift detection enabled (multiple models configured).")
+
+
 def _setup_interactive(
     input_fn: "callable" = input,
     output_fn: "callable" = print,
@@ -118,20 +230,11 @@ def _setup_interactive(
     Returns:
         Exit code (0 = success, 1 = error).
     """
-    output_fn("\n=== Skill-Cert Model Setup ===\n")
-    output_fn("Configure LLM models for skill evaluation.")
-    output_fn(f"Config will be saved to: {CONFIG_FILE}\n")
+    _print_setup_header(output_fn)
 
     existing = _load_existing_models()
-    if existing:
-        output_fn(f"Found {len(existing)} existing model(s):")
-        for i, m in enumerate(existing, 1):
-            output_fn(f"  {i}. {m.model_name} @ {m.base_url}")
-        answer = input_fn("\nOverwrite existing config? [y/N]: ").strip().lower()
-        if answer != "y":
-            output_fn("Setup cancelled. Existing config preserved.")
-            return EXIT_OK
-        output_fn("")
+    if not _handle_existing_config(existing, input_fn, output_fn):
+        return EXIT_OK
 
     models: list[ModelConfig] = []
     model_num = 1
@@ -139,78 +242,43 @@ def _setup_interactive(
     while True:
         output_fn(f"--- Model {model_num} ---")
 
-        name = _prompt_input(
-            "Model name (e.g. qwen3.6-plus, claude-sonnet-4-20250514)",
-            input_fn=input_fn,
-        )
+        name = _prompt_model_name(input_fn, output_fn)
         if not name:
-            output_fn("  ERROR: Model name is required")
             continue
 
-        url = _prompt_input("API base URL (e.g. https://api.example.com/v1)", input_fn=input_fn)
-        err = _validate_base_url(url)
-        if err:
-            output_fn(f"  ERROR: {err}")
+        url = _prompt_and_validate_url(input_fn, output_fn)
+        if not url:
             continue
 
-        key = _prompt_input("API key (or $ENV_VAR_NAME)", input_fn=input_fn)
-        err = _validate_api_key(key)
-        if err:
-            output_fn(f"  ERROR: {err}")
+        key = _prompt_and_validate_key(input_fn, output_fn)
+        if not key:
             continue
 
-        fallback = _prompt_input(
-            "Fallback model name (optional, press Enter to skip)",
-            default="",
-            input_fn=input_fn,
-        )
+        fallback = _prompt_fallback_model(input_fn)
 
         model = ModelConfig(
             model_name=name,
             base_url=url,
             api_key=key,
-            fallback_model=fallback if fallback else None,
+            fallback_model=fallback,
         )
 
-        # Test connectivity
-        output_fn(f"  Testing connectivity to {name}...")
-        if test_fn:
-            success, msg = test_fn(model)
-        else:
-            success, msg = _test_connectivity(model)
-
-        if success:
-            output_fn(f"  OK: {msg}")
-        else:
-            output_fn(f"  WARN: Connection failed — {msg}")
-            answer = input_fn("  Save this model anyway? [y/N]: ").strip().lower()
-            if answer != "y":
-                output_fn("  Skipped.\n")
-                continue
+        if not _test_and_confirm_model(model, input_fn, output_fn, test_fn):
+            continue
 
         models.append(model)
         output_fn(f"  Added: {name}\n")
         model_num += 1
 
-        if model_num >= 2:
-            answer = (
-                input_fn("Add another model? (recommended for drift detection) [y/N]: ")
-                .strip()
-                .lower()
-            )
-            if answer != "y":
-                break
+        if not _prompt_add_another_model(model_num, input_fn):
+            break
 
     if not models:
         output_fn("\nNo models configured. Setup cancelled.")
         return EXIT_ERROR
 
     path = _write_config(models)
-    output_fn(f"\nSetup complete! {len(models)} model(s) saved to {path}")
-    output_fn("\nQuick start:")
-    output_fn("  skill-cert --skill path/to/SKILL.md")
-    if len(models) >= 2:
-        output_fn("\nDrift detection enabled (multiple models configured).")
+    _print_setup_summary(models, path, output_fn)
 
     return EXIT_OK
 

@@ -309,6 +309,77 @@ class TestReadabilityScore:
         assert result["todo_count"] == 0
 
 
+# ─── Test: readability_score refactoring characterization ─────────────────
+
+
+class TestReadabilityRefactoring:
+    """Characterization tests to ensure readability_score refactoring preserves exact behavior."""
+
+    def test_length_score_formula(self):
+        """length_score = max(0.0, 1.0 - max(0, avg-100)/100)"""
+        # Content with all lines >100 chars → avg > 100 → score < 1.0
+        long_lines = "\n".join(["x" * 150, "y" * 150, "z" * 150])
+        result = readability_score(long_lines)
+        assert result["avg_line_length"] == 150
+        assert result["length_score"] == 0.5  # max(0, 1-(150-100)/100) = 0.5
+
+        # Content with avg_line_length=200 → score=0.0
+        very_long = "\n".join(["x" * 200, "y" * 200])
+        result = readability_score(very_long)
+        assert result["avg_line_length"] == 200
+        assert result["length_score"] == 0.0
+
+    def test_depth_score_formula(self):
+        """depth_score = 1.0 if max_depth<=3 else max(0.0, 1.0-(max_depth-3)*0.5)"""
+        r = readability_score("##### H5")
+        assert r["max_depth"] == 4
+        assert r["depth_score"] == 0.5
+
+        r = readability_score("###### H6")
+        assert r["max_depth"] == 5
+        assert r["depth_score"] == 0.0
+
+    def test_todo_score_formula(self):
+        """todo_score = max(0.0, 1.0 - todo_count*0.15)"""
+        content = "# Test\nTODO: one\nFIXME: two\nHACK: three\nXXX: four\nTBD: five"
+        result = readability_score(content)
+        assert result["todo_count"] == 5
+        assert result["todo_score"] == 0.25
+
+        # 7 TODOs → score capped at 0.0
+        lots_of_todos = "# Test\n" + "\n".join(f"TODO: {i}" for i in range(7))
+        result = readability_score(lots_of_todos)
+        assert result["todo_count"] == 7
+        assert result["todo_score"] == 0.0
+
+    def test_combined_score_is_average(self):
+        """combined = (length_score + depth_score + todo_score) / 3.0"""
+        content = "# Test\nTODO: one"
+        result = readability_score(content)
+        expected = round(
+            (result["length_score"] + result["depth_score"] + result["todo_score"]) / 3.0, 3
+        )
+        assert result["score"] == expected
+
+    def test_depth_penalty_threshold(self):
+        """max_depth<=3 gets depth_score=1.0, >3 gets penalized."""
+        r = readability_score("#### H4")
+        assert r["max_depth"] == 3
+        assert r["depth_score"] == 1.0
+
+    def test_mixed_scores(self):
+        """Integration: verify all sub-scores computed and averaged."""
+        content = "## H2\n### H3\n#### H4\n##### H5\n\nTODO: fix this\n" + "x" * 150
+        result = readability_score(content)
+        assert result["max_depth"] == 4
+        assert result["depth_score"] == 0.5
+        assert result["todo_score"] == 0.85
+        expected = round(
+            (result["length_score"] + result["depth_score"] + result["todo_score"]) / 3.0, 3
+        )
+        assert result["score"] == expected
+
+
 # ─── Test: completeness_score ─────────────────────────────────────────────
 
 

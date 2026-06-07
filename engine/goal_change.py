@@ -167,26 +167,36 @@ class GoalChangeTester:
         if not results:
             return {"adaptation_rate": 0.0, "avg_score": 0.0, "passed": 0}
 
-        passed = sum(1 for r in results if r.passed)
-        avg_score = sum(r.score for r in results) / len(results)
-        adaptation_rate = sum(1 for r in results if r.adapted) / len(results)
-        avg_adaptation_turns = sum(r.adaptation_turns for r in results if r.adapted) / max(
-            1, sum(1 for r in results if r.adapted)
-        )
+        return _compute_goal_change_aggregates(results)
 
-        return {
-            "adaptation_rate": round(adaptation_rate, 3),
-            "avg_score": round(avg_score, 3),
-            "avg_adaptation_turns": round(avg_adaptation_turns, 2),
-            "passed": passed,
-            "total": len(results),
-            "scenarios": [
-                {
-                    "name": r.scenario_name,
-                    "adapted": r.adapted,
-                    "score": round(r.score, 3),
-                    "final_alignment": round(r.final_alignment, 3),
-                }
-                for r in results
-            ],
+
+def _scenario_entries(results):
+    return [
+        {
+            "name": r.scenario_name,
+            "adapted": r.adapted,
+            "score": round(r.score, 3),
+            "final_alignment": round(r.final_alignment, 3),
         }
+        for r in results
+    ]
+
+
+def _compute_goal_change_aggregates(results: list[GoalChangeResult]) -> dict[str, Any]:
+    passed = sum(1 for r in results if r.passed)
+    avg_score = sum(r.score for r in results) / len(results)
+    adaptation_rate = sum(1 for r in results if r.adapted) / len(results)
+    adapted_results = [r for r in results if r.adapted]
+    avg_adaptation_turns = (
+        sum(r.adaptation_turns for r in adapted_results) / len(adapted_results)
+        if adapted_results
+        else 0.0
+    )
+    return {
+        "adaptation_rate": round(adaptation_rate, 3),
+        "avg_score": round(avg_score, 3),
+        "avg_adaptation_turns": round(avg_adaptation_turns, 2),
+        "passed": passed,
+        "total": len(results),
+        "scenarios": _scenario_entries(results),
+    }

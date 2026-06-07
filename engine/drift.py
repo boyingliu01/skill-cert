@@ -27,6 +27,120 @@ class DriftDetector:
         """Initialize drift detector."""
         pass
 
+    def _extract_prompt(self, eval_case: EvalCase | dict) -> str:
+        """Extract prompt from eval case."""
+        if isinstance(eval_case, dict):
+            return eval_case.get("prompt") or eval_case.get("input", "")
+        return getattr(eval_case, "prompt", "") or ""
+
+    def _build_assertions(self, eval_case: EvalCase | dict) -> list:
+        """Build assertions list from eval case."""
+        if isinstance(eval_case, dict):
+            from engine.grader import EvalAssertion
+
+            assertions = []
+            for a in eval_case.get("assertions", []):
+                if isinstance(a, dict):
+                    assertions.append(
+                        EvalAssertion(
+                            name=a.get("name", ""),
+                            type=a.get("type", "contains"),
+                            value=a.get("value", ""),
+                            weight=int(float(a.get("weight", 1))),
+                        )
+                    )
+                elif isinstance(a, EvalAssertion):
+                    assertions.append(a)
+            return assertions
+        return []
+
+    def _convert_to_eval_case(self, eval_case: EvalCase | dict, prompt: str) -> EvalCase:
+        """Convert dict to EvalCase if needed."""
+        if isinstance(eval_case, dict):
+            from engine.grader import EvalCase
+
+            return EvalCase(
+                id=eval_case.get("id", 0),
+                name=eval_case.get("name", ""),
+                category=eval_case.get("category", "normal"),
+                prompt=prompt,
+                assertions=self._build_assertions(eval_case),
+            )
+        return eval_case
+
+    def _grade_eval(self, eval_case: EvalCase | dict, model_output: str, grader: Grader) -> dict:
+        """Grade a single eval case."""
+        if isinstance(eval_case, dict):
+            case = self._convert_to_eval_case(eval_case, model_output)
+            return grader.grade_output(case, model_output)
+        return grader.grade_output(eval_case, model_output)
+
+    def _calculate_model_pass_rate(self, eval_results: list) -> float:
+        """Calculate pass rate for a model's eval results."""
+        if eval_results:
+            return sum(r["pass_rate"] for r in eval_results) / len(eval_results)
+        return 0.0
+
+    def _compare_model_pair(
+        self, model_a: str, model_b: str, pass_rate_a: float, pass_rate_b: float
+    ) -> DriftResult:
+        """Compare two models and return drift result."""
+        variance = abs(pass_rate_a - pass_rate_b)
+        severity = self._determine_severity(variance)
+        verdict = self._map_verdict(severity)
+
+        return DriftResult(
+            model_a=model_a,
+            model_b=model_b,
+            pass_rate_a=pass_rate_a,
+            pass_rate_b=pass_rate_b,
+            variance=variance,
+            severity=severity,
+            verdict=verdict,
+        )
+
+    def _run_model_evaluations(
+        self, eval_cases: list[EvalCase], model_adapters: dict[str, Any], grader: Grader
+    ) -> dict[str, dict]:
+        """Run evaluations for all models and return results."""
+        model_eval_results = {}
+        model_names = list(model_adapters.keys())
+
+        for model_name in model_names:
+            adapter = model_adapters[model_name]
+            eval_results = []
+
+            for eval_case in eval_cases:
+                prompt = self._extract_prompt(eval_case)
+                if not prompt:
+                    prompt = ""
+                model_output = adapter.chat([{"role": "user", "content": prompt}])
+                grade_result = self._grade_eval(eval_case, model_output, grader)
+                eval_results.append(grade_result)
+
+            total_pass_rate = self._calculate_model_pass_rate(eval_results)
+            model_eval_results[model_name] = {"results": eval_results, "pass_rate": total_pass_rate}
+
+        return model_eval_results
+
+    def _build_all_pairwise_comparisons(
+        self, model_names: list[str], model_eval_results: dict[str, dict]
+    ) -> list[DriftResult]:
+        """Build all pairwise drift comparisons."""
+        results = []
+        for i in range(len(model_names)):
+            for j in range(i + 1, len(model_names)):
+                model_a = model_names[i]
+                model_b = model_names[j]
+
+                pass_rate_a = model_eval_results[model_a]["pass_rate"]
+                pass_rate_b = model_eval_results[model_b]["pass_rate"]
+
+                drift_result = self._compare_model_pair(model_a, model_b, pass_rate_a, pass_rate_b)
+                results.append(drift_result)
+
+        return results
+
     def detect_drift(
         self, eval_cases: list[EvalCase], model_adapters: dict[str, Any], grader: Grader
     ) -> list[DriftResult]:
@@ -41,96 +155,9 @@ class DriftDetector:
         Returns:
             List of drift results comparing model pairs
         """
-        results = []
+        model_eval_results = self._run_model_evaluations(eval_cases, model_adapters, grader)
         model_names = list(model_adapters.keys())
-
-        # Run evaluations for each model
-        model_eval_results = {}
-        for model_name in model_names:
-            adapter = model_adapters[model_name]
-            eval_results = []
-
-            for eval_case in eval_cases:
-                prompt = (
-                    eval_case.get("prompt")
-                    if isinstance(eval_case, dict)
-                    else getattr(eval_case, "prompt", "")
-                )
-                if not prompt:
-                    prompt = (
-                        eval_case.get("input", "")
-                        if isinstance(eval_case, dict)
-                        else getattr(eval_case, "input", "")
-                    )
-                model_output = adapter.chat([{"role": "user", "content": prompt}])
-
-                if isinstance(eval_case, dict):
-                    from engine.grader import EvalAssertion, EvalCase
-
-                    assertions = []
-                    for a in eval_case.get("assertions", []):
-                        if isinstance(a, dict):
-                            assertions.append(
-                                EvalAssertion(
-                                    name=a.get("name", ""),
-                                    type=a.get("type", "contains"),
-                                    value=a.get("value", ""),
-                                    weight=int(float(a.get("weight", 1))),
-                                )
-                            )
-                        elif isinstance(a, EvalAssertion):
-                            assertions.append(a)
-                    case = EvalCase(
-                        id=eval_case.get("id", 0),
-                        name=eval_case.get("name", ""),
-                        category=eval_case.get("category", "normal"),
-                        prompt=prompt,
-                        assertions=assertions,
-                    )
-                    grade_result = grader.grade_output(case, model_output)
-                else:
-                    grade_result = grader.grade_output(eval_case, model_output)
-                eval_results.append(grade_result)
-
-            # Calculate pass rate for this model
-            if eval_results:
-                total_pass_rate = sum(r["pass_rate"] for r in eval_results) / len(eval_results)
-            else:
-                total_pass_rate = 0.0
-
-            model_eval_results[model_name] = {"results": eval_results, "pass_rate": total_pass_rate}
-
-        # Compare pass rates between all pairs of models
-        for i in range(len(model_names)):
-            for j in range(i + 1, len(model_names)):
-                model_a = model_names[i]
-                model_b = model_names[j]
-
-                pass_rate_a = model_eval_results[model_a]["pass_rate"]
-                pass_rate_b = model_eval_results[model_b]["pass_rate"]
-
-                # Calculate variance (absolute difference)
-                variance = abs(pass_rate_a - pass_rate_b)
-
-                # Determine severity based on thresholds
-                severity = self._determine_severity(variance)
-
-                # Map severity to verdict
-                verdict = self._map_verdict(severity)
-
-                drift_result = DriftResult(
-                    model_a=model_a,
-                    model_b=model_b,
-                    pass_rate_a=pass_rate_a,
-                    pass_rate_b=pass_rate_b,
-                    variance=variance,
-                    severity=severity,
-                    verdict=verdict,
-                )
-
-                results.append(drift_result)
-
-        return results
+        return self._build_all_pairwise_comparisons(model_names, model_eval_results)
 
     def _determine_severity(self, variance: float) -> str:
         """Determine drift severity based on variance thresholds."""
@@ -152,37 +179,42 @@ class DriftDetector:
         else:  # high
             return "FAIL"
 
-    def aggregate_drift_report(self, drift_results: list[DriftResult]) -> dict[str, Any]:
-        """Generate aggregated drift report from individual results."""
-        if not drift_results:
-            return {
-                "drift_detected": False,
-                "highest_severity": "none",
-                "average_variance": 0.0,
-                "model_pairs_compared": 0,
-                "summary": "No drift analysis performed",
-            }
+    def _build_empty_drift_report(self) -> dict[str, Any]:
+        """Build empty drift report when no results exist."""
+        return {
+            "drift_detected": False,
+            "highest_severity": "none",
+            "average_variance": 0.0,
+            "model_pairs_compared": 0,
+            "summary": "No drift analysis performed",
+        }
 
-        # Calculate aggregate metrics
+    def _build_drift_metrics(self, drift_results: list[DriftResult]) -> dict[str, Any]:
         highest_severity = self._get_highest_severity(drift_results)
         avg_variance = sum(r.variance for r in drift_results) / len(drift_results)
         max_variance = max(r.variance for r in drift_results)
-
-        # Count severity levels
-        severity_counts = {
-            "none": sum(1 for r in drift_results if r.severity == "none"),
-            "low": sum(1 for r in drift_results if r.severity == "low"),
-            "moderate": sum(1 for r in drift_results if r.severity == "moderate"),
-            "high": sum(1 for r in drift_results if r.severity == "high"),
+        severity_counts = self._count_severities(drift_results)
+        overall_verdict = self._aggregate_verdict(drift_results)
+        return {
+            "drift_detected": highest_severity in ["moderate", "high"],
+            "highest_severity": highest_severity,
+            "average_variance": avg_variance,
+            "max_variance": max_variance,
+            "model_pairs_compared": len(drift_results),
+            "severity_distribution": severity_counts,
+            "overall_verdict": overall_verdict,
         }
 
-        # Determine overall verdict
-        overall_verdict = self._aggregate_verdict(drift_results)
+    @staticmethod
+    def _count_severities(drift_results):
+        counts = {"none": 0, "low": 0, "moderate": 0, "high": 0}
+        for r in drift_results:
+            if r.severity in counts:
+                counts[r.severity] += 1
+        return counts
 
-        # Drift is considered detected if there's any moderate or high severity
-        drift_detected = highest_severity in ["moderate", "high"]
-
-        # Cross-model uncertainty metrics
+    def _build_uncertainty_metrics(self, drift_results: list[DriftResult]) -> dict[str, Any]:
+        """Build cross-model uncertainty metrics."""
         pass_rates = []
         for r in drift_results:
             pass_rates.extend([r.pass_rate_a, r.pass_rate_b])
@@ -191,22 +223,27 @@ class DriftDetector:
         cme = self.calculate_cme(unique_rates)
 
         return {
-            "drift_detected": drift_detected,
-            "highest_severity": highest_severity,
-            "average_variance": avg_variance,
-            "max_variance": max_variance,
-            "model_pairs_compared": len(drift_results),
-            "severity_distribution": severity_counts,
-            "overall_verdict": overall_verdict,
             "cross_model_uncertainty": {
                 "cmp_agreement_rate": cmp,
                 "cme_variation": cme,
             },
             "summary": (
                 f"Drift analysis completed. Highest severity: "
-                f"{highest_severity}. Average variance: {avg_variance:.3f}"
+                f"{self._get_highest_severity(drift_results)}. "
+                f"Average variance: "
+                f"{sum(r.variance for r in drift_results) / len(drift_results):.3f}"
             ),
         }
+
+    def aggregate_drift_report(self, drift_results: list[DriftResult]) -> dict[str, Any]:
+        """Generate aggregated drift report from individual results."""
+        if not drift_results:
+            return self._build_empty_drift_report()
+
+        metrics = self._build_drift_metrics(drift_results)
+        uncertainty = self._build_uncertainty_metrics(drift_results)
+
+        return {**metrics, **uncertainty}
 
     def _get_highest_severity(self, drift_results: list[DriftResult]) -> str:
         """Get the highest severity level from a list of drift results."""

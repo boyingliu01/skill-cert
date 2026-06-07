@@ -107,6 +107,71 @@ class StabilityRunner:
         self.max_concurrency = max_concurrency
         self.confidence = confidence
 
+    def _run_trials(
+        self,
+        evals: list[dict[str, Any]],
+        skill_path: str,
+        model_adapter,
+        with_skill: bool,
+    ) -> list[list[dict[str, Any]]]:
+        """Run evals N times and return list of results per run."""
+        all_run_results = []
+        for _ in range(self.num_runs):
+            if with_skill:
+                results = self.base_runner.run_with_skill(evals, skill_path, model_adapter)
+            else:
+                results = self.base_runner.run_without_skill(evals, model_adapter)
+            all_run_results.append(results)
+        return all_run_results
+
+    def _compute_eval_stability(
+        self,
+        eval_id: str,
+        all_run_results: list[list[dict[str, Any]]],
+    ) -> dict[str, Any]:
+        """Compute stability metrics for a single eval."""
+        pass_rates = []
+        for run_results in all_run_results:
+            run_result = next((r for r in run_results if r.get("eval_id") == eval_id), None)
+            if run_result and not run_result.get("error"):
+                grade = run_result.get("grade", {})
+                pr = grade.get("pass_rate", 0.0)
+                pass_rates.append(pr)
+            else:
+                pass_rates.append(0.0)
+
+        mean_pr = statistics.mean(pass_rates) if pass_rates else 0.0
+        std_pr = statistics.stdev(pass_rates) if len(pass_rates) > 1 else 0.0
+        cv = std_pr / mean_pr if mean_pr > 0 else 0.0
+        ci_lower, ci_upper = _compute_confidence_interval(pass_rates, self.confidence)
+
+        return {
+            "pass_rates": pass_rates,
+            "mean_pass_rate": mean_pr,
+            "std_dev": std_pr,
+            "runs_completed": len(pass_rates),
+            "coefficient_of_variation": cv,
+            "confidence_interval": (ci_lower, ci_upper),
+        }
+
+    def _aggregate_stability(
+        self,
+        stability_per_eval: dict[str, Any],
+    ) -> tuple[float, float, float, tuple[float, float]]:
+        """Aggregate stability metrics across all evals."""
+        all_means = [v["mean_pass_rate"] for v in stability_per_eval.values()]
+        all_stds = [v["std_dev"] for v in stability_per_eval.values()]
+        overall_std = statistics.stdev(all_stds) if len(all_stds) > 1 else 0.0
+        overall_mean_stability = statistics.mean(all_means) if all_means else 0.0
+        overall_cv = overall_std / overall_mean_stability if overall_mean_stability > 0 else 0.0
+
+        if len(all_means) >= 2:
+            overall_ci = _compute_confidence_interval(all_means, self.confidence)
+        else:
+            overall_ci = (overall_mean_stability, overall_mean_stability)
+
+        return overall_std, overall_mean_stability, overall_cv, overall_ci
+
     def run_stability(
         self,
         evals: list[dict[str, Any]],
@@ -115,54 +180,17 @@ class StabilityRunner:
         with_skill: bool = True,
     ) -> dict[str, Any]:
         """Run evals N times and return pass rates + stability stats per eval."""
-        all_run_results = []
-        for run_idx in range(self.num_runs):
-            if with_skill:
-                results = self.base_runner.run_with_skill(evals, skill_path, model_adapter)
-            else:
-                results = self.base_runner.run_without_skill(evals, model_adapter)
-            all_run_results.append(results)
+        all_run_results = self._run_trials(evals, skill_path, model_adapter, with_skill)
 
-        # Compute per-eval stability
         eval_ids = [e.get("id") for e in evals]
         stability_per_eval = {}
         for eval_id in eval_ids:
-            pass_rates = []
-            for run_results in all_run_results:
-                run_result = next((r for r in run_results if r.get("eval_id") == eval_id), None)
-                if run_result and not run_result.get("error"):
-                    grade = run_result.get("grade", {})
-                    pr = grade.get("pass_rate", 0.0)
-                    pass_rates.append(pr)
-                else:
-                    pass_rates.append(0.0)
+            if eval_id is not None:
+                stability_per_eval[eval_id] = self._compute_eval_stability(eval_id, all_run_results)
 
-            mean_pr = statistics.mean(pass_rates) if pass_rates else 0.0
-            std_pr = statistics.stdev(pass_rates) if len(pass_rates) > 1 else 0.0
-            cv = std_pr / mean_pr if mean_pr > 0 else 0.0
-            ci_lower, ci_upper = _compute_confidence_interval(pass_rates, self.confidence)
-
-            stability_per_eval[eval_id] = {
-                "pass_rates": pass_rates,
-                "mean_pass_rate": mean_pr,
-                "std_dev": std_pr,
-                "runs_completed": len(pass_rates),
-                "coefficient_of_variation": cv,
-                "confidence_interval": (ci_lower, ci_upper),
-            }
-
-        # Aggregate stability
-        all_means = [v["mean_pass_rate"] for v in stability_per_eval.values()]
-        all_stds = [v["std_dev"] for v in stability_per_eval.values()]
-        overall_std = statistics.stdev(all_stds) if len(all_stds) > 1 else 0.0
-        overall_mean_stability = statistics.mean(all_means) if all_means else 0.0
-        overall_cv = overall_std / overall_mean_stability if overall_mean_stability > 0 else 0.0
-
-        # Overall CI from all means
-        if len(all_means) >= 2:
-            overall_ci = _compute_confidence_interval(all_means, self.confidence)
-        else:
-            overall_ci = (overall_mean_stability, overall_mean_stability)
+        overall_std, overall_mean_stability, overall_cv, overall_ci = self._aggregate_stability(
+            stability_per_eval
+        )
 
         return {
             "runs_completed": self.num_runs,
@@ -175,41 +203,18 @@ class StabilityRunner:
         }
 
 
-def calculate_l4_stability(stability_data: dict[str, Any]) -> float:
-    """Calculate L4 stability score from multi-run data.
-
-    Uses CI width / mean ratio when confidence_interval is available,
-    otherwise falls back to coefficient of variation.
-
-    Returns:
-        float 0.0-1.0 where 1.0 means fully stable
-        CI width/mean < 10% → 1.0, < 20% → 0.8, < 35% → 0.5, else 0.0
-    """
-    # Try CI-based scoring first
-    ci = stability_data.get("confidence_interval")
-    overall_mean = stability_data.get("overall_mean_pass_rate", 0.0)
-
-    if ci and overall_mean > 0:
-        ci_lower, ci_upper = ci
-        ci_width = ci_upper - ci_lower
-        width_ratio = ci_width / overall_mean
-
-        if width_ratio < 0.10:
-            return 1.0
-        elif width_ratio < 0.20:
-            return 0.8
-        elif width_ratio < 0.35:
-            return 0.5
-        else:
-            return 0.0
-
-    # Fallback to CV-based scoring
-    overall_std = stability_data.get("overall_std_dev", 0.0)
-    if overall_mean == 0:
+def _score_from_ci_width(width_ratio: float) -> float | None:
+    if width_ratio < 0.10:
+        return 1.0
+    elif width_ratio < 0.20:
+        return 0.8
+    elif width_ratio < 0.35:
+        return 0.5
+    else:
         return 0.0
 
-    coefficient_of_variation = overall_std / overall_mean if overall_mean > 0 else float("inf")
 
+def _score_from_cv(coefficient_of_variation: float) -> float:
     if coefficient_of_variation <= 0.10:
         return 1.0
     elif coefficient_of_variation <= 0.20:
@@ -218,3 +223,23 @@ def calculate_l4_stability(stability_data: dict[str, Any]) -> float:
         return 0.5
     else:
         return 0.0
+
+
+def calculate_l4_stability(stability_data: dict[str, Any]) -> float:
+    ci = stability_data.get("confidence_interval")
+    overall_mean = stability_data.get("overall_mean_pass_rate", 0.0)
+
+    if ci and overall_mean > 0:
+        ci_lower, ci_upper = ci
+        ci_width = ci_upper - ci_lower
+        width_ratio = ci_width / overall_mean
+        result = _score_from_ci_width(width_ratio)
+        if result is not None:
+            return result
+
+    overall_std = stability_data.get("overall_std_dev", 0.0)
+    if overall_mean == 0:
+        return 0.0
+
+    coefficient_of_variation = overall_std / overall_mean
+    return _score_from_cv(coefficient_of_variation)

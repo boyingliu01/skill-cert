@@ -51,6 +51,32 @@ class TrajectoryScore(BaseModel):
     unnecessary_calls: list[str] = Field(default_factory=list)
 
 
+def _check_tool_correctness(
+    tool_steps: list[TrajectoryStep],
+    expected_tools: list[str] | None,
+) -> float:
+    """Check tool call correctness based on expected tools or results."""
+    if expected_tools is not None and len(expected_tools) > 0:
+        return _check_against_expected_set(tool_steps, set(expected_tools))
+
+    # Fallback: check if tool calls have results (success indicator)
+    with_results = sum(
+        1 for s in tool_steps if s.tool_call is not None and s.tool_call.result is not None
+    )
+    return with_results / len(tool_steps)
+
+
+def _check_against_expected_set(
+    tool_steps: list[TrajectoryStep],
+    expected_set: set[str],
+) -> float:
+    """Check how many tool calls match the expected set."""
+    correct = sum(
+        1 for s in tool_steps if s.tool_call is not None and s.tool_call.tool_name in expected_set
+    )
+    return correct / len(tool_steps)
+
+
 class TrajectoryEvaluator:
     """Evaluates LLM agent trajectories for quality metrics."""
 
@@ -134,20 +160,7 @@ class TrajectoryEvaluator:
         if not tool_steps:
             return 0.0
 
-        if expected_tools is not None and len(expected_tools) > 0:
-            expected_set = set(expected_tools)
-            correct = sum(
-                1
-                for s in tool_steps
-                if s.tool_call is not None and s.tool_call.tool_name in expected_set
-            )
-            return correct / len(tool_steps)
-
-        # Fallback: check if tool calls have results (success indicator)
-        with_results = sum(
-            1 for s in tool_steps if s.tool_call is not None and s.tool_call.result is not None
-        )
-        return with_results / len(tool_steps)
+        return _check_tool_correctness(tool_steps, expected_tools)
 
     def _calculate_turn_relevance(self, steps: list[TrajectoryStep]) -> float:
         """Calculate turn relevance score.

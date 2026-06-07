@@ -78,33 +78,51 @@ class MultiSkillAnalyzer:
         for a, b in combinations(enumerate(self._skills), 2):
             idx_a, sa = a
             idx_b, sb = b
-            triggers_a = {t.lower().strip() for t in sa.get("triggers", []) if t.strip()}
-            triggers_b = {t.lower().strip() for t in sb.get("triggers", []) if t.strip()}
-            if not triggers_a or not triggers_b:
-                continue
-
-            exact = triggers_a & triggers_b
-            substring: set[str] = set()
-            for ta in triggers_a:
-                for tb in triggers_b:
-                    if ta != tb and (ta in tb or tb in ta):
-                        substring.add(ta if len(ta) <= len(tb) else tb)
-
-            all_overlaps = exact | substring
-            for word in all_overlaps:
-                severity = self._trigger_severity(len(exact), len(substring))
-                conflicts.append(
-                    SkillConflict(
-                        conflict_type=ConflictType.TRIGGER_OVERLAP,
-                        severity=severity,
-                        skill_a=sa["name"],
-                        skill_b=sb["name"],
-                        trigger_word=word,
-                        description=f"Both skills trigger on '{word}'",
-                    )
-                )
+            conflict = self._check_trigger_pair(idx_a, sa, idx_b, sb)
+            if conflict:
+                conflicts.append(conflict)
 
         return conflicts
+
+    def _check_trigger_pair(
+        self,
+        idx_a: int,
+        sa: dict,
+        idx_b: int,
+        sb: dict,
+    ) -> SkillConflict | None:
+        triggers_a = {t.lower().strip() for t in sa.get("triggers", []) if t.strip()}
+        triggers_b = {t.lower().strip() for t in sb.get("triggers", []) if t.strip()}
+        if not triggers_a or not triggers_b:
+            return None
+
+        exact = triggers_a & triggers_b
+        substring = self._find_substring_overlaps(triggers_a, triggers_b)
+
+        all_overlaps = exact | substring
+        if not all_overlaps:
+            return None
+
+        word = next(iter(all_overlaps))
+        severity = self._trigger_severity(len(exact), len(substring))
+        return SkillConflict(
+            conflict_type=ConflictType.TRIGGER_OVERLAP,
+            severity=severity,
+            skill_a=sa["name"],
+            skill_b=sb["name"],
+            trigger_word=word,
+            description=f"Both skills trigger on '{word}'",
+        )
+
+    @staticmethod
+    def _find_substring_overlaps(triggers_a: set, triggers_b: set) -> set:
+        """Find substring overlaps between two sets of triggers."""
+        substring = set()
+        for ta in triggers_a:
+            for tb in triggers_b:
+                if ta != tb and (ta in tb or tb in ta):
+                    substring.add(ta if len(ta) <= len(tb) else tb)
+        return substring
 
     def _trigger_severity(self, exact_count: int, substring_count: int) -> ConflictSeverity:
         total = exact_count + substring_count
@@ -134,45 +152,11 @@ class MultiSkillAnalyzer:
             if pair_key in seen_pairs:
                 continue
 
-            reasons: list[str] = []
-            overlap_items: list[str] = []
-
-            wf_overlap = self._set_overlap(
-                {s.get("name", "") for s in sa.get("workflow_steps", []) if s.get("name")},
-                {s.get("name", "") for s in sb.get("workflow_steps", []) if s.get("name")},
-            )
-            if wf_overlap:
-                reasons.append(f"shared workflow steps: {', '.join(sorted(wf_overlap))}")
-                overlap_items.extend(wf_overlap)
-
-            ap_overlap = self._set_overlap(
-                {s.lower() for s in sa.get("anti_patterns", [])},
-                {s.lower() for s in sb.get("anti_patterns", [])},
-            )
-            if ap_overlap:
-                reasons.append(f"shared anti-patterns: {', '.join(sorted(ap_overlap))}")
-                overlap_items.extend(ap_overlap)
-
-            of_overlap = self._set_overlap(
-                {f.lower() for f in sa.get("output_format", [])},
-                {f.lower() for f in sb.get("output_format", [])},
-            )
-            if of_overlap:
-                reasons.append(f"shared output format fields: {', '.join(sorted(of_overlap))}")
-                overlap_items.extend(of_overlap)
-
-            desc_triggers = self._description_hijack_risk(sa, sb)
-            if desc_triggers:
-                reasons.append(
-                    f"skill '{sa['name']}' description mentions triggers of '{sb['name']}'"
-                )
-
-            desc_similarity = self._description_similarity(sa, sb)
-            if desc_similarity > 0.3:
-                reasons.append(f"high description keyword overlap ({desc_similarity:.0%})")
+            reasons, overlap_items = self._check_contamination(sa, sb)
 
             if reasons:
                 seen_pairs.add(pair_key)
+                desc_similarity = self._description_similarity(sa, sb)
                 severity = self._contamination_severity(len(reasons), desc_similarity)
                 conflicts.append(
                     SkillConflict(
@@ -190,7 +174,59 @@ class MultiSkillAnalyzer:
 
         return conflicts
 
-    def _description_hijack_risk(self, sa: dict, sb: dict) -> list[str]:
+    def _check_contamination(self, sa: dict, sb: dict) -> tuple[list[str], list[str]]:
+        """Check prompt contamination between a pair of skills."""
+        reasons: list[str] = []
+        overlap_items: list[str] = []
+
+        wf_overlap = self._compute_workflow_overlap(sa, sb)
+        if wf_overlap:
+            reasons.append(f"shared workflow steps: {', '.join(sorted(wf_overlap))}")
+            overlap_items.extend(wf_overlap)
+
+        ap_overlap = self._compute_anti_pattern_overlap(sa, sb)
+        if ap_overlap:
+            reasons.append(f"shared anti-patterns: {', '.join(sorted(ap_overlap))}")
+            overlap_items.extend(ap_overlap)
+
+        of_overlap = self._compute_output_format_overlap(sa, sb)
+        if of_overlap:
+            reasons.append(f"shared output format fields: {', '.join(sorted(of_overlap))}")
+            overlap_items.extend(of_overlap)
+
+        desc_triggers = self._check_description_hijack(sa, sb)
+        if desc_triggers:
+            reasons.append(f"skill '{sa['name']}' description mentions triggers of '{sb['name']}'")
+
+        desc_similarity = self._description_similarity(sa, sb)
+        if desc_similarity > 0.3:
+            reasons.append(f"high description keyword overlap ({desc_similarity:.0%})")
+
+        return reasons, overlap_items
+
+    @staticmethod
+    def _compute_workflow_overlap(sa: dict, sb: dict) -> set:
+        """Compute workflow step overlap between two skills."""
+        steps_a = {s.get("name", "") for s in sa.get("workflow_steps", []) if s.get("name")}
+        steps_b = {s.get("name", "") for s in sb.get("workflow_steps", []) if s.get("name")}
+        return set(steps_a & steps_b)
+
+    @staticmethod
+    def _compute_anti_pattern_overlap(sa: dict, sb: dict) -> set:
+        """Compute anti-pattern overlap between two skills."""
+        aps_a = {s.lower() for s in sa.get("anti_patterns", [])}
+        aps_b = {s.lower() for s in sb.get("anti_patterns", [])}
+        return set(aps_a & aps_b)
+
+    @staticmethod
+    def _compute_output_format_overlap(sa: dict, sb: dict) -> set:
+        """Compute output format overlap between two skills."""
+        of_a = {f.lower() for f in sa.get("output_format", [])}
+        of_b = {f.lower() for f in sb.get("output_format", [])}
+        return set(of_a & of_b)
+
+    def _check_description_hijack(self, sa: dict, sb: dict) -> list[str]:
+        """Check if description mentions triggers of another skill."""
         desc = sa.get("description", "").lower()
         if not desc:
             return []
@@ -204,10 +240,6 @@ class MultiSkillAnalyzer:
         if not desc_a or not desc_b:
             return 0.0
         return len(desc_a & desc_b) / max(len(desc_a | desc_b), 1)
-
-    @staticmethod
-    def _set_overlap(a: set, b: set) -> set:
-        return a & b
 
     @staticmethod
     def _contamination_severity(reason_count: int, desc_sim: float) -> ConflictSeverity:

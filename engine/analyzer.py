@@ -245,35 +245,45 @@ def _extract_frontmatter(content: str) -> dict | None:
     match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
     if not match:
         return None
-    result = {}
-    current_key = None
+
+    fm_block = match.group(1)
+    result: dict = {}
+    current_key: str | None = None
     current_list: list[str] | None = None
-    for line in match.group(1).split("\n"):
-        # List item: "  - value"
-        if line.startswith("  - ") and current_key:
-            if current_list is None:
-                current_list = []
-                result[current_key] = current_list
-            current_list.append(line[4:].strip())
-            continue
-        # Key-value: "key: value"
-        if ":" in line and not line.startswith(" "):
-            key, _, value = line.partition(":")
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if value:
-                result[key] = value
-                current_key = None
-                current_list = None
-            else:
-                # List placeholder: "key:"
-                current_key = key
-                current_list = None
-        elif line.strip() == "" and current_key:
-            # Blank line — finalize current list
-            current_key = None
-            current_list = None
+
+    for line in fm_block.split("\n"):
+        _parse_frontmatter_line(line, result, current_key, current_list)
+
     return result
+
+
+def _parse_frontmatter_line(
+    line: str,
+    result: dict,
+    current_key: str | None,
+    current_list: list[str] | None,
+) -> tuple[str | None, list[str] | None]:
+    """Parse a single frontmatter line. Returns updated (current_key, current_list)."""
+    if line.startswith("  - ") and current_key:
+        if current_list is None:
+            current_list = []
+            result[current_key] = current_list
+        current_list.append(line[4:].strip())
+        return current_key, current_list
+
+    if ":" in line and not line.startswith(" "):
+        key, _, value = line.partition(":")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if value:
+            result[key] = value
+            return None, None
+        else:
+            return key, None
+    elif line.strip() == "" and current_key:
+        return None, None
+
+    return current_key, current_list
 
 
 def _extract_headings(tokens: list) -> list[dict]:
@@ -458,32 +468,47 @@ def _extract_triggers_from_body(content: str) -> list[str]:
     return triggers
 
 
+def _extract_triggers_from_frontmatter_field(frontmatter: dict) -> list[str]:
+    """Extract triggers from frontmatter dict field."""
+    triggers = []
+    trigger_val = (
+        frontmatter.get("triggers") or frontmatter.get("TRIGGERS") or frontmatter.get("TRIGGER")
+    )
+    if isinstance(trigger_val, str):
+        triggers.extend([t.strip() for t in trigger_val.split(",") if t.strip()])
+    elif isinstance(trigger_val, list):
+        triggers.extend([str(t).strip() for t in trigger_val if str(t).strip()])
+    return triggers
+
+
+def _extract_triggers_dispatch(
+    content: str,
+    description: str,
+    frontmatter: dict | None,
+) -> list[str]:
+    """Dispatch table for trigger extraction strategies."""
+    strategies = [
+        lambda: _extract_triggers_from_frontmatter_field(frontmatter) if frontmatter else [],
+        lambda: _extract_triggers_from_frontmatter(content),
+        lambda: _extract_triggers_from_body(content),
+        lambda: _extract_triggers_from_description(description) if description else [],
+    ]
+
+    triggers = []
+    for strategy in strategies:
+        triggers.extend(strategy())
+    return list(set(triggers))
+
+
+def _extract_triggers_from_description(description: str) -> list[str]:
+    """Fallback: extract action verbs from description."""
+    verbs = re.findall(r"\b(\w+)\s+(this|the|a|an)\b", description.lower())
+    return [v[0] for v in verbs]
+
+
 def _extract_triggers(content: str, description: str, frontmatter: dict | None) -> list[str]:
     """Extract trigger keywords from frontmatter, TRIGGER section, and description."""
-    triggers = []
-
-    # 1. Frontmatter TRIGGER/TRIGGERS field
-    if frontmatter:
-        trigger_val = (
-            frontmatter.get("triggers") or frontmatter.get("TRIGGERS") or frontmatter.get("TRIGGER")
-        )
-        if isinstance(trigger_val, str):
-            triggers.extend([t.strip() for t in trigger_val.split(",") if t.strip()])
-        elif isinstance(trigger_val, list):
-            triggers.extend([str(t).strip() for t in trigger_val if str(t).strip()])
-
-    # 2. Raw frontmatter block (folded YAML)
-    triggers.extend(_extract_triggers_from_frontmatter(content))
-
-    # 3. Body TRIGGERS section
-    triggers.extend(_extract_triggers_from_body(content))
-
-    # 4. Fallback: action verbs from description
-    if not triggers and description:
-        verbs = re.findall(r"\b(\w+)\s+(this|the|a|an)\b", description.lower())
-        triggers.extend([v[0] for v in verbs])
-
-    return list(set(triggers))
+    return _extract_triggers_dispatch(content, description, frontmatter)
 
 
 def _extract_examples(content: str) -> list[str]:

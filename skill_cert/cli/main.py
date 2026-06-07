@@ -27,27 +27,14 @@ def _handle_setup(argv: list[str]) -> int:
     return run_setup(setup_args)
 
 
-def main():
-    # Intercept 'setup' subcommand before standard argparse
-    # (avoids 'error: the following arguments are required: --skill')
-    if len(sys.argv) > 1 and sys.argv[1] == "setup":
-        return _handle_setup(sys.argv[1:])
+def _build_argument_parser() -> argparse.ArgumentParser:
+    """Build and configure the argument parser."""
 
-    # Lazy imports — use skill_cert.cli namespace so test patches intercept.
     from engine.constants import (  # noqa: F811
         ConcurrencyLimits,
         StabilityThresholds,
         TimingLimits,
         TokenLimits,
-    )
-    from skill_cert.cli import (  # noqa: F811
-        EXIT_ERROR,
-        SkillCertConfig,
-        run_dialogue_mode,
-        run_multi_skill_mode,
-        run_replay_mode,
-        run_single_mode,
-        run_stress_mode,
     )
 
     parser = argparse.ArgumentParser(
@@ -194,25 +181,38 @@ Examples:
         help="Validate JSON report against schema",
     )
 
-    args = parser.parse_args()
+    return parser
+
+
+def _dispatch_mode(args, config) -> int:
+    """Dispatch to the appropriate evaluation mode."""
+    from skill_cert.cli import (
+        run_dialogue_mode,
+        run_multi_skill_mode,
+        run_replay_mode,
+        run_single_mode,
+        run_stress_mode,
+    )
+
+    if args.stress:
+        return _run_with_error_handling(lambda: run_stress_mode(args, config))
+    if args.multi_skill:
+        return _run_with_error_handling(lambda: run_multi_skill_mode(args, config))
+    mode_dispatch = {
+        "dialogue": lambda: run_dialogue_mode(args, config),
+        "replay": lambda: run_replay_mode(args, config),
+    }
+    return _run_with_error_handling(
+        mode_dispatch.get(args.mode, lambda: run_single_mode(args, config))
+    )
+
+
+def _run_with_error_handling(func) -> int:
+    """Run a mode function with standard error handling."""
+    from skill_cert.cli import EXIT_ERROR
 
     try:
-        config = SkillCertConfig.load(args)
-    except Exception as e:
-        print(f"ERROR: Invalid configuration: {e}", file=sys.stderr)
-        return EXIT_ERROR
-
-    try:
-        if args.stress:
-            return run_stress_mode(args, config)
-        if args.multi_skill:
-            return run_multi_skill_mode(args, config)
-        if args.mode == "dialogue":
-            return run_dialogue_mode(args, config)
-        elif args.mode == "replay":
-            return run_replay_mode(args, config)
-        else:
-            return run_single_mode(args, config)
+        return func()
     except FileNotFoundError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return EXIT_ERROR
@@ -222,3 +222,24 @@ Examples:
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return EXIT_ERROR
+
+
+def main():
+    # Intercept 'setup' subcommand before standard argparse
+    # (avoids 'error: the following arguments are required: --skill')
+    if len(sys.argv) > 1 and sys.argv[1] == "setup":
+        return _handle_setup(sys.argv[1:])
+
+    # Lazy imports — use skill_cert.cli namespace so test patches intercept.
+    from skill_cert.cli import EXIT_ERROR, SkillCertConfig
+
+    parser = _build_argument_parser()
+    args = parser.parse_args()
+
+    try:
+        config = SkillCertConfig.load(args)
+    except Exception as e:
+        print(f"ERROR: Invalid configuration: {e}", file=sys.stderr)
+        return EXIT_ERROR
+
+    return _dispatch_mode(args, config)
