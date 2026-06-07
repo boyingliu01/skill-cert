@@ -1,9 +1,9 @@
-"""Tests for engine/deadline.py — Deadline dataclass."""
+"""Tests for engine/deadline.py — Deadline dataclass and PhaseTimer."""
 
 import math
 import time
 
-from engine.deadline import Deadline
+from engine.deadline import Deadline, PhaseTimer
 
 
 def test_deadline_creation_defaults():
@@ -128,3 +128,82 @@ def test_deadline_repr():
     assert "elapsed=" in r
     assert "remaining=" in r
     assert "expired=" in r
+
+
+# ── PhaseTimer tests ────────────────────────────────────────────────────────
+
+
+def test_phasetimer_creation():
+    """PhaseTimer created with just a name."""
+    pt = PhaseTimer(phase_name="testgen")
+    assert pt.phase_name == "testgen"
+    assert pt.start_time > 0
+    assert pt.item_count == 0
+    assert pt.items_completed == 0
+    assert pt.deadline is None
+
+
+def test_phasetimer_creation_with_count():
+    """PhaseTimer with item_count and deadline."""
+    dl = Deadline(max_total_time=60.0)
+    pt = PhaseTimer(phase_name="evals", item_count=5, deadline=dl)
+    assert pt.phase_name == "evals"
+    assert pt.item_count == 5
+    assert pt.deadline is dl
+
+
+def test_phasetimer_log_progress_returns_string():
+    """log_progress returns a non-empty string."""
+    pt = PhaseTimer(phase_name="test")
+    msg = pt.log_progress("doing work")
+    assert isinstance(msg, str)
+    assert len(msg) > 0
+
+
+def test_phasetimer_log_progress_format():
+    """log_progress output contains phase name and elapsed."""
+    pt = PhaseTimer(phase_name="mytest")
+    msg = pt.log_progress()
+    assert "[mytest]" in msg
+    assert "elapsed" in msg
+
+
+def test_phasetimer_log_progress_with_label():
+    """log_progress includes the label when provided."""
+    pt = PhaseTimer(phase_name="testgen")
+    msg = pt.log_progress("round 3")
+    assert "[testgen]" in msg
+    assert "round 3" in msg
+    assert "elapsed" in msg
+
+
+def test_phasetimer_log_progress_with_count():
+    """log_progress includes item count when item_count > 0."""
+    pt = PhaseTimer(phase_name="evals", item_count=10)
+    msg = pt.log_progress()
+    assert "[0/10]" in msg
+
+
+def test_phasetimer_log_progress_with_deadline():
+    """log_progress includes deadline remaining when deadline is set."""
+    dl = Deadline(max_total_time=60.0)
+    pt = PhaseTimer(phase_name="evals", item_count=5, deadline=dl)
+    msg = pt.log_progress("model-a")
+    assert "deadline:" in msg
+    assert "remaining" in msg
+
+
+def test_phasetimer_log_progress_infinite_deadline():
+    """log_progress shows 'no limit' for infinite deadline."""
+    dl = Deadline()
+    pt = PhaseTimer(phase_name="testgen", deadline=dl)
+    msg = pt.log_progress()
+    assert "no limit" in msg
+
+
+def test_phasetimer_log_progress_shows_item_count():
+    """log_progress shows items_completed/item_count format."""
+    pt = PhaseTimer(phase_name="stability", item_count=5)
+    pt.items_completed = 2
+    msg = pt.log_progress("run 3/5")
+    assert "[2/5]" in msg

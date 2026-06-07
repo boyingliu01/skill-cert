@@ -1,10 +1,14 @@
 """Stability module — multi-run execution with std dev calculation for L4."""
 
+import logging
 import math
 import statistics
 from typing import Any
 
 from engine.constants import StabilityThresholds
+from engine.deadline import PhaseTimer
+
+logger = logging.getLogger(__name__)
 
 # ── t-distribution approximation (no scipy dependency) ──────────────────────
 
@@ -113,14 +117,23 @@ class StabilityRunner:
         skill_path: str,
         model_adapter,
         with_skill: bool,
+        deadline: Any | None = None,
     ) -> list[list[dict[str, Any]]]:
         """Run evals N times and return list of results per run."""
+        timer = PhaseTimer(phase_name="stability", item_count=self.num_runs, deadline=deadline)
         all_run_results = []
-        for _ in range(self.num_runs):
+        for i in range(self.num_runs):
+            if deadline is not None and deadline.expired:
+                logger.warning("Deadline expired before stability run %d/%d", i + 1, self.num_runs)
+                break
+
             if with_skill:
                 results = self.base_runner.run_with_skill(evals, skill_path, model_adapter)
             else:
                 results = self.base_runner.run_without_skill(evals, model_adapter)
+
+            timer.items_completed = i + 1
+            timer.log_progress(f"Run {i + 1}/{self.num_runs}")
             all_run_results.append(results)
         return all_run_results
 
@@ -178,9 +191,12 @@ class StabilityRunner:
         skill_path: str,
         model_adapter,
         with_skill: bool = True,
+        deadline: Any | None = None,
     ) -> dict[str, Any]:
         """Run evals N times and return pass rates + stability stats per eval."""
-        all_run_results = self._run_trials(evals, skill_path, model_adapter, with_skill)
+        all_run_results = self._run_trials(
+            evals, skill_path, model_adapter, with_skill, deadline=deadline
+        )
 
         eval_ids = [e.get("id") for e in evals]
         stability_per_eval = {}

@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from engine.constants import StabilityThresholds, VerdictThresholds
+from engine.deadline import PhaseTimer
 from engine.grader import EvalAssertion, EvalCase
-from engine.token_ledger import TokenLedger
 from engine.report_models import StructuredReport
+from engine.token_ledger import TokenLedger
 
 from .helpers import EXIT_ERROR, EXIT_FAIL_WITH_CAVEATS, EXIT_PASS, _print_metric, _print_phase
 
@@ -140,8 +141,12 @@ def _run_all_evals(adapters, runner, grader, evals, spec_path, tracker=None, dea
     # Lazy import so test patches at skill_cert.cli._run_eval_for_model intercept.
     from skill_cert.cli import _run_eval_for_model  # noqa: F811
 
+    timer = PhaseTimer(phase_name="evals", item_count=len(adapters), deadline=deadline)
+
     all_results = []
     for name, adapter in adapters.items():
+        timer.items_completed = len(all_results)  # count completed before this model
+        timer.log_progress(f"Model: {name}")
         print(f"\n  Model: {name}")
         graded, ws, wos = _run_eval_for_model(
             name, adapter, runner, grader, evals, spec_path, tracker, deadline=deadline

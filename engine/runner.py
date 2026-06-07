@@ -1,7 +1,8 @@
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any
 
 from adapters.pricing import get_pricing
@@ -224,6 +225,9 @@ class EvalRunner:
     ) -> list[dict[str, Any]]:
         results: list[tuple[int, dict[str, Any]]] = []
         partial = False
+        total = len(evals)
+        completed = 0
+        next_log_pct = 20
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
             futures = {
                 executor.submit(self._run_single, ec, skill_path, model_adapter, True, deadline): i
@@ -233,6 +237,11 @@ class EvalRunner:
             try:
                 for future in as_completed(futures, timeout=timeout):
                     idx = futures[future]
+                    completed += 1
+                    pct = 100.0 * completed / total
+                    if completed == total or pct >= next_log_pct:
+                        logger.info("Eval progress: %d/%d (%.0f%%)", completed, total, pct)
+                        next_log_pct += 20
                     try:
                         results.append((idx, future.result()))
                     except Exception as e:
@@ -266,6 +275,9 @@ class EvalRunner:
     ) -> list[dict[str, Any]]:
         results: list[tuple[int, dict[str, Any]]] = []
         partial = False
+        total = len(evals)
+        completed = 0
+        next_log_pct = 20
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
             futures = {
                 executor.submit(self._run_single, ec, None, model_adapter, False, deadline): i
@@ -275,6 +287,11 @@ class EvalRunner:
             try:
                 for future in as_completed(futures, timeout=timeout):
                     idx = futures[future]
+                    completed += 1
+                    pct = 100.0 * completed / total
+                    if completed == total or pct >= next_log_pct:
+                        logger.info("Eval progress: %d/%d (%.0f%%)", completed, total, pct)
+                        next_log_pct += 20
                     try:
                         results.append((idx, future.result()))
                     except Exception as e:

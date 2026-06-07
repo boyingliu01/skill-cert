@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from engine.constants import CoverageThresholds, TestGenLimits
+from engine.deadline import PhaseTimer
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,8 @@ class EvalGenerator:
     ) -> dict[str, Any]:
         review_adapter.skill_spec = skill_spec
 
+        timer = PhaseTimer(phase_name="testgen", item_count=self.max_rounds, deadline=deadline)
+
         current_evals = self.generate_initial_evals(skill_spec, model_adapter)
 
         prev_coverage = 0.0
@@ -129,6 +132,10 @@ class EvalGenerator:
             should_stop, current_evals, current_coverage = self._run_convergence_round(
                 current_evals, review_adapter, prev_coverage, round_num
             )
+
+            timer.items_completed = round_num + 1
+            timer.log_progress(f"round {round_num + 1}, coverage: {current_coverage:.0%}")
+
             if should_stop:
                 break
             prev_coverage = current_coverage

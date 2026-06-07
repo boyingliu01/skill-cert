@@ -258,3 +258,59 @@ def test_multiple_evals_concurrent():
 def test_close_resources():
     runner = EvalRunner()
     runner.close()
+
+
+def test_run_with_skill_progress_logging(caplog):
+    """run_with_skill logs per-eval progress at completion points."""
+    caplog.set_level("INFO")
+    runner = EvalRunner(max_concurrency=5, rate_limit_rpm=300, request_timeout=10)
+
+    evals = [
+        {
+            "id": i,
+            "name": f"eval-{i}",
+            "category": "normal",
+            "input": f"input {i}",
+            "expected_triggers": True,
+            "assertions": [{"type": "contains", "value": "response", "weight": 1}],
+        }
+        for i in range(1, 6)  # 5 evals → 20%, 40%, 60%, 80%, 100%
+    ]
+
+    mock_adapter = MockModelAdapter([f"response {i}" for i in range(1, 6)])
+
+    results = runner.run_with_skill(evals, "/path/to/skill", mock_adapter)
+    assert len(results) == 5
+
+    # Check that progress was logged at least at 100%
+    progress_logs = [r.message for r in caplog.records if "Eval progress" in r.message]
+    assert len(progress_logs) >= 1
+    # The last log should say 5/5 (100%)
+    assert "5/5 (100%)" in progress_logs[-1]
+
+
+def test_run_without_skill_progress_logging(caplog):
+    """run_without_skill logs per-eval progress at completion points."""
+    caplog.set_level("INFO")
+    runner = EvalRunner(max_concurrency=5, rate_limit_rpm=300, request_timeout=10)
+
+    evals = [
+        {
+            "id": i,
+            "name": f"eval-{i}",
+            "category": "normal",
+            "input": f"input {i}",
+            "expected_triggers": True,
+            "assertions": [{"type": "contains", "value": "response", "weight": 1}],
+        }
+        for i in range(1, 4)  # 3 evals
+    ]
+
+    mock_adapter = MockModelAdapter([f"response {i}" for i in range(1, 4)])
+
+    results = runner.run_without_skill(evals, mock_adapter)
+    assert len(results) == 3
+
+    progress_logs = [r.message for r in caplog.records if "Eval progress" in r.message]
+    assert len(progress_logs) >= 1
+    assert "3/3 (100%)" in progress_logs[-1]

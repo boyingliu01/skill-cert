@@ -13,11 +13,17 @@ Usage::
         # wind down gracefully
         ...
     timeout = deadline.adapter_timeout(default=120)
+
+Also provides ``PhaseTimer`` — a lightweight helper for structured progress
+logging at phase boundaries within the evaluation pipeline.
 """
 
+import logging
 import math
 import time
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -90,3 +96,60 @@ class Deadline:
             f"remaining={self.remaining:.1f}s, "
             f"expired={self.expired})"
         )
+
+
+class PhaseTimer:
+    """Lightweight structured progress logger for evaluation phases.
+
+    Tracks elapsed time, item completion count, and optional deadline
+    countdown.  Uses ``logger.info()`` for detailed progress messages.
+
+    Parameters
+    ----------
+    phase_name :
+        Short human-readable name for the phase (e.g. ``"testgen"``).
+    item_count :
+        Total number of items expected in this phase.
+    deadline :
+        Optional :class:`Deadline` to include remaining-time in messages.
+    """
+
+    def __init__(
+        self,
+        phase_name: str,
+        item_count: int = 0,
+        deadline: Deadline | None = None,
+    ):
+        self.phase_name = phase_name
+        self.start_time = time.monotonic()
+        self.item_count = item_count
+        self.items_completed = 0
+        self.deadline = deadline
+
+    def log_progress(self, label: str = "") -> str:
+        """Log and return a progress message string.
+
+        Format (without deadline)::
+
+            [phase] [N/M] label — X.Xs elapsed
+
+        Format (with deadline)::
+
+            [phase] [N/M] label — X.Xs elapsed, deadline: Ys remaining
+        """
+        elapsed = time.monotonic() - self.start_time
+        count_part = f"[{self.items_completed}/{self.item_count}]" if self.item_count > 0 else ""
+        msg = f"[{self.phase_name}]"
+        if count_part:
+            msg += f" {count_part}"
+        if label:
+            msg += f" {label}"
+        msg += f" — {elapsed:.1f}s elapsed"
+        if self.deadline is not None:
+            remaining = self.deadline.remaining
+            if math.isfinite(remaining):
+                msg += f", deadline: {remaining:.0f}s remaining"
+            else:
+                msg += ", deadline: no limit"
+        logger.info(msg)
+        return msg
