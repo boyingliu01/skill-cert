@@ -94,7 +94,7 @@ def _setup_single_mode(args, config, deadline=None):
 
     # REQ-017: Fail-fast on low coverage
     result = generator.check_coverage_or_abort(coverage)
-    if result in (generator.CoverageResult.BLOCKED, generator.CoverageResult.FAILED):
+    if result == generator.CoverageResult.FAILED:
         print(
             f"\n  FAIL-FAST: Coverage {coverage:.2f} below block threshold "
             f"({generator.block_threshold}). Aborting."

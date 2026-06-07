@@ -1,12 +1,14 @@
 """Central constants for skill-cert engine — all hardcoded thresholds, limits, and magic numbers."""
 
+import os
+
 
 class CoverageThresholds:
     """Coverage thresholds for eval test generation."""
 
     COVERAGE_TARGET = 0.9
     COVERAGE_DEGRADE = 0.7
-    COVERAGE_BLOCK = 0.5
+    COVERAGE_BLOCK = float(os.environ.get("SKILL_CERT_COVERAGE_BLOCK", "0.5"))
 
 
 class TestGenLimits:
