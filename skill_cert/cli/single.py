@@ -1,10 +1,13 @@
 """Single evaluation mode — parse, maintainability, testgen, execute."""
 
+import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
-def _setup_single_mode(args, config):
+def _setup_single_mode(args, config, deadline=None):
     # Lazy imports — use skill_cert.cli namespace so test patches intercept.
     from skill_cert.cli import (  # noqa: F811
         EvalGenerator,
@@ -75,26 +78,138 @@ def _setup_single_mode(args, config):
     generator = EvalGenerator()
     primary_adapter = list(adapters.values())[0]
     review_adapter = list(adapters.values())[1] if len(adapters) > 1 else primary_adapter
-    evals = generator.generate_evals_with_convergence(spec, primary_adapter, review_adapter)
+    evals = generator.generate_evals_with_convergence(
+        spec, primary_adapter, review_adapter, deadline=deadline
+    )
     total_evals = sum(
         len(evals.get(k, []))
         for k in ("eval_cases", "evals", "cases", "test_cases", "evaluations", "eval")
     )
     print(f"  Generated: {total_evals} eval cases")
-    if generator._calculate_coverage(evals, spec) < generator.coverage_threshold:
+
+    coverage = generator._calculate_coverage(evals, spec)
+    evals["_coverage"] = coverage
+    if coverage < generator.coverage_threshold:
         print(f"  WARNING: Coverage below {generator.coverage_threshold * 100:.0f}% threshold")
+
+    # REQ-017: Fail-fast on low coverage
+    result = generator.check_coverage_or_abort(coverage)
+    if result in (generator.CoverageResult.BLOCKED, generator.CoverageResult.FAILED):
+        print(
+            f"\n  FAIL-FAST: Coverage {coverage:.2f} below block threshold "
+            f"({generator.block_threshold}). Aborting."
+        )
+        return spec_path, output_dir, skill_name, spec, evals, adapters
 
     _print_phase(2, "Execute Evals")
     return spec_path, output_dir, skill_name, spec, evals, adapters
 
 
+def _generate_fail_fast_report(
+    args,
+    spec_path: Path,
+    output_dir: Path,
+    skill_name: str,
+    spec: dict,
+    coverage: float,
+) -> dict[str, Any]:
+    """Generate a minimal FAIL verdict report when coverage is too low."""
+    from engine.reporter import Reporter
+
+    fail_metrics = {
+        "overall_score": 0.0,
+        "l1_trigger_accuracy": 0.0,
+        "l2_with_without_skill_delta": 0.0,
+        "l3_step_adherence": 0.0,
+        "l4_execution_stability": 0.0,
+    }
+    drift_report = {
+        "drift_detected": False,
+        "highest_severity": "none",
+        "overall_verdict": "FAIL",
+    }
+    config_dict = {
+        "skill_name": skill_name,
+        "models": ["fail-fast-aborted"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "total_evaluations": 0,
+        "avg_pass_rate": 0.0,
+    }
+
+    reporter = Reporter()
+    md_report, json_report = reporter.generate_report(
+        metrics=fail_metrics,
+        drift=drift_report,
+        config=config_dict,
+    )
+
+    # Override verdict to FAIL with coverage explanation
+    json_report["verdict"] = "FAIL"
+    json_report["fail_fast"] = True
+    json_report["coverage_at_abort"] = coverage
+    json_report["fail_reason"] = (
+        f"Coverage {coverage:.2f} below block threshold (0.5). Evaluation aborted in Phase 1."
+    )
+
+    format_flag = getattr(args, "format", "both")
+    if format_flag in ("markdown", "both"):
+        md_path = output_dir / f"{skill_name}-report.md"
+        md_report = md_report.replace(
+            "## Executive Summary",
+            "## FAIL-FAST: Evaluation Aborted\n\n"
+            f"**Coverage**: {coverage:.2f} (threshold: 0.5)\n\n"
+            f"**Reason**: Coverage below block threshold. "
+            "Phase 2 (execution) skipped.\n\n"
+            "## Executive Summary",
+        )
+        md_path.write_text(md_report, encoding="utf-8")
+        print(f"  Markdown: {md_path}")
+
+    if format_flag in ("json", "both"):
+        json_path = output_dir / f"{skill_name}-result.json"
+        json_path.write_text(
+            json.dumps(json_report, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"  JSON: {json_path}")
+
+    return json_report
+
+
 def run_single_mode(args, config) -> int:
     # Lazy import so test patches at skill_cert.cli._run_single_phase intercept.
-    from skill_cert.cli import EXIT_ERROR, _run_single_phase  # noqa: F811
+    from engine.deadline import Deadline
+    from skill_cert.cli import EXIT_ERROR, EXIT_PASS, _run_single_phase  # noqa: F811
 
-    result = _setup_single_mode(args, config)
+    deadline = (
+        Deadline(max_total_time=float(config.max_total_time))
+        if config.max_total_time and config.max_total_time > 0
+        else None
+    )
+
+    result = _setup_single_mode(args, config, deadline=deadline)
     spec_path, output_dir, skill_name, spec, evals, adapters = result
     if spec_path is None or spec is None:
         return EXIT_ERROR
     spec["evals"] = evals
-    return _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, adapters)
+
+    # REQ-017: Fail-fast on low coverage
+    if evals.get("failed"):
+        coverage = evals.get("_coverage", 0.0)
+        json_report = _generate_fail_fast_report(
+            args,
+            Path(spec_path) if isinstance(spec_path, str) else spec_path,
+            output_dir,
+            skill_name,
+            spec,
+            coverage,
+        )
+        print(f"\n  Verdict: {json_report.get('verdict', 'FAIL')}")
+        return EXIT_ERROR
+
+    # Degraded mode — run Phase 2 but mark metrics for verdict cap
+    if evals.get("degraded"):
+        print("  Phase 2 running in degraded mode (coverage below target)")
+
+    return _run_single_phase(
+        args, config, spec_path, output_dir, skill_name, spec, adapters, deadline=deadline
+    )

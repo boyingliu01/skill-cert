@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from engine.constants import StabilityThresholds, VerdictThresholds
+from engine.deadline import PhaseTimer
 from engine.grader import EvalAssertion, EvalCase
-from engine.token_ledger import TokenLedger
 from engine.report_models import StructuredReport
+from engine.token_ledger import TokenLedger
 
 from .helpers import EXIT_ERROR, EXIT_FAIL_WITH_CAVEATS, EXIT_PASS, _print_metric, _print_phase
 
@@ -99,13 +100,15 @@ def _count_passes(graded: list, mode: str) -> int:
     )
 
 
-def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path, tracker=None):
+def _run_eval_for_model(
+    model_name, adapter, runner, grader, evals, spec_path, tracker=None, deadline=None
+):
     # Extract eval cases list
     eval_cases_list = _extract_eval_cases_list(evals)
 
     # Run with and without skill
-    with_skill = runner.run_with_skill(eval_cases_list, spec_path, adapter)
-    without_skill = runner.run_without_skill(eval_cases_list, adapter)
+    with_skill = runner.run_with_skill(eval_cases_list, spec_path, adapter, deadline=deadline)
+    without_skill = runner.run_without_skill(eval_cases_list, adapter, deadline=deadline)
 
     # Track reliability if tracker provided
     _track_reality_results(tracker, with_skill)
@@ -134,15 +137,19 @@ def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path, t
     return graded, ws_passed, wos_passed
 
 
-def _run_all_evals(adapters, runner, grader, evals, spec_path, tracker=None):
+def _run_all_evals(adapters, runner, grader, evals, spec_path, tracker=None, deadline=None):
     # Lazy import so test patches at skill_cert.cli._run_eval_for_model intercept.
     from skill_cert.cli import _run_eval_for_model  # noqa: F811
 
+    timer = PhaseTimer(phase_name="evals", item_count=len(adapters), deadline=deadline)
+
     all_results = []
     for name, adapter in adapters.items():
+        timer.items_completed = len(all_results)  # count completed before this model
+        timer.log_progress(f"Model: {name}")
         print(f"\n  Model: {name}")
         graded, ws, wos = _run_eval_for_model(
-            name, adapter, runner, grader, evals, spec_path, tracker
+            name, adapter, runner, grader, evals, spec_path, tracker, deadline=deadline
         )
         all_results.extend(graded)
         print(f"    With-skill passed: {ws}")
@@ -417,7 +424,9 @@ def _generate_and_write_reports(
     return md_report, json_report
 
 
-def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, adapters) -> int:
+def _run_single_phase(
+    args, config, spec_path, output_dir, skill_name, spec, adapters, deadline=None
+) -> int:
     # Lazy imports so test patches at skill_cert.cli.XXX intercept.
     from skill_cert.cli import (  # noqa: F811
         EvalRunner,
@@ -439,7 +448,9 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
     tracker = ReliabilityTracker()
 
     # Phase 1: Run evaluations
-    all_results = _run_all_evals(adapters, runner, grader, spec["evals"], spec_path, tracker)
+    all_results = _run_all_evals(
+        adapters, runner, grader, spec["evals"], spec_path, tracker, deadline=deadline
+    )
 
     # Phase 2: Reliability Analysis
     reliability_report = tracker.generate_report()
@@ -454,6 +465,12 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
     _aggregate_token_data(runner, token_ledger, metrics)
     metrics["reliability"] = reliability_report
     metrics["_results"] = all_results
+
+    # REQ-017: Propagate degraded flag from Phase 1 for verdict capping
+    if isinstance(spec.get("evals"), dict) and spec["evals"].get("degraded"):
+        metrics["degraded"] = True
+        cov = spec["evals"].get("_coverage", 0.0)
+        print(f"\n  WARNING: Evaluation ran in degraded mode (coverage={cov:.0%})")
 
     # Print metrics summary
     _print_metrics_summary(metrics, args)

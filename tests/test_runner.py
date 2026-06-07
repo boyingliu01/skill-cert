@@ -1,5 +1,5 @@
 import time
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from engine.runner import EvalRunner
 
@@ -258,3 +258,128 @@ def test_multiple_evals_concurrent():
 def test_close_resources():
     runner = EvalRunner()
     runner.close()
+
+
+def test_run_with_skill_progress_logging(caplog):
+    """run_with_skill logs per-eval progress at completion points."""
+    caplog.set_level("INFO")
+    runner = EvalRunner(max_concurrency=5, rate_limit_rpm=300, request_timeout=10)
+
+    evals = [
+        {
+            "id": i,
+            "name": f"eval-{i}",
+            "category": "normal",
+            "input": f"input {i}",
+            "expected_triggers": True,
+            "assertions": [{"type": "contains", "value": "response", "weight": 1}],
+        }
+        for i in range(1, 6)  # 5 evals → 20%, 40%, 60%, 80%, 100%
+    ]
+
+    mock_adapter = MockModelAdapter([f"response {i}" for i in range(1, 6)])
+
+    results = runner.run_with_skill(evals, "/path/to/skill", mock_adapter)
+    assert len(results) == 5
+
+    # Check that progress was logged at least at 100%
+    progress_logs = [r.message for r in caplog.records if "Eval progress" in r.message]
+    assert len(progress_logs) >= 1
+    # The last log should say 5/5 (100%)
+    assert "5/5 (100%)" in progress_logs[-1]
+
+
+def test_run_without_skill_progress_logging(caplog):
+    """run_without_skill logs per-eval progress at completion points."""
+    caplog.set_level("INFO")
+    runner = EvalRunner(max_concurrency=5, rate_limit_rpm=300, request_timeout=10)
+
+    evals = [
+        {
+            "id": i,
+            "name": f"eval-{i}",
+            "category": "normal",
+            "input": f"input {i}",
+            "expected_triggers": True,
+            "assertions": [{"type": "contains", "value": "response", "weight": 1}],
+        }
+        for i in range(1, 4)  # 3 evals
+    ]
+
+    mock_adapter = MockModelAdapter([f"response {i}" for i in range(1, 4)])
+
+    results = runner.run_without_skill(evals, mock_adapter)
+    assert len(results) == 3
+
+    progress_logs = [r.message for r in caplog.records if "Eval progress" in r.message]
+    assert len(progress_logs) >= 1
+    assert "3/3 (100%)" in progress_logs[-1]
+
+
+# ── Deadline cancel_futures tests (AC-019-04) ─────────────────────────────
+
+
+def test_run_with_skill_deadline_cancel_futures():
+    """AC-019-04: Expired deadline triggers FuturesTimeoutError and returns partial results."""
+    from engine.deadline import Deadline
+
+    runner = EvalRunner(max_concurrency=2, rate_limit_rpm=300, request_timeout=10)
+
+    evals = [
+        {
+            "id": i,
+            "name": f"eval-{i}",
+            "category": "normal",
+            "input": f"input {i}",
+            "expected_triggers": True,
+            "assertions": [{"type": "contains", "value": "response", "weight": 1}],
+        }
+        for i in range(3)
+    ]
+
+    # Slow adapter that doesn't complete before 0-second timeout
+    mock_adapter = Mock()
+    mock_adapter.chat = Mock(side_effect=lambda msgs: time.sleep(10))
+    mock_adapter.model_name = "test-model"
+
+    # Deadline with remaining = 0 (expired); frozen dataclass → patch class, not instance
+    dl = Deadline(max_total_time=0.0)
+
+    with patch("engine.deadline.Deadline.must_stop", return_value=False):
+        results = runner.run_with_skill(evals, "/path/to/skill", mock_adapter, deadline=dl)
+
+    partial_markers = [r for r in results if r.get("_partial")]
+    assert len(partial_markers) == 1, f"Expected 1 _partial marker, got {len(partial_markers)}"
+    assert "Deadline reached" in partial_markers[0].get("message", "")
+
+
+def test_run_without_skill_deadline_cancel_futures():
+    """AC-019-04: Expired deadline cancels futures in without_skill mode."""
+    from engine.deadline import Deadline
+
+    runner = EvalRunner(max_concurrency=2, rate_limit_rpm=300, request_timeout=10)
+
+    evals = [
+        {
+            "id": i,
+            "name": f"eval-{i}",
+            "category": "normal",
+            "input": f"input {i}",
+            "expected_triggers": True,
+            "assertions": [{"type": "contains", "value": "response", "weight": 1}],
+        }
+        for i in range(3)
+    ]
+
+    mock_adapter = Mock()
+    mock_adapter.chat = Mock(side_effect=lambda msgs: time.sleep(10))
+    mock_adapter.model_name = "test-model"
+
+    dl = Deadline(max_total_time=0.0)
+
+    with patch("engine.deadline.Deadline.must_stop", return_value=False):
+        results = runner.run_without_skill(evals, mock_adapter, deadline=dl)
+
+    partial_markers = [r for r in results if r.get("_partial")]
+    assert len(partial_markers) == 1, f"Expected 1 _partial marker, got {len(partial_markers)}"
+    assert "Deadline reached" in partial_markers[0].get("message", "")
