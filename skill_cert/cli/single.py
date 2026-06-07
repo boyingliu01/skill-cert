@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 
-def _setup_single_mode(args, config):
+def _setup_single_mode(args, config, deadline=None):
     # Lazy imports — use skill_cert.cli namespace so test patches intercept.
     from skill_cert.cli import (  # noqa: F811
         EvalGenerator,
@@ -75,7 +75,9 @@ def _setup_single_mode(args, config):
     generator = EvalGenerator()
     primary_adapter = list(adapters.values())[0]
     review_adapter = list(adapters.values())[1] if len(adapters) > 1 else primary_adapter
-    evals = generator.generate_evals_with_convergence(spec, primary_adapter, review_adapter)
+    evals = generator.generate_evals_with_convergence(
+        spec, primary_adapter, review_adapter, deadline=deadline
+    )
     total_evals = sum(
         len(evals.get(k, []))
         for k in ("eval_cases", "evals", "cases", "test_cases", "evaluations", "eval")
@@ -90,11 +92,20 @@ def _setup_single_mode(args, config):
 
 def run_single_mode(args, config) -> int:
     # Lazy import so test patches at skill_cert.cli._run_single_phase intercept.
+    from engine.deadline import Deadline
     from skill_cert.cli import EXIT_ERROR, _run_single_phase  # noqa: F811
 
-    result = _setup_single_mode(args, config)
+    deadline = (
+        Deadline(max_total_time=float(config.max_total_time))
+        if config.max_total_time and config.max_total_time > 0
+        else None
+    )
+
+    result = _setup_single_mode(args, config, deadline=deadline)
     spec_path, output_dir, skill_name, spec, evals, adapters = result
     if spec_path is None or spec is None:
         return EXIT_ERROR
     spec["evals"] = evals
-    return _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, adapters)
+    return _run_single_phase(
+        args, config, spec_path, output_dir, skill_name, spec, adapters, deadline=deadline
+    )

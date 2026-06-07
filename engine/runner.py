@@ -1,11 +1,12 @@
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from typing import Any
 
 from adapters.pricing import get_pricing
 from engine.constants import ConcurrencyLimits, SecurityLimits, TimingLimits
+from engine.deadline import Deadline
 from engine.envelope import EnvelopeChecker
 from engine.security_probes import SecurityScanner
 from engine.trace_models import ExecutionTrace, TokenAccounting
@@ -156,7 +157,14 @@ class EvalRunner:
             "trace": trace.model_dump(mode="json"),
         }
 
-    def _run_single(self, eval_case, skill_path: str | None, model_adapter, with_skill: bool):
+    def _run_single(
+        self,
+        eval_case,
+        skill_path: str | None,
+        model_adapter,
+        with_skill: bool,
+        deadline: Deadline | None = None,
+    ):
         """Run a single eval case with execution phases extracted."""
         with self._semaphore:
             self._wait_rate_limit()
@@ -169,6 +177,9 @@ class EvalRunner:
             )
 
             try:
+                if deadline is not None and deadline.must_stop():
+                    return self._build_error_result(eval_case, trace, "Deadline reached")
+
                 input_text = self._prepare_input(eval_case, skill_path, with_skill)
 
                 trace.start_time = time.time()
@@ -205,38 +216,88 @@ class EvalRunner:
                 return self._build_error_result(eval_case, trace, str(e))
 
     def run_with_skill(
-        self, evals: list[dict[str, Any]], skill_path: str, model_adapter
+        self,
+        evals: list[dict[str, Any]],
+        skill_path: str,
+        model_adapter,
+        deadline: Deadline | None = None,
     ) -> list[dict[str, Any]]:
-        results = []
+        results: list[tuple[int, dict[str, Any]]] = []
+        partial = False
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
             futures = {
-                executor.submit(self._run_single, ec, skill_path, model_adapter, True): i
+                executor.submit(self._run_single, ec, skill_path, model_adapter, True, deadline): i
                 for i, ec in enumerate(evals)
             }
-            for future in as_completed(futures):
-                idx = futures[future]
-                try:
-                    results.append((idx, future.result()))
-                except Exception as e:
-                    results.append((idx, {"eval_id": evals[idx].get("id"), "error": str(e)}))
+            timeout = deadline.remaining if deadline is not None else None
+            try:
+                for future in as_completed(futures, timeout=timeout):
+                    idx = futures[future]
+                    try:
+                        results.append((idx, future.result()))
+                    except Exception as e:
+                        results.append((idx, {"eval_id": evals[idx].get("id"), "error": str(e)}))
+            except FuturesTimeoutError:
+                partial = True
+                executor.shutdown(wait=False, cancel_futures=True)
+                # Collect already-completed futures
+                for future in futures:
+                    if future.done():
+                        idx = futures[future]
+                        try:
+                            results.append((idx, future.result()))
+                        except Exception as e:
+                            results.append(
+                                (idx, {"eval_id": evals[idx].get("id"), "error": str(e)})
+                            )
         results.sort(key=lambda x: x[0])
-        return [r for _, r in results]
+        result_list = [r for _, r in results]
+        if partial:
+            result_list.append(
+                {"_partial": True, "message": "Deadline reached, partial results only"}
+            )
+        return result_list
 
-    def run_without_skill(self, evals: list[dict[str, Any]], model_adapter) -> list[dict[str, Any]]:
-        results = []
+    def run_without_skill(
+        self,
+        evals: list[dict[str, Any]],
+        model_adapter,
+        deadline: Deadline | None = None,
+    ) -> list[dict[str, Any]]:
+        results: list[tuple[int, dict[str, Any]]] = []
+        partial = False
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
             futures = {
-                executor.submit(self._run_single, ec, None, model_adapter, False): i
+                executor.submit(self._run_single, ec, None, model_adapter, False, deadline): i
                 for i, ec in enumerate(evals)
             }
-            for future in as_completed(futures):
-                idx = futures[future]
-                try:
-                    results.append((idx, future.result()))
-                except Exception as e:
-                    results.append((idx, {"eval_id": evals[idx].get("id"), "error": str(e)}))
+            timeout = deadline.remaining if deadline is not None else None
+            try:
+                for future in as_completed(futures, timeout=timeout):
+                    idx = futures[future]
+                    try:
+                        results.append((idx, future.result()))
+                    except Exception as e:
+                        results.append((idx, {"eval_id": evals[idx].get("id"), "error": str(e)}))
+            except FuturesTimeoutError:
+                partial = True
+                executor.shutdown(wait=False, cancel_futures=True)
+                for future in futures:
+                    if future.done():
+                        idx = futures[future]
+                        try:
+                            results.append((idx, future.result()))
+                        except Exception as e:
+                            results.append(
+                                (idx, {"eval_id": evals[idx].get("id"), "error": str(e)})
+                            )
         results.sort(key=lambda x: x[0])
-        return [r for _, r in results]
+        result_list = [r for _, r in results]
+        if partial:
+            result_list.append(
+                {"_partial": True, "message": "Deadline reached, partial results only"}
+            )
+        return result_list
 
     def _calc_cost(self, token_usage: dict) -> float:
         if not self.model_name or not token_usage:

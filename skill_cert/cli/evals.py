@@ -99,13 +99,15 @@ def _count_passes(graded: list, mode: str) -> int:
     )
 
 
-def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path, tracker=None):
+def _run_eval_for_model(
+    model_name, adapter, runner, grader, evals, spec_path, tracker=None, deadline=None
+):
     # Extract eval cases list
     eval_cases_list = _extract_eval_cases_list(evals)
 
     # Run with and without skill
-    with_skill = runner.run_with_skill(eval_cases_list, spec_path, adapter)
-    without_skill = runner.run_without_skill(eval_cases_list, adapter)
+    with_skill = runner.run_with_skill(eval_cases_list, spec_path, adapter, deadline=deadline)
+    without_skill = runner.run_without_skill(eval_cases_list, adapter, deadline=deadline)
 
     # Track reliability if tracker provided
     _track_reality_results(tracker, with_skill)
@@ -134,7 +136,7 @@ def _run_eval_for_model(model_name, adapter, runner, grader, evals, spec_path, t
     return graded, ws_passed, wos_passed
 
 
-def _run_all_evals(adapters, runner, grader, evals, spec_path, tracker=None):
+def _run_all_evals(adapters, runner, grader, evals, spec_path, tracker=None, deadline=None):
     # Lazy import so test patches at skill_cert.cli._run_eval_for_model intercept.
     from skill_cert.cli import _run_eval_for_model  # noqa: F811
 
@@ -142,7 +144,7 @@ def _run_all_evals(adapters, runner, grader, evals, spec_path, tracker=None):
     for name, adapter in adapters.items():
         print(f"\n  Model: {name}")
         graded, ws, wos = _run_eval_for_model(
-            name, adapter, runner, grader, evals, spec_path, tracker
+            name, adapter, runner, grader, evals, spec_path, tracker, deadline=deadline
         )
         all_results.extend(graded)
         print(f"    With-skill passed: {ws}")
@@ -417,7 +419,9 @@ def _generate_and_write_reports(
     return md_report, json_report
 
 
-def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, adapters) -> int:
+def _run_single_phase(
+    args, config, spec_path, output_dir, skill_name, spec, adapters, deadline=None
+) -> int:
     # Lazy imports so test patches at skill_cert.cli.XXX intercept.
     from skill_cert.cli import (  # noqa: F811
         EvalRunner,
@@ -439,7 +443,9 @@ def _run_single_phase(args, config, spec_path, output_dir, skill_name, spec, ada
     tracker = ReliabilityTracker()
 
     # Phase 1: Run evaluations
-    all_results = _run_all_evals(adapters, runner, grader, spec["evals"], spec_path, tracker)
+    all_results = _run_all_evals(
+        adapters, runner, grader, spec["evals"], spec_path, tracker, deadline=deadline
+    )
 
     # Phase 2: Reliability Analysis
     reliability_report = tracker.generate_report()

@@ -106,7 +106,11 @@ class EvalGenerator:
             return {"eval_cases": []}
 
     def generate_evals_with_convergence(
-        self, skill_spec: dict[str, Any], model_adapter, review_adapter
+        self,
+        skill_spec: dict[str, Any],
+        model_adapter,
+        review_adapter,
+        deadline: Any | None = None,
     ) -> dict[str, Any]:
         review_adapter.skill_spec = skill_spec
 
@@ -117,6 +121,11 @@ class EvalGenerator:
         current_coverage: float = 0.0
 
         while round_num < self.max_rounds:
+            if deadline is not None and deadline.expired:
+                result = self._finalize_evals_result(current_evals, current_coverage)
+                result["failed"] = True
+                return result
+
             should_stop, current_evals, current_coverage = self._run_convergence_round(
                 current_evals, review_adapter, prev_coverage, round_num
             )
