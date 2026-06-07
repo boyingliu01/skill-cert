@@ -178,7 +178,7 @@ def _generate_fail_fast_report(
 def run_single_mode(args, config) -> int:
     # Lazy import so test patches at skill_cert.cli._run_single_phase intercept.
     from engine.deadline import Deadline
-    from skill_cert.cli import EXIT_ERROR, EXIT_PASS, _run_single_phase  # noqa: F811
+    from skill_cert.cli import EXIT_ERROR, _run_single_phase  # noqa: F811
 
     deadline = (
         Deadline(max_total_time=float(config.max_total_time))

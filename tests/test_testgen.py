@@ -287,7 +287,6 @@ def test_generate_evals_with_convergence_degraded():
 
 def test_generator_template_loading_error():
     """Test EvalGenerator when template loading fails."""
-    from unittest.mock import patch
 
     # Temporarily change the template path to a non-existent location
     with patch("engine.testgen.Path") as mock_path:

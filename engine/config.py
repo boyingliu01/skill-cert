@@ -201,7 +201,7 @@ class SkillCertConfig(BaseModel):
 
     @staticmethod
     def _parse_models_from_cli(models_cli: str | list[str]) -> list[ModelConfig]:
-        """Parse models from CLI args in format: model1=url,key[,fallback][|model2=url,key[,fallback]]"""
+        """Parse models from CLI: model1=url,key[,fallback][|model2=url,key[,fallback]]"""
         models = []
 
         if isinstance(models_cli, str):

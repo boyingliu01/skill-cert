@@ -491,7 +491,7 @@ class TestReporter:
     # ── Degraded mode verdict cap (AC-019-07) ───────────────
 
     def test_degraded_verdict_cap_via_generate_report(self):
-        """AC-019-07: degraded=True in metrics caps verdict at PASS_WITH_CAVEATS through generate_report."""
+        """AC-019-07: degraded=True in metrics caps verdict at PASS_WITH_CAVEATS."""
         reporter = Reporter()
 
         metrics = {
