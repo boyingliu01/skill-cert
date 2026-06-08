@@ -189,7 +189,8 @@ def _calculate_metrics_with_stability(
     num_runs = getattr(args, "runs", 1) or 1
     if num_runs > 1:
         _print_phase(4, f"Stability Analysis ({num_runs} runs)")
-        eval_cases = spec["evals"].get("eval_cases", spec["evals"].get("cases", []))
+        _evals = spec["evals"]
+        eval_cases = _evals.get("eval_cases", _evals.get("cases", [])) if isinstance(_evals, dict) else []
         stab_runner = StabilityRunner(
             base_runner=EvalRunner(
                 max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm
@@ -271,8 +272,9 @@ def _detect_and_print_drift(spec, adapters, grader) -> dict[str, Any] | None:
     _print_phase(4, "Drift Detection")
     if len(adapters) > 1:
         detector = DriftDetector()
+        _evals = spec["evals"]
         drift_results = detector.detect_drift(
-            spec["evals"].get("eval_cases", spec["evals"].get("cases", [])),
+            _evals.get("eval_cases", _evals.get("cases", [])) if isinstance(_evals, dict) else [],
             adapters,
             grader,
         )
@@ -416,7 +418,7 @@ def _generate_and_write_reports(
     _write_json_report(args, output_dir, skill_name, structured_report, report_format)
 
     # Write evals cache
-    _write_evals_cache(output_dir, skill_name, spec["evals"])
+    _write_evals_cache(output_dir, skill_name, spec.get("evals") or {})
 
     # Export traces as JSONL
     _export_traces(args, output_dir, skill_name, [])  # all_traces would come from runner
@@ -449,7 +451,7 @@ def _run_single_phase(
 
     # Phase 1: Run evaluations
     all_results = _run_all_evals(
-        adapters, runner, grader, spec["evals"], spec_path, tracker, deadline=deadline
+        adapters, runner, grader, spec.get("evals") or {}, spec_path, tracker, deadline=deadline
     )
 
     # Phase 2: Reliability Analysis
@@ -467,9 +469,10 @@ def _run_single_phase(
     metrics["_results"] = all_results
 
     # REQ-017: Propagate degraded flag from Phase 1 for verdict capping
-    if isinstance(spec.get("evals"), dict) and spec["evals"].get("degraded"):
+    _evals = spec.get("evals") or {}
+    if isinstance(_evals, dict) and _evals.get("degraded"):
         metrics["degraded"] = True
-        cov = spec["evals"].get("_coverage", 0.0)
+        cov = _evals.get("_coverage", 0.0)
         print(f"\n  WARNING: Evaluation ran in degraded mode (coverage={cov:.0%})")
 
     # Print metrics summary

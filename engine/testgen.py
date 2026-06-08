@@ -443,8 +443,10 @@ Minimum requirements:
         # Has eval cases = sufficient (assertions checked in _calculate_coverage)
         return True
 
-    def _get_eval_cases(self, evals: dict[str, Any]) -> list[dict[str, Any]]:
+    def _get_eval_cases(self, evals: dict[str, Any] | str) -> list[dict[str, Any]]:
         """Extract eval_cases from evals dict, checking multiple possible keys."""
+        if not isinstance(evals, dict):
+            return []
         eval_cases = evals.get("eval_cases", [])
         if not eval_cases:
             for key in [

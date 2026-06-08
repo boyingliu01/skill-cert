@@ -233,9 +233,21 @@ class EvalRunner:
                 executor.submit(self._run_single, ec, skill_path, model_adapter, True, deadline): i
                 for i, ec in enumerate(evals)
             }
-            timeout = deadline.remaining if deadline is not None else None
+            initial_timeout = deadline.remaining if deadline is not None else None
             try:
-                for future in as_completed(futures, timeout=timeout):
+                for future in as_completed(futures, timeout=initial_timeout):
+                    # Re-check deadline on each iteration — don't wait for next future if expired
+                    if deadline is not None and deadline.expired:
+                        partial = True
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        for f in futures:
+                            if f.done():
+                                i = futures[f]
+                                try:
+                                    results.append((i, f.result()))
+                                except Exception as e:
+                                    results.append((i, {"eval_id": evals[i].get("id"), "error": str(e)}))
+                        break
                     idx = futures[future]
                     completed += 1
                     pct = 100.0 * completed / total
@@ -283,9 +295,20 @@ class EvalRunner:
                 executor.submit(self._run_single, ec, None, model_adapter, False, deadline): i
                 for i, ec in enumerate(evals)
             }
-            timeout = deadline.remaining if deadline is not None else None
+            initial_timeout = deadline.remaining if deadline is not None else None
             try:
-                for future in as_completed(futures, timeout=timeout):
+                for future in as_completed(futures, timeout=initial_timeout):
+                    if deadline is not None and deadline.expired:
+                        partial = True
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        for f in futures:
+                            if f.done():
+                                i = futures[f]
+                                try:
+                                    results.append((i, f.result()))
+                                except Exception as e:
+                                    results.append((i, {"eval_id": evals[i].get("id"), "error": str(e)}))
+                        break
                     idx = futures[future]
                     completed += 1
                     pct = 100.0 * completed / total

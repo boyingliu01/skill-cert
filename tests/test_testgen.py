@@ -285,6 +285,27 @@ def test_generate_evals_with_convergence_degraded():
     assert len(eval_cases) >= 0
 
 
+def test_get_eval_cases_with_string_input():
+    """Regression test for #30: _get_eval_cases crashes with "'str' object has no attribute 'get'" when evals is a string (template fallback)."""
+    gen = EvalGenerator()
+    evals_str = "some template string"
+    result = gen._get_eval_cases(evals_str)
+    assert result == []
+
+
+def test_calculate_coverage_with_string_evals():
+    """Regression test for #30: _calculate_coverage handles string evals gracefully."""
+    gen = EvalGenerator()
+    evals_str = "not a dict"
+    spec = {
+        "workflow_steps": [{"name": "step1"}],
+        "anti_patterns": [],
+        "output_format": [],
+    }
+    result = gen._calculate_coverage(evals_str, spec)
+    assert result == 0.0
+
+
 def test_generator_template_loading_error():
     """Test EvalGenerator when template loading fails."""
 

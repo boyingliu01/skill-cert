@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from engine.constants import ConcurrencyLimits, TestGenLimits, TimingLimits
 
@@ -11,9 +11,16 @@ class ModelConfig(BaseModel):
     base_url: str
     api_key: str
     model_name: str
+    provider_model: str | None = None
     fallback_model: str | None = None
     fallback_base_url: str | None = None
     fallback_api_key: str | None = None
+
+    @model_validator(mode="after")
+    def _resolve_provider_model(self) -> "ModelConfig":
+        if not self.provider_model:
+            self.provider_model = self.model_name
+        return self
 
 
 class SkillCertConfig(BaseModel):
@@ -187,6 +194,7 @@ class SkillCertConfig(BaseModel):
                     base_url = config_parts[0]
                     api_key = config_parts[1]
                     fallback_model = config_parts[2] if len(config_parts) > 2 else None
+                    provider_model = config_parts[3] if len(config_parts) > 3 else None
 
                     models.append(
                         ModelConfig(
@@ -194,6 +202,7 @@ class SkillCertConfig(BaseModel):
                             base_url=base_url,
                             api_key=api_key,
                             fallback_model=fallback_model,
+                            provider_model=provider_model,
                         )
                     )
 
@@ -222,6 +231,11 @@ class SkillCertConfig(BaseModel):
                         if len(config_parts) > 2 and config_parts[2].strip()
                         else None
                     )
+                    provider_model = (
+                        config_parts[3].strip()
+                        if len(config_parts) > 3 and config_parts[3].strip()
+                        else None
+                    )
 
                     models.append(
                         ModelConfig(
@@ -229,6 +243,7 @@ class SkillCertConfig(BaseModel):
                             base_url=base_url,
                             api_key=api_key,
                             fallback_model=fallback_model,
+                            provider_model=provider_model,
                         )
                     )
 

@@ -137,7 +137,43 @@ def test_parse_models_from_cli():
     assert models[1].fallback_model is None
 
 
-def test_config_from_file():
+def test_parse_models_from_cli_with_provider_model():
+    models_cli = [
+        "alias=http://localhost,key,fallback,LOCAL/Qwen3.5-122B-A10B",
+    ]
+    models = SkillCertConfig._parse_models_from_cli(models_cli)
+
+    assert len(models) == 1
+    assert models[0].model_name == "alias"
+    assert models[0].base_url == "http://localhost"
+    assert models[0].api_key == "key"
+    assert models[0].fallback_model == "fallback"
+    assert models[0].provider_model == "LOCAL/Qwen3.5-122B-A10B"
+
+
+def test_parse_models_from_cli_without_provider_model_defaults_to_model_name():
+    """When provider_model is omitted (3-part CLI format), provider_model defaults to model_name."""
+    models_cli = [
+        "gpt-4=https://api.openai.com,v1.secret.key",
+    ]
+    models = SkillCertConfig._parse_models_from_cli(models_cli)
+
+    assert models[0].model_name == "gpt-4"
+    assert models[0].provider_model == "gpt-4"
+
+
+def test_provider_model_in_file_config():
+    """models.yaml can specify provider_model separately from model_name."""
+    from engine.config import ModelConfig
+
+    cfg = ModelConfig(
+        model_name="whalecloud-qwen3",
+        base_url="https://lab.iwhalecloud.com/gpt-proxy",
+        api_key="secret",
+        provider_model="LOCAL/Qwen3.5-122B-A10B",
+    )
+    assert cfg.model_name == "whalecloud-qwen3"
+    assert cfg.provider_model == "LOCAL/Qwen3.5-122B-A10B"
     """Test loading configuration from file."""
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
         f.write("""
