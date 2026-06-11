@@ -33,6 +33,8 @@ def _build_eval_case_from_dict(case_dict) -> EvalCase:
                 )
             )
     prompt = case_dict.get("input") or case_dict.get("prompt", "")
+    if not isinstance(prompt, str):
+        prompt = json.dumps(prompt) if isinstance(prompt, (dict, list)) else str(prompt)
     return EvalCase(
         id=case_dict.get("id", 0),
         name=case_dict.get("name", ""),

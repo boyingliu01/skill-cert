@@ -252,7 +252,7 @@ def _extract_frontmatter(content: str) -> dict | None:
     current_list: list[str] | None = None
 
     for line in fm_block.split("\n"):
-        _parse_frontmatter_line(line, result, current_key, current_list)
+        current_key, current_list = _parse_frontmatter_line(line, result, current_key, current_list)
 
     return result
 

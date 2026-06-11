@@ -220,6 +220,8 @@ def _run_with_error_handling(func) -> int:
         print("\nInterrupted.", file=sys.stderr)
         return EXIT_ERROR
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"ERROR: {e}", file=sys.stderr)
         return EXIT_ERROR
 
