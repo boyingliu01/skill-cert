@@ -249,7 +249,10 @@ class EvalGenerator:
                 f"Eval generation completed with degraded coverage "
                 f"({current_coverage}), below target but above degrade threshold"
             )
-        elif current_evals.get("eval_cases") or self._get_eval_cases(current_evals):
+        elif (
+            (isinstance(current_evals, dict) and current_evals.get("eval_cases"))
+            or self._get_eval_cases(current_evals)
+        ):
             logger.warning(
                 f"Eval generation with degraded coverage ({current_coverage}), "
                 "using generated evals"

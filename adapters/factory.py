@@ -57,7 +57,7 @@ def create_adapter(model_config: ModelConfig, rpm_limit: int = 60) -> ModelAdapt
     return OpenAICompatAdapter(
         base_url=model_config.base_url,
         api_key=model_config.api_key,
-        model=model_config.provider_model or model_config.model_name,
+        model=model_config.provider_model or model_config.fallback_model or model_config.model_name,
         fallback_model=model_config.fallback_model,
         fallback_base_url=model_config.fallback_base_url,
         fallback_api_key=model_config.fallback_api_key,
