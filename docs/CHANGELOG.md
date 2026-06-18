@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-18
+
+v0.4.0 sprint — section aliases, negative cases + F1, TriggerAccuracyEval, GotchasFlywheel, progressive disclosure, models.yaml fix.
+
+### Added
+- **#47** Analyzer section alias expansion — non-standard section headers (How I Work, Gotchas, Response Format) now map correctly, boosting confidence for unconventional SKILL.md layouts
+- **#44** Negative cases evaluation — `EvalCase.negative_case/confusion_prompt` fields, inverted grader logic, F1 scoring with confusion matrix
+- **#43** TriggerAccuracyEval — dedicated L1 trigger accuracy evaluator with >= 90% threshold gate
+- **#42** GotchasFlywheel — auto-extract patterns from eval failures, persist to `references/gotchas.md`
+- **#41** Progressive disclosure evaluation — `TieredCostModel` (Index/Load/Runtime three-tier token cost analysis), `progressive_disclosure_test()`, ROE ratio
+- **#45** Three-tier cost model — token budget detection (Index < 100t, Load < 5000t), cost optimization alerts
+
+### Fixed
+- **#46** models.yaml `name`/`model_name` confusion — graceful fallback with warning when users write `name` instead of `model_name`, preventing adapter construction failures
+
 ## [0.3.0] — 2026-06-03
 
 Open issues resolution sprint — 9 issues fixed (3×P0 + 3×P1 + 3×P2).

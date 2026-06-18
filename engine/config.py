@@ -1,8 +1,11 @@
+import logging
 import os
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 from engine.constants import ConcurrencyLimits, TestGenLimits, TimingLimits
 
@@ -173,6 +176,18 @@ class SkillCertConfig(BaseModel):
             for key in ("api_key", "fallback_api_key", "fallback_base_url"):
                 if key in model_data:
                     model_data[key] = resolve_env_var(model_data[key], key)
+            # REQ-FIX-46: Gracefully handle `name` field used in place of `model_name`
+            # YAML configs written with `name` (display identifier) but missing
+            # `model_name` (API model identifier) should not crash. Map `name` -> `model_name`
+            # when `model_name` is absent, with a clear warning.
+            if "model_name" not in model_data and "name" in model_data:
+                logger.warning(
+                    "models.yaml entry '%s' uses 'name' instead of 'model_name'. "
+                    "Using 'name' value as 'model_name'. Add 'model_name' field "
+                    "explicitly to use a different API model identifier.",
+                    model_data["name"],
+                )
+                model_data["model_name"] = model_data.pop("name")
             models.append(ModelConfig(**model_data))
         return models
 

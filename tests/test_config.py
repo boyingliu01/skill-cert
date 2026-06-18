@@ -366,6 +366,42 @@ def test_load_models_from_config_with_unresolved_api_key():
     assert models[0].api_key == "${UNRESOLVED_API_KEY}"  # Should remain as-is
 
 
+def test_load_models_from_config_with_name_fallback_to_model_name():
+    """When models.yaml uses 'name' instead of 'model_name', it should fall back gracefully."""
+    models_config = [
+        {
+            "name": "whalecloud-qwen3",
+            "base_url": "https://api.example.com/v1",
+            "api_key": "sk-test",
+            "provider_model": "LOCAL/Qwen3.5-122B-A10B",
+        }
+    ]
+    models = SkillCertConfig._load_models_from_config(models_config)
+
+    assert len(models) == 1
+    # 'name' should be mapped to 'model_name' when 'model_name' is absent
+    assert models[0].model_name == "whalecloud-qwen3"
+    assert models[0].provider_model == "LOCAL/Qwen3.5-122B-A10B"
+    assert models[0].base_url == "https://api.example.com/v1"
+
+
+def test_load_models_from_config_with_both_name_and_model_name():
+    """When both 'name' and 'model_name' are present, 'model_name' should take precedence."""
+    models_config = [
+        {
+            "name": "display-name",
+            "model_name": "LOCAL/RealModel",
+            "base_url": "https://api.example.com/v1",
+            "api_key": "sk-test",
+        }
+    ]
+    models = SkillCertConfig._load_models_from_config(models_config)
+
+    assert len(models) == 1
+    # 'model_name' should be used when both are present
+    assert models[0].model_name == "LOCAL/RealModel"
+
+
 def test_parse_models_from_env_with_invalid_format():
     """Test parsing models from environment variable with invalid format."""
     models_env = "invalid_format_without_equals_sign"
