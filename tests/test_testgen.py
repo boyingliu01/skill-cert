@@ -918,5 +918,38 @@ def test_calculate_coverage_with_regex_assertions():
     assert coverage == 1.0, f"Expected 1.0, got {coverage}"
 
 
+@pytest.mark.parametrize(
+    "input_case,expected",
+    [
+        # Standard: explicit negative_case field
+        ({"negative_case": True, "input": "test", "assertions": []}, True),
+        ({"negative_case": False, "input": "test", "assertions": []}, False),
+        # Variant: is_negative
+        ({"is_negative": True, "input": "test", "assertions": []}, True),
+        ({"is_negative": False, "input": "test", "assertions": []}, False),
+        # Variant: should_not
+        ({"should_not": True, "input": "test", "assertions": []}, True),
+        # Variant: expected_triggers=False → negative_case=True (inversion)
+        ({"expected_triggers": False, "input": "test", "assertions": []}, True),
+        ({"expected_triggers": True, "input": "test", "assertions": []}, False),
+        # Variant: triggers_on=False → negative_case=True (inversion)
+        ({"triggers_on": False, "input": "test", "assertions": []}, True),
+        # Variant: string "true" → coerced to bool
+        ({"negative": "true", "input": "test", "assertions": []}, True),
+        # No negative info → default False
+        ({"input": "test", "assertions": []}, False),
+    ],
+)
+def test_normalize_eval_case_negative_case(input_case, expected):
+    """_normalize_eval_case correctly handles negative_case from all variants."""
+    from engine.testgen import EvalGenerator
+
+    normalized = EvalGenerator._normalize_eval_case(input_case, idx=0)
+    assert normalized.get("negative_case") is expected, (
+        f"For input {input_case}, expected negative_case={expected}, "
+        f"got {normalized.get('negative_case')}"
+    )
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

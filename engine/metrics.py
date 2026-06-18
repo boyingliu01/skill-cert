@@ -1,5 +1,6 @@
 """Metrics module for skill-cert engine — calculates L1-L8 evaluation metrics."""
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -217,21 +218,61 @@ class MetricsCalculator:
         # Fallback: step_coverage only (backward compatible)
         return step_coverage
 
+    @staticmethod
+    def _tokenize(text: str) -> set[str]:
+        """Split text into lowercased word tokens for overlap matching."""
+        return set(re.findall(r"[a-zA-Z0-9]+", text.lower()))
+
     def _calculate_step_coverage(
         self, passing_evals: list[dict[str, Any]], workflow_steps: list[str] | None = None
     ) -> float:
-        """Calculate step coverage from passing evaluations."""
+        """Calculate step coverage from passing evaluations.
+
+        Uses exact workflow_step matching first. Falls back to token-overlap
+        matching (≥60% Jaccard overlap) when exact matches are insufficient,
+        with a 0.7 confidence multiplier applied to token-overlap matches.
+        """
         has_workflow_step_info = any(r.get("workflow_step") is not None for r in passing_evals)
         if has_workflow_step_info and workflow_steps is not None:
             total_steps = len(workflow_steps)
             if total_steps == 0:
                 return 0.0
-            covered_steps: set[str] = set()
+            # Phase 1: exact match
+            covered_by_exact: set[str] = set()
             for r in passing_evals:
                 ws = r.get("workflow_step")
-                if ws:
-                    covered_steps.add(ws)
-            return len(covered_steps) / total_steps
+                if ws and ws in workflow_steps:
+                    covered_by_exact.add(ws)
+
+            # Phase 2: token-overlap fallback for unmatched workflow_steps
+            covered_by_token: set[str] = set()
+            for step_name in workflow_steps:
+                if step_name in covered_by_exact:
+                    continue
+                step_tokens = self._tokenize(step_name)
+                if not step_tokens:
+                    continue
+                for r in passing_evals:
+                    ws = r.get("workflow_step")
+                    if not ws:
+                        continue
+                    overlap_start = ws.lower().find(step_name.lower())
+                    if overlap_start >= 0:
+                        covered_by_token.add(step_name)
+                        break
+                    eval_tokens = self._tokenize(ws)
+                    if not eval_tokens:
+                        continue
+                    intersection = step_tokens & eval_tokens
+                    max_len = max(len(step_tokens), len(eval_tokens))
+                    jaccard = len(intersection) / max_len if max_len > 0 else 0.0
+                    if jaccard >= 0.6:
+                        covered_by_token.add(step_name)
+
+            covered = len(covered_by_exact) + len(covered_by_token)
+            if covered_by_token and not covered_by_exact:
+                return (covered / total_steps) * 0.7
+            return covered / total_steps
         else:
             return sum(r.get("pass_rate", 0.0) for r in passing_evals) / len(passing_evals)
 

@@ -8,6 +8,7 @@ from typing import Any
 from engine.constants import StabilityThresholds, VerdictThresholds
 from engine.deadline import PhaseTimer
 from engine.grader import EvalAssertion, EvalCase
+from engine.observability import CompositeLedger, SessionTelemetry
 from engine.report_models import StructuredReport
 from engine.token_ledger import TokenLedger
 
@@ -192,7 +193,11 @@ def _calculate_metrics_with_stability(
     if num_runs > 1:
         _print_phase(4, f"Stability Analysis ({num_runs} runs)")
         _evals = spec["evals"]
-        eval_cases = _evals.get("eval_cases", _evals.get("cases", [])) if isinstance(_evals, dict) else []
+        eval_cases = (
+            _evals.get("eval_cases", _evals.get("cases", []))
+            if isinstance(_evals, dict)
+            else []
+        )
         stab_runner = StabilityRunner(
             base_runner=EvalRunner(
                 max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm
@@ -379,7 +384,8 @@ def _export_traces(args, output_dir: Path, skill_name: str, all_traces: list) ->
 
 
 def _generate_and_write_reports(
-    args, output_dir, skill_name, spec, spec_path, adapters, metrics, drift_report, config
+    args, output_dir, skill_name, spec, spec_path, adapters, metrics, drift_report, config,
+    all_traces=None, token_ledger=None,
 ) -> tuple[str, dict[str, Any]]:
     """Generate and write reports, return md_report and json_report."""
     from skill_cert.cli import Reporter
@@ -397,8 +403,15 @@ def _generate_and_write_reports(
     token_analysis, observability_data = _build_structured_report_context(
         metrics,
         args,
-        [],  # all_traces would come from runner.get_traces()
+        all_traces or [],
     )
+
+    # Add SessionTelemetry summary if available
+    session_telemetry_summaries = None
+    if token_ledger is not None and hasattr(token_ledger, "session_telemetry"):
+        summaries = token_ledger.session_telemetry.get_all_summaries()
+        if summaries:
+            session_telemetry_summaries = [s.model_dump() for s in summaries]
 
     structured_report = reporter.build_structured_report(
         metrics=metrics,
@@ -412,6 +425,7 @@ def _generate_and_write_reports(
         maintainability=spec.get("maintainability"),
         token_analysis=token_analysis,
         observability=observability_data,
+        session_telemetry=session_telemetry_summaries,
     )
 
     # Write reports based on --format
@@ -438,8 +452,8 @@ def _run_single_phase(
         ReliabilityTracker,
     )
 
-    # Create TokenLedger for per-eval token accounting
-    token_ledger = TokenLedger()
+    # Create TokenLedger + SessionTelemetry for per-eval token accounting
+    token_ledger = CompositeLedger(TokenLedger(), SessionTelemetry())
 
     runner = EvalRunner(
         max_concurrency=config.max_concurrency,
@@ -484,8 +498,10 @@ def _run_single_phase(
     drift_report = _detect_and_print_drift(spec, adapters, grader)
 
     # Phase 5: Generate Report
+    all_traces = runner.get_traces()
     md_report, json_report = _generate_and_write_reports(
-        args, output_dir, skill_name, spec, spec_path, adapters, metrics, drift_report, config
+        args, output_dir, skill_name, spec, spec_path, adapters, metrics, drift_report, config,
+        all_traces=all_traces, token_ledger=token_ledger,
     )
 
     verdict = json_report.get("verdict", "FAIL")

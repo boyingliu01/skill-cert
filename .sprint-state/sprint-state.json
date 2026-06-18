@@ -1,23 +1,30 @@
 {
-  "id": "sprint-2026-06-18-01",
-  "phase": 2,
+  "id": "sprint-2026-06-18-02",
+  "phase": -1,
   "status": "active",
   "flow": "standard",
+  "task_description": "修复剩余2个open issues: #31 (L1/L3 thresholds), #25 (OTel GenAI observability)",
+  "started_at": "2026-06-18T23:20:00+08:00",
   "isolation": {
-    "worktree_path": ".worktrees/sprint/sprint-2026-06-18-01",
-    "branch": "sprint/2026-06-18-01",
+    "worktree_path": ".worktrees/sprint/sprint/2026-06-18-02",
+    "branch": "sprint/2026-06-18-02",
     "created_from": "main",
-    "created_from_commit": "6657583"
+    "created_from_commit": "5806d44"
   },
   "issues": [
-    {"number": 47, "title": "[BUG] 评测 ffmpeg-video skill 时遇到 3 个阻碍", "type": "bug", "priority": "high"},
-    {"number": 44, "title": "[P1] 实现负向案例评测机制", "type": "enhancement", "priority": "medium"},
-    {"number": 43, "title": "[P0] 实现 L1 触发准确性专项评测", "type": "enhancement", "priority": "high"},
-    {"number": 42, "title": "[P0] 实现 Gotchas Flywheel：追加型经验积累机制", "type": "enhancement", "priority": "high"}
+    {"number": 31, "title": "eval: skill-cert self-evaluation misses L1 and L3 thresholds", "type": "bug", "priority": "medium"},
+    {"number": 25, "title": "[RFC] DialogueRunner：集成 OTel GenAI 可观测性（精确评测）", "type": "enhancement", "priority": "medium"}
+  ],
+  "phase_history": [
+    {"phase": -1, "phase_name": "ISOLATE", "status": "completed", "started_at": "2026-06-18T23:20:00+08:00", "completed_at": "2026-06-18T23:25:00+08:00", "duration_seconds": 300}
   ],
   "metrics": {
-    "tests_passed": 825,
+    "tests_passed": 918,
     "tests_failed": 0,
     "coverage_pct": null
+  },
+  "outputs": {
+    "worktree": ".worktrees/sprint/sprint/2026-06-18-02",
+    "baseline_tests": "918 passed"
   }
 }

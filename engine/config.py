@@ -5,9 +5,9 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-logger = logging.getLogger(__name__)
-
 from engine.constants import ConcurrencyLimits, TestGenLimits, TimingLimits
+
+logger = logging.getLogger(__name__)
 
 
 class ModelConfig(BaseModel):
