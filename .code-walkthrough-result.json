@@ -1,0 +1,40 @@
+{
+  "commit": "b72001c492d2b6e5433f0d3a12f54cd79a9b0127",
+  "timestamp": "2026-06-19T12:00:00+08:00",
+  "experts": [
+    {
+      "id": "A",
+      "role": "architecture",
+      "verdict": "APPROVED",
+      "confidence": 0.85
+    },
+    {
+      "id": "B",
+      "role": "technical",
+      "verdict": "APPROVED",
+      "confidence": 0.95
+    }
+  ],
+  "consensus_ratio": 1.0,
+  "final_verdict": "APPROVED",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "low",
+      "description": "Mixed exact+token coverage scoring doesn't apply x0.7 penalty",
+      "status": "accepted"
+    },
+    {
+      "id": "F2",
+      "severity": "low",
+      "description": "Empty workflow_steps edge case not tested",
+      "status": "accepted"
+    },
+    {
+      "id": "F3",
+      "severity": "low",
+      "description": "Jaccard threshold rationale undocumented",
+      "status": "nice-to-have"
+    }
+  ]
+}
