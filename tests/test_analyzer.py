@@ -1,8 +1,28 @@
 """Tests for engine/analyzer.py — SKILL.md parsing."""
 
+
 import pytest
 
 from engine.analyzer import parse_skill_md
+
+
+def _section_patterns() -> dict[str, list[str]]:
+    """Return all section name aliases that should be recognized.
+    Mirrors the patterns in _extract_* functions.
+    """
+    return {
+        "workflow": [
+            "Workflow", "Process", "Flow", "完整流程", "核心流程", "流程", "步骤", "工作流程"
+        ],
+        "anti_patterns": [
+            "Anti-Patterns", "Anti-Patterns", "What Not To Do", "Gotchas",
+            "反模式", "错误做法", "注意事项",
+        ],
+        "output_format": ["Output Format", "Response Format", "返回格式", "输出格式", "响应格式"],
+        "triggers": [
+            "Triggers", "Trigger", "What I Do", "When To Use", "触发条件", "何时使用", "使用场景"
+        ],
+    }
 
 
 class TestParseSkillMd:
@@ -146,3 +166,70 @@ Use: execute user-provided shell commands. Does NOT run commands autonomously.
         result = parse_skill_md(str(skill_file))
         sv = result.get("schema_validation", {})
         assert sv.get("is_valid") is True
+
+    # ── Section alias tests (v0.4.0, Issue #47) ──────────────────────────────
+
+    def _make_alias_skill(self, tmp_path, section_name: str, section_content: str) -> str:
+        """Helper: create a SKILL.md with a custom section name and frontmatter."""
+        safe_name = section_name.replace(" ", "-").replace("/", "-")
+        desc = section_name.replace('"', "'")
+        path = tmp_path / f"alias-{safe_name}.md"
+        path.write_text(f"""---
+name: alias-test
+description: test-{desc}
+---
+
+# Alias Test
+
+## {section_name}
+{section_content}
+""")
+        return str(path)
+
+    @pytest.mark.parametrize("alias", _section_patterns()["anti_patterns"])
+    def test_anti_patterns_alias(self, tmp_path, alias: str):
+        """Each anti-pattern alias should be extracted as anti_patterns."""
+        skill_path = self._make_alias_skill(
+            tmp_path, alias,
+            "- First anti-pattern\n- Second anti-pattern\n",
+        )
+        result = parse_skill_md(skill_path)
+        assert len(result["anti_patterns"]) == 2, (
+            f"Alias '{alias}' should yield 2 anti_patterns, got {result['anti_patterns']}"
+        )
+
+    @pytest.mark.parametrize("alias", _section_patterns()["workflow"])
+    def test_workflow_alias(self, tmp_path, alias: str):
+        """Each workflow alias should be extracted as workflow_steps."""
+        skill_path = self._make_alias_skill(
+            tmp_path, alias,
+            "1. Step Alpha\n2. Step Beta\n",
+        )
+        result = parse_skill_md(skill_path)
+        assert len(result["workflow_steps"]) == 2, (
+            f"Alias '{alias}' should yield 2 workflow steps, got {result['workflow_steps']}"
+        )
+
+    @pytest.mark.parametrize("alias", _section_patterns()["output_format"])
+    def test_output_format_alias(self, tmp_path, alias: str):
+        """Each output format alias should be extracted as output_format."""
+        skill_path = self._make_alias_skill(
+            tmp_path, alias,
+            "- JSON report\n- YAML config\n",
+        )
+        result = parse_skill_md(skill_path)
+        assert len(result["output_format"]) == 2, (
+            f"Alias '{alias}' should yield 2 output_format items, got {result['output_format']}"
+        )
+
+    @pytest.mark.parametrize("alias", _section_patterns()["triggers"])
+    def test_triggers_alias(self, tmp_path, alias: str):
+        """Each triggers alias should be extracted as triggers."""
+        skill_path = self._make_alias_skill(
+            tmp_path, alias,
+            "- trigger-a\n- trigger-b\n",
+        )
+        result = parse_skill_md(skill_path)
+        assert len(result["triggers"]) >= 2, (
+            f"Alias '{alias}' should yield >= 2 triggers, got {result['triggers']}"
+        )

@@ -98,15 +98,64 @@ class MetricsCalculator:
         }
 
     def _calculate_l1_trigger_accuracy(self, eval_results: list[dict[str, Any]]) -> float:
-        """L1: Trigger accuracy (filter eval_category=='trigger', calculate accuracy)."""
-        trigger_results = [r for r in eval_results if r.get("category") == "trigger"]
+        """L1: Trigger accuracy (filter eval_category=='trigger', calculate accuracy).
 
+        Uses F1 score when negative_case eval results are present to account for both
+        true positives (correct triggers on positive cases) and true negatives
+        (correct non-triggers on negative cases). Falls back to simple accuracy.
+        """
+        f1 = self._calculate_f1_score(eval_results)
+        if f1 is not None:
+            return f1
+
+        trigger_results = [r for r in eval_results if r.get("category") == "trigger"]
         if not trigger_results:
             return 0.0
-
-        # Calculate accuracy based on pass rate of trigger evaluations
         passed_triggers = sum(1 for r in trigger_results if r.get("final_passed", False))
         return passed_triggers / len(trigger_results) if trigger_results else 0.0
+
+    @staticmethod
+    def _calculate_f1_score(eval_results: list[dict[str, Any]]) -> float | None:
+        """Calculate F1 score from positive and negative trigger eval results.
+
+        Uses negative_case flag to classify TP/TN/FP/FN:
+        - TP: pos case, final_passed=True  → model correctly triggered
+        - TN: neg case, final_passed=True  → model correctly did NOT trigger
+        - FP: neg case, final_passed=False → model incorrectly triggered
+        - FN: pos case, final_passed=False → model incorrectly did NOT trigger
+
+        Returns None when no trigger eval results or no negative_case evals found
+        (caller should fall back to accuracy).
+        """
+        trigger_results = [r for r in eval_results if r.get("category") == "trigger"]
+        if not trigger_results:
+            return None
+
+        has_negative = any(r.get("negative_case", False) for r in trigger_results)
+        if not has_negative:
+            return None
+
+        tp = 0
+        tn = 0
+        fp = 0
+        fn = 0
+        for r in trigger_results:
+            is_neg = r.get("negative_case", False)
+            passed = r.get("final_passed", False)
+            if not is_neg and passed:
+                tp += 1
+            elif is_neg and passed:
+                tn += 1
+            elif is_neg and not passed:
+                fp += 1
+            elif not is_neg and not passed:
+                fn += 1
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        if precision + recall == 0.0:
+            return 0.0
+        return 2 * precision * recall / (precision + recall)
 
     @staticmethod
     def _extract_with_without_groups(eval_results):
@@ -267,12 +316,28 @@ class MetricsCalculator:
         """Get detailed information for L1 metric."""
         trigger_results = [r for r in eval_results if r.get("category") == "trigger"]
         passed_triggers = sum(1 for r in trigger_results if r.get("final_passed", False))
+        f1 = self._calculate_f1_score(eval_results)
 
-        return {
+        details: dict[str, Any] = {
             "total_trigger_evals": len(trigger_results),
             "passed_trigger_evals": passed_triggers,
             "trigger_accuracy": passed_triggers / len(trigger_results) if trigger_results else 0.0,
         }
+        if f1 is not None:
+            positive = [r for r in trigger_results if not r.get("negative_case", False)]
+            negative = [r for r in trigger_results if r.get("negative_case", False)]
+            tp = sum(1 for r in positive if r.get("final_passed", False))
+            tn = sum(1 for r in negative if r.get("final_passed", False))
+            fp = sum(1 for r in negative if not r.get("final_passed", False))
+            fn = sum(1 for r in positive if not r.get("final_passed", False))
+            details["f1_score"] = f1
+            details["confusion_matrix"] = {
+                "true_positives": tp,
+                "true_negatives": tn,
+                "false_positives": fp,
+                "false_negatives": fn,
+            }
+        return details
 
     def _get_l2_details(self, eval_results: list[dict[str, Any]]) -> dict[str, Any]:
         """Get detailed information for L2 metric."""

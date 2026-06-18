@@ -336,9 +336,16 @@ def _extract_workflow_steps(content: str) -> list[WorkflowStep]:
 
 
 def _extract_anti_patterns(content: str) -> list[str]:
-    """Extract anti-patterns from ## Anti-Patterns sections."""
-    pattern = r"##\s+Anti-Patterns\s*\n(.*?)(?=##\s|\Z)"
-    match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+    """Extract anti-patterns from ## Anti-Patterns (or aliases) sections.
+    Supports: Anti-Patterns, What Not To Do, Gotchas, 反模式, 反模式/错误.
+    """
+    pattern = (
+        r"^##\s+[^#\n]*"
+        r"(?:Anti-Patterns|Anti[-\s]Patterns|What\s+Not\s+To\s+Do|Gotchas|"
+        r"反模式|错误做法|注意事项)"
+        r"[^\n]*$\n(.*?)(?=^##\s|\Z)"
+    )
+    match = re.search(pattern, content, re.IGNORECASE | re.DOTALL | re.MULTILINE)
     if not match:
         return []
 
@@ -346,11 +353,12 @@ def _extract_anti_patterns(content: str) -> list[str]:
     patterns = []
     for line in section.split("\n"):
         line = line.strip()
+        if not line:
+            continue
         if line.startswith("|") and "---" not in line:
             parts = [p.strip() for p in line.split("|") if p.strip()]
             if not parts:
                 continue
-            # Skip table header rows
             first = parts[0].lower()
             if first in (
                 "pattern",
@@ -362,6 +370,10 @@ def _extract_anti_patterns(content: str) -> list[str]:
             ):
                 continue
             patterns.append(parts[0])
+        elif line.startswith("- ") or line.startswith("* "):
+            item = line[2:].strip()
+            if len(item) > 2:
+                patterns.append(item)
     return patterns
 
 
@@ -413,8 +425,14 @@ def _of_filter_noise(outputs: list[str]) -> list[str]:
 
 
 def _extract_output_format(content: str) -> list[str]:
-    """Extract output format from ## Output Format sections."""
-    pattern = r"^##\s+Output Format[^\n]*$\n(.*?)(?=^##\s|\Z)"
+    """Extract output format from ## Output Format (or aliases) sections.
+    Supports: Output Format, Response Format, 输出格式, 响应格式.
+    """
+    pattern = (
+        r"^##\s+[^#\n]*"
+        r"(?:Output\s+Format|Response\s+Format|返回格式|输出格式|响应格式)"
+        r"[^\n]*$\n(.*?)(?=^##\s|\Z)"
+    )
     match = re.search(pattern, content, re.IGNORECASE | re.DOTALL | re.MULTILINE)
     if not match:
         return []
@@ -456,9 +474,15 @@ def _extract_triggers_from_frontmatter(content: str) -> list[str]:
 
 
 def _extract_triggers_from_body(content: str) -> list[str]:
-    """Extract triggers from ## Triggers section in body."""
+    """Extract triggers from ## Triggers (or aliases) section in body.
+    Supports: Triggers, What I Do, When To Use, 触发条件, 何时使用.
+    """
     triggers = []
-    pattern = r"^##\s+(?:Triggers|TRIGGER|触发条件|触发)[^\n]*$\n(.*?)(?=^##\s|\Z)"
+    pattern = (
+        r"^##\s+[^#\n]*"
+        r"(?:Triggers?|What\s+I\s+Do|When\s+To\s+Use|触发条件|何时使用|使用场景)"
+        r"[^\n]*$\n(.*?)(?=^##\s|\Z)"
+    )
     match = re.search(pattern, content, re.IGNORECASE | re.DOTALL | re.MULTILINE)
     if match:
         for line in match.group(1).split("\n"):
