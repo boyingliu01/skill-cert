@@ -136,6 +136,7 @@ class MetricsCalculator:
             return None
 
         tp = 0
+        tn = 0
         fp = 0
         fn = 0
         for r in trigger_results:
@@ -143,6 +144,8 @@ class MetricsCalculator:
             passed = r.get("final_passed", False)
             if not is_neg and passed:
                 tp += 1
+            elif is_neg and passed:
+                tn += 1
             elif is_neg and not passed:
                 fp += 1
             elif not is_neg and not passed:
