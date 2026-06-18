@@ -1,21 +1,23 @@
 {
-  "id": "sprint-2026-06-02-01",
-  "phase": 8,
-  "status": "completed",
+  "id": "sprint-2026-06-18-01",
+  "phase": 2,
+  "status": "active",
+  "flow": "standard",
   "isolation": {
-    "worktree_path": ".worktrees/sprint/sprint-2026-06-02-01",
-    "branch": "sprint/2026-06-02-01",
+    "worktree_path": ".worktrees/sprint/sprint-2026-06-18-01",
+    "branch": "sprint/2026-06-18-01",
     "created_from": "main",
-    "created_from_commit": "87edda1"
+    "created_from_commit": "6657583"
   },
-  "outputs": {
-    "specification": ".sprint-state/phase-outputs/specification.yaml",
-    "mvp": "skill_cert/cli/",
-    "review_report": ".sprint-state/phase-outputs/sprint-summary.md"
-  },
+  "issues": [
+    {"number": 47, "title": "[BUG] 评测 ffmpeg-video skill 时遇到 3 个阻碍", "type": "bug", "priority": "high"},
+    {"number": 44, "title": "[P1] 实现负向案例评测机制", "type": "enhancement", "priority": "medium"},
+    {"number": 43, "title": "[P0] 实现 L1 触发准确性专项评测", "type": "enhancement", "priority": "high"},
+    {"number": 42, "title": "[P0] 实现 Gotchas Flywheel：追加型经验积累机制", "type": "enhancement", "priority": "high"}
+  ],
   "metrics": {
-    "tests_passed": 492,
+    "tests_passed": 825,
     "tests_failed": 0,
-    "coverage_pct": 92
+    "coverage_pct": null
   }
 }

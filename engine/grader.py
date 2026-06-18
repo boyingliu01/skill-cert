@@ -41,6 +41,8 @@ class EvalCase(BaseModel):
     files: list[str] = Field(default_factory=list)
     assertions: list[EvalAssertion]
     workflow_step: str | None = None  # Name of the workflow step this case targets
+    negative_case: bool = False  # If True, expect NOT to trigger (v0.4.0, Issue #44)
+    confusion_prompt: str | None = None  # Near-miss prompt for boundary testing (Issue #44)
 
 
 @dataclass
@@ -126,11 +128,25 @@ class Grader:
         judge_result: JudgeResult | None,
     ) -> dict[str, Any]:
         """Build the final grade result dictionary."""
+        # For negative cases, final_passed means the model correctly did NOT trigger
+        if eval_case.negative_case:
+            if judge_result and judge_result.confidence >= 0.8:
+                final_passed = not judge_result.passed
+            else:
+                # Inverted: for negative case, pass means NOT doing the thing
+                final_passed = pass_rate < 0.5
+        else:
+            final_passed = (
+                judge_result.passed
+                if judge_result and judge_result.confidence >= 0.8
+                else pass_rate >= 0.5
+            )
         return {
             "eval_id": eval_case.id,
             "eval_name": eval_case.name,
             "category": eval_case.category,
             "workflow_step": eval_case.workflow_step,
+            "negative_case": eval_case.negative_case,
             "model_output": model_output,
             "assertion_results": [
                 {
@@ -145,9 +161,7 @@ class Grader:
             "total_possible_score": total_possible_score,
             "pass_rate": pass_rate,
             "judge_result": judge_result.model_dump() if judge_result else None,
-            "final_passed": judge_result.passed
-            if judge_result and judge_result.confidence >= 0.8
-            else pass_rate >= 0.5,
+            "final_passed": final_passed,
         }
 
     def _evaluate_assertion(self, assertion: EvalAssertion, model_output: str) -> AssertionResult:

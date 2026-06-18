@@ -56,6 +56,105 @@ class TestMetricsCalculator:
 
         assert l1_score == 0.0  # No trigger evaluations
 
+    def test_calculate_f1_score_all_correct(self):
+        """Test F1 score when all positive and negative cases are correct."""
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
+            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
+            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
+            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
+        ]
+        f1 = calculator._calculate_f1_score(eval_results)
+        assert f1 == 1.0  # Precision=1.0, Recall=1.0
+
+    def test_calculate_f1_score_no_negative_cases(self):
+        """Test F1 score returns None when no negative_case evals present."""
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"category": "trigger", "final_passed": True},
+            {"category": "trigger", "final_passed": False},
+        ]
+        f1 = calculator._calculate_f1_score(eval_results)
+        assert f1 is None  # Falls back to caller
+
+    def test_calculate_f1_score_some_failures(self):
+        """Test F1 score with mixed TP/TN/FP/FN."""
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
+            {"category": "trigger", "negative_case": False, "final_passed": False},  # FN
+            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
+            {"category": "trigger", "negative_case": True, "final_passed": False},   # FP
+        ]
+        f1 = calculator._calculate_f1_score(eval_results)
+        # Precision = TP/(TP+FP) = 1/(1+1) = 0.5
+        # Recall = TP/(TP+FN) = 1/(1+1) = 0.5
+        # F1 = 2 * 0.5 * 0.5 / (0.5+0.5) = 0.5
+        assert f1 == 0.5
+
+    def test_calculate_f1_score_no_triggers(self):
+        """Test F1 score returns None when no trigger category evals."""
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"category": "normal", "final_passed": True},
+        ]
+        f1 = calculator._calculate_f1_score(eval_results)
+        assert f1 is None
+
+    def test_l1_trigger_accuracy_uses_f1_when_negative_cases_present(self):
+        """Test L1 uses F1 when negative_case evals exist."""
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
+            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
+            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
+            {"category": "trigger", "negative_case": True, "final_passed": False},   # FP
+        ]
+        l1 = calculator._calculate_l1_trigger_accuracy(eval_results)
+        # Precision = 2/(2+1) = 2/3, Recall = 2/(2+0) = 1.0
+        # F1 = 2 * (2/3) * 1.0 / (2/3 + 1.0) = 2 * 2/3 / 5/3 = 4/5 = 0.8
+        assert l1 == pytest.approx(0.8, 0.01)
+
+    def test_l1_trigger_accuracy_falls_back_without_negative_cases(self):
+        """Test L1 falls back to simple accuracy without negative_case evals."""
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"category": "trigger", "final_passed": True},
+            {"category": "trigger", "final_passed": True},
+            {"category": "trigger", "final_passed": False},
+        ]
+        l1 = calculator._calculate_l1_trigger_accuracy(eval_results)
+        assert l1 == 2 / 3
+
+    def test_get_l1_details_includes_f1_when_negative_cases_present(self):
+        """Test _get_l1_details includes f1_score and confusion_matrix."""
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
+            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
+            {"category": "trigger", "negative_case": True, "final_passed": False},   # FP
+        ]
+        details = calculator._get_l1_details(eval_results)
+        assert "f1_score" in details
+        assert details["f1_score"] == pytest.approx(0.666, 0.01)
+        assert "confusion_matrix" in details
+        assert details["confusion_matrix"]["true_positives"] == 1
+        assert details["confusion_matrix"]["true_negatives"] == 1
+        assert details["confusion_matrix"]["false_positives"] == 1
+        assert details["confusion_matrix"]["false_negatives"] == 0
+
+    def test_get_l1_details_no_f1_without_negative_cases(self):
+        """Test _get_l1_details does NOT include f1 without negative_case evals."""
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"category": "trigger", "final_passed": True},
+            {"category": "trigger", "final_passed": False},
+        ]
+        details = calculator._get_l1_details(eval_results)
+        assert "f1_score" not in details
+        assert "confusion_matrix" not in details
+
     def test_calculate_l2_with_without_skill_delta(self):
         """Test L2 with/without skill delta calculation."""
         calculator = MetricsCalculator()
