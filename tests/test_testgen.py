@@ -286,7 +286,7 @@ def test_generate_evals_with_convergence_degraded():
 
 
 def test_get_eval_cases_with_string_input():
-    """Regression test for #30: _get_eval_cases crashes with "'str' object has no attribute 'get'" when evals is a string (template fallback)."""
+    """Regression test for #30: _get_eval_cases with string evals (template fallback)."""
     gen = EvalGenerator()
     evals_str = "some template string"
     result = gen._get_eval_cases(evals_str)
@@ -762,6 +762,160 @@ def test_degraded_mode_verdict_cap():
     # When degraded=True but drift says FAIL → FAIL
     verdict = reporter._determine_verdict(0.85, {"overall_verdict": "FAIL"}, degraded=True)
     assert verdict == "FAIL"
+
+
+def test_extract_regex_branches_basic_alternation():
+    """Extract branches from (a|b|c) pattern."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches("(a|b|c)")
+    assert set(result) == {"a", "b", "c"}, f"Expected [a, b, c], got {result}"
+
+
+def test_extract_regex_branches_no_parens():
+    """Extract branches from a|b|c without outer parens."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches("a|b|c")
+    assert set(result) == {"a", "b", "c"}, f"Expected [a, b, c], got {result}"
+
+
+def test_extract_regex_branches_nested():
+    """Handle nested alternation (a|(b|c))."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches("(a|(b|c))")
+    assert set(result) == {"a", "b", "c"}, f"Expected [a, b, c], got {result}"
+
+
+def test_extract_regex_branches_separate_groups():
+    """Handle separate groups like (a)|(b)."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches("(a)|(b)")
+    assert set(result) == {"a", "b"}, f"Expected [a, b], got {result}"
+
+
+def test_extract_regex_branches_no_alternation():
+    """Non-regex strings pass through unchanged."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches("plain text")
+    assert result == ["plain text"], f"Expected ['plain text'], got {result}"
+
+
+def test_extract_regex_branches_escaped_pipe():
+    """Escaped pipe | should not be treated as alternation."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches(r"a\|b")
+    assert result == [r"a\|b"], f"Expected ['a\\\\|b'], got {result}"
+
+
+def test_extract_regex_branches_empty_string():
+    """Empty string returns [value]."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches("")
+    assert result == [""], f"Expected [''], got {result}"
+
+
+def test_extract_regex_branches_depth_limit():
+    """Deeply nested alternation hits depth limit and returns as-is."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches("((((a|b)))", _depth=4)
+    assert result == ["((((a|b)))"], "Expected truncated result at depth limit"
+
+
+def test_extract_regex_branches_skipped_escaped_parens():
+    """Escaped parens \\\\( and \\\\) should not affect depth tracking."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches(r"(\(x\)|y)")
+    # Escaped characters are preserved verbatim; r"\(x\)" is the literal branch content
+    assert set(result) == {r"\(x\)", "y"}, f"Expected ['\\\\(x\\\\)', 'y'], got {result}"
+
+
+def test_extract_regex_branches_empty_branches_filtered():
+    """Empty branches from || are filtered out."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches(r"a||b")
+    assert set(result) == {"a", "b"}, f"Expected [a, b], got {result}"
+
+
+def test_extract_regex_branches_single_branch():
+    """Single branch with parens but no | returns original."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches("(single)")
+    assert result == ["(single)"], f"Expected ['(single)'], got {result}"
+
+
+def test_extract_regex_branches_deduplicates():
+    """Duplicate branches are deduplicated preserving order."""
+    generator = EvalGenerator()
+    result = generator._extract_regex_branches("(a|b|a)")
+    assert result == ["a", "b"], f"Expected ['a', 'b'], got {result}"
+
+
+def test_compute_section_coverage_empty_assertion_filtered():
+    """Empty assertion value does not inflate coverage."""
+    generator = EvalGenerator()
+    section_items = ["Step A", "Step B", "Step C"]
+    assertion_set = {"(Step A|Step B)", ""}
+    coverage = generator._compute_section_coverage(section_items, assertion_set)
+    assert coverage == pytest.approx(2 / 3, rel=1e-3), (
+        f"Expected ~0.667, got {coverage} — empty string should not inflate"
+    )
+
+
+def test_compute_section_coverage_with_regex_alternation():
+    """_compute_section_coverage correctly matches regex alternation patterns."""
+    generator = EvalGenerator()
+    section_items = ["Parse SKILL.md", "Generate tests", "Execute evaluation"]
+    assertion_set = {"(Parse SKILL.md|Generate tests|Execute evaluation)"}
+    coverage = generator._compute_section_coverage(section_items, assertion_set)
+    assert coverage == 1.0, f"Expected 1.0 coverage, got {coverage}"
+
+
+def test_compute_section_coverage_partial_regex():
+    """Partial coverage with regex alternation produces partial score."""
+    generator = EvalGenerator()
+    section_items = ["Step A", "Step B", "Step C"]
+    assertion_set = {"(Step A|Step B)"}
+    coverage = generator._compute_section_coverage(section_items, assertion_set)
+    assert coverage == pytest.approx(2 / 3, rel=1e-3), f"Expected ~0.667, got {coverage}"
+
+
+def test_compute_section_coverage_plain_strings_still_work():
+    """Plain string assertions still produce correct coverage after fix."""
+    generator = EvalGenerator()
+    section_items = ["step1", "step2"]
+    assertion_set = {"step1", "step2"}
+    coverage = generator._compute_section_coverage(section_items, assertion_set)
+    assert coverage == 1.0, f"Expected 1.0, got {coverage}"
+
+
+def test_calculate_coverage_with_regex_assertions():
+    """_calculate_coverage correctly handles regex assertion values in full pipeline."""
+    generator = EvalGenerator()
+    evals = {
+        "eval_cases": [
+            {
+                "id": 1,
+                "name": "regex-case",
+                "category": "normal",
+                "input": "test input",
+                "expected_triggers": True,
+                "assertions": [
+                    {"type": "regex", "value": "(Parse SKILL.md|Analyze structure)", "weight": 3},
+                    {"type": "regex", "value": "(skip validation|never test)", "weight": 2},
+                    {"type": "regex", "value": "(PASS/FAIL verdict|JSON output)", "weight": 2},
+                ],
+            }
+        ]
+    }
+    skill_spec = {
+        "name": "test-skill",
+        "description": "A test skill",
+        "triggers": ["test"],
+        "workflow_steps": [{"name": "Parse SKILL.md"}, {"name": "Analyze structure"}],
+        "anti_patterns": ["skip validation"],
+        "output_format": ["PASS/FAIL verdict", "JSON output"],
+    }
+    coverage = generator._calculate_coverage(evals, skill_spec)
+    assert coverage == 1.0, f"Expected 1.0, got {coverage}"
 
 
 if __name__ == "__main__":

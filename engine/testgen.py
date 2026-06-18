@@ -250,9 +250,8 @@ class EvalGenerator:
                 f"({current_coverage}), below target but above degrade threshold"
             )
         elif (
-            (isinstance(current_evals, dict) and current_evals.get("eval_cases"))
-            or self._get_eval_cases(current_evals)
-        ):
+            isinstance(current_evals, dict) and current_evals.get("eval_cases")
+        ) or self._get_eval_cases(current_evals):
             logger.warning(
                 f"Eval generation with degraded coverage ({current_coverage}), "
                 "using generated evals"
@@ -383,7 +382,10 @@ Minimum requirements:
         # Ensure input/prompt is always a string, not dict/list
         for key in ("input", "prompt"):
             if key in normalized and not isinstance(normalized[key], str):
-                normalized[key] = json.dumps(normalized[key]) if isinstance(normalized[key], (dict, list)) else str(normalized[key])
+                if isinstance(normalized[key], (dict, list)):
+                    normalized[key] = json.dumps(normalized[key])
+                else:
+                    normalized[key] = str(normalized[key])
 
         # Normalize flat assertion_type/assertion_value → assertions array
         if "assertions" not in normalized or not isinstance(normalized.get("assertions"), list):
@@ -417,15 +419,138 @@ Minimum requirements:
 
         return normalized
 
+    @staticmethod
+    def _extract_regex_branches(value: str, _depth: int = 0) -> list[str]:
+        """Extract individual branches from a regex alternation pattern.
+
+        Handles patterns like (a|b|c), a|b|c, (a|(b|c)), and (a)|(b)|(c).
+        Respects escaped parentheses and pipe during depth tracking.
+        Recursively expands nested alternations (max depth 3).
+        Filters out empty branches.
+        Non-alternation values return [value] unchanged.
+        """
+        if _depth > 3:
+            return [value]
+
+        # Step 1: Detect if value contains any unescaped | at any depth
+        has_pipe = False
+        i = 0
+        while i < len(value):
+            if value[i] == "\\" and i + 1 < len(value):
+                i += 2  # skip escape sequence
+                continue
+            if value[i] == "|":
+                has_pipe = True
+                break
+            i += 1
+
+        if not has_pipe:
+            return [value]
+
+        # Step 2: Strip outermost balanced parens if they wrap the entire expression
+        inner = value
+        if inner.startswith("(") and inner.endswith(")"):
+            # Verify the parens are truly a matching outer pair
+            depth = 0
+            balanced = True
+            for ch in inner[1:-1]:
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                if depth < 0:
+                    balanced = False
+                    break
+            if balanced and depth == 0:
+                inner = inner[1:-1]
+
+        # Step 3: Split on | at depth 0 (relative to inner), escape-aware
+        branches: list[str] = []
+        current: list[str] = []
+        depth = 0
+        i = 0
+        while i < len(inner):
+            ch = inner[i]
+            if ch == "\\" and i + 1 < len(inner):
+                current.append(ch)
+                current.append(inner[i + 1])
+                i += 2
+                continue
+            if ch == "(":
+                depth += 1
+                current.append(ch)
+            elif ch == ")":
+                depth -= 1
+                current.append(ch)
+            elif ch == "|" and depth == 0:
+                branch = "".join(current).strip()
+                if branch:
+                    branches.append(branch)
+                current = []
+            else:
+                current.append(ch)
+            i += 1
+
+        remaining = "".join(current).strip()
+        if remaining:
+            branches.append(remaining)
+
+        # Step 4: Strip outer balanced parens from each branch
+        stripped_branches: list[str] = []
+        for b in branches:
+            candidate = b
+            if candidate.startswith("(") and candidate.endswith(")"):
+                inner_depth = 0
+                balanced = True
+                for ch in candidate[1:-1]:
+                    if ch == "(":
+                        inner_depth += 1
+                    elif ch == ")":
+                        inner_depth -= 1
+                    if inner_depth < 0:
+                        balanced = False
+                        break
+                if balanced and inner_depth == 0:
+                    candidate = candidate[1:-1]
+            stripped_branches.append(candidate)
+
+        # Step 5: Recursively expand each branch
+        result: list[str] = []
+        for b in stripped_branches:
+            result.extend(EvalGenerator._extract_regex_branches(b, _depth + 1))
+
+        # Step 6: Deduplicate preserving order (aligns with documented contract)
+        if not result:
+            return [value]
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for b in result:
+            if b not in seen:
+                seen.add(b)
+                deduped.append(b)
+        return deduped
+
     def _compute_section_coverage(self, section_items: list[str], assertion_set: set[str]) -> float:
-        """Compute coverage of a section (workflow, anti_patterns, output_format)."""
+        """Compute coverage of a section (workflow, anti_patterns, output_format).
+
+        Expands regex alternation patterns in assertion values before matching,
+        so patterns like (Parse|Generate|Execute) are correctly matched against
+        individual section items.
+        """
         if not section_items:
             return 1.0  # No items to cover = automatic pass
+
+        # Expand each assertion value into individual branches
+        expanded: list[str] = []
+        for a in assertion_set:
+            expanded.extend(self._extract_regex_branches(a))
+        # Filter empty strings: "" in "anything" is always True, inflating coverage
+        expanded = [b for b in expanded if b]
 
         covered = 0
         for item in section_items:
             item_lower = str(item).lower()
-            if any(item_lower in a.lower() or a.lower() in item_lower for a in assertion_set):
+            if any(item_lower in b.lower() or b.lower() in item_lower for b in expanded):
                 covered += 1
         return covered / len(section_items)
 
