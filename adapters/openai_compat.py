@@ -31,7 +31,12 @@ class OpenAICompatAdapter(ModelAdapter):
         self._has_fallback = bool(
             self.fallback_model and self.fallback_base_url and self.fallback_api_key
         )
-        self.client = httpx.Client(timeout=httpx.Timeout(120.0))
+        # Force HTTP/1.1 to avoid HTTP/2 negotiation issues with some proxies
+        self.client = httpx.Client(
+            timeout=httpx.Timeout(120.0),
+            http1=True,
+            http2=False,
+        )
 
     @staticmethod
     def _extract_error_detail(response: httpx.Response) -> str:
@@ -52,6 +57,7 @@ class OpenAICompatAdapter(ModelAdapter):
         timeout: int,
         base_url: str = None,
         api_key: str = None,
+        use_requests_fallback: bool = False,
     ) -> tuple[str, dict[str, int]]:
         use_base = base_url or self.base_url
         use_key = api_key or self.api_key
@@ -60,9 +66,40 @@ class OpenAICompatAdapter(ModelAdapter):
 
         payload = {"model": model, "messages": messages, "temperature": 0.0}
 
-        response = self.client.post(
-            f"{use_base}/chat/completions", headers=headers, json=payload, timeout=timeout
-        )
+        try:
+            response = self.client.post(
+                f"{use_base}/chat/completions", headers=headers, json=payload, timeout=timeout
+            )
+        except httpx.ConnectError as e:
+            # Fallback to requests when httpx SSL fails (corporate proxy compatibility)
+            if not use_requests_fallback:
+                logger.warning(f"httpx SSL failed, falling back to requests: {e}")
+                import requests as _requests
+                response = _requests.post(
+                    f"{use_base}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout
+                )
+                if response.status_code == 401:
+                    raise RuntimeError("Invalid API key")
+                elif response.status_code == 404:
+                    raise RuntimeError("Model not found")
+                elif response.status_code == 429:
+                    raise RuntimeError("Insufficient quota")
+                else:
+                    response.raise_for_status()
+
+                result = response.json()
+                content = result["choices"][0]["message"]["content"]
+                usage = result.get("usage", {})
+                token_data = {
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                }
+                return content, token_data
+            raise
 
         if response.status_code == 401:
             raise RuntimeError("Invalid API key")

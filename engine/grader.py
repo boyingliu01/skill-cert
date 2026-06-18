@@ -288,6 +288,12 @@ class Grader:
         response_text = self._parse_judge_response(response_text)
         judge_data = json.loads(response_text)
 
+        # Handle double-encoded JSON (LLM returns string instead of dict)
+        if isinstance(judge_data, str):
+            judge_data = json.loads(judge_data)
+        if not isinstance(judge_data, dict):
+            raise ValueError(f"Expected dict from judge response, got {type(judge_data).__name__}")
+
         failure_reasons = judge_data.get("failure_reasons", [])
         if not isinstance(failure_reasons, list):
             failure_reasons = []
@@ -432,6 +438,11 @@ class Grader:
                 if end > start:
                     swap_text = swap_text[start:end].strip()
             swap_data = json.loads(swap_text)
+            # Handle double-encoded JSON
+            if isinstance(swap_data, str):
+                swap_data = json.loads(swap_data)
+            if not isinstance(swap_data, dict):
+                raise ValueError(f"Expected dict from swap response, got {type(swap_data).__name__}")
             swap_passed = bool(swap_data.get("passed", False))
             swap_confidence = float(swap_data.get("confidence", 0.5))
 

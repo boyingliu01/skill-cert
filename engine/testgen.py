@@ -380,6 +380,11 @@ Minimum requirements:
         if not normalized.get("input"):
             normalized["input"] = normalized.get("prompt", "")
 
+        # Ensure input/prompt is always a string, not dict/list
+        for key in ("input", "prompt"):
+            if key in normalized and not isinstance(normalized[key], str):
+                normalized[key] = json.dumps(normalized[key]) if isinstance(normalized[key], (dict, list)) else str(normalized[key])
+
         # Normalize flat assertion_type/assertion_value → assertions array
         if "assertions" not in normalized or not isinstance(normalized.get("assertions"), list):
             flat_type = normalized.pop("assertion_type", None)
