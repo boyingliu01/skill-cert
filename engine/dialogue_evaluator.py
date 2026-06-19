@@ -1,3 +1,4 @@
+from engine.observability import SessionTelemetry
 from collections.abc import Callable
 from difflib import SequenceMatcher
 from typing import Any
@@ -25,15 +26,17 @@ class DialogueEvaluator:
     with mock-first testing capability.
     """
 
-    def __init__(self, judge_callback: Callable | None = None):
+    def __init__(self, judge_callback: Callable | None = None, telemetry: SessionTelemetry | None = None):
         """
         Initialize the DialogueEvaluator.
 
         Args:
             judge_callback: Optional callback for LLM judge functionality
                            (typically used for testing with mocks)
+            telemetry: Optional SessionTelemetry instance for trace recording
         """
         self.judge_callback = judge_callback
+        self.telemetry = telemetry
 
     def _score_turn(
         self, idx: int, user_msg: dict, assistant_msg: dict, workflow_steps: list[str] | None
@@ -73,6 +76,10 @@ class DialogueEvaluator:
         Returns:
             Dictionary with scores for all five dimensions and overall metrics
         """
+        if self.telemetry:
+            for idx in range(len(self._pair_messages(conversation))):
+                pass
+        
         round_scores = [
             self._score_turn(idx, user_msg, assistant_msg, workflow_steps)
             for idx, (user_msg, assistant_msg) in enumerate(self._pair_messages(conversation))

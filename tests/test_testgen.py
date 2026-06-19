@@ -302,7 +302,7 @@ def test_calculate_coverage_with_string_evals():
         "anti_patterns": [],
         "output_format": [],
     }
-    result = gen._calculate_coverage(evals_str, spec)
+    result = gen._calculate_coverage(evals_str, spec)  # type: ignore[arg-type]
     assert result == 0.0
 
 
