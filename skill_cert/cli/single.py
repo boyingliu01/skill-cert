@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-def _setup_single_mode(args, config, deadline=None):
+def _setup_single_mode(args, config, deadline=None) -> tuple[Any, Any, Any, Any, dict, Any]:
     # Lazy imports — use skill_cert.cli namespace so test patches intercept.
     from skill_cert.cli import (  # noqa: F811
         EvalGenerator,
@@ -69,7 +69,7 @@ def _setup_single_mode(args, config, deadline=None):
             "\nERROR: No models configured. "
             "Use --models, SKILL_CERT_MODELS env, or ~/.skill-cert/models.yaml"
         )
-        return None, None, None, None, None, None
+        return None, None, None, None, None, None  # type: ignore[return-value]
 
     adapters = {mc.model_name: _create_adapter(mc, config.rate_limit_rpm) for mc in config.models}
     print(f"\n  Models: {', '.join(adapters.keys())}")

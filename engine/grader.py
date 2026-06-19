@@ -58,7 +58,7 @@ class AssertionResult:
 class Grader:
     """Evaluates model outputs against eval assertions."""
 
-    def __init__(self, llm_client=None):
+    def __init__(self, llm_client: Any = None):
         """Initialize grader with optional LLM client for judge mode."""
         self.llm_client = llm_client
 

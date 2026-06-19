@@ -90,6 +90,8 @@ class EventBus:
 class BaseTraceExporter(ABC):
     """Abstract base for trace exporters."""
 
+    output_path: str | Path = ""  # LSP compatibility: satisfies access in SessionTelemetry.get_summary()
+
     @abstractmethod
     def export(self, traces: list[ExecutionTrace]) -> None:
         """Export a list of traces."""
@@ -140,10 +142,10 @@ class OTLPTraceExporter(BaseTraceExporter):
 
         try:
             from opentelemetry import trace
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-            from opentelemetry.sdk.resources import Resource
-            from opentelemetry.sdk.trace import TracerProvider
-            from opentelemetry.sdk.trace.export import BatchSpanProcessor
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter  # type: ignore[import-untyped,import-not-found]
+            from opentelemetry.sdk.resources import Resource  # type: ignore[import-untyped,import-not-found]
+            from opentelemetry.sdk.trace import TracerProvider  # type: ignore[import-untyped,import-not-found]
+            from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore[import-untyped,import-not-found]
 
             resource = Resource.create({"service.name": service_name})
             provider = TracerProvider(resource=resource)
@@ -188,6 +190,8 @@ class OTLPTraceExporter(BaseTraceExporter):
 class NoOpTraceExporter(BaseTraceExporter):
     """No-op exporter (traces disabled)."""
 
+    output_path: str | Path = ""  # type: ignore[assignment]  # LSP compatibility: satisfies access in get_summary()
+
     def export(self, traces: list[ExecutionTrace]) -> None:
         pass
 
@@ -219,3 +223,96 @@ def create_trace_exporter(
         return OTLPTraceExporter(otlp_endpoint)
     else:
         return NoOpTraceExporter()
+
+
+# ── SessionTelemetry ───────────────────────────────────────────
+
+
+class SessionTelemetry:
+    """Session-level telemetry aggregator for skill-cert evaluations.
+    
+    Wraps EventBus and TraceExporter to provide:
+    - Real-time trace aggregation across multiple evals
+    - Token/cost metrics computation
+    - Event publishing to registered handlers
+    - Trace export to configured destinations
+    
+    Usage:
+        telemetry = SessionTelemetry(
+            event_bus=EventBus(),
+            exporter=create_trace_exporter("jsonl", "traces.jsonl")
+        )
+        telemetry.record_trace(trace)
+        telemetry.flush()  # Export all traces
+    """
+    
+    def __init__(self, event_bus: EventBus | None = None, exporter: BaseTraceExporter | None = None):
+        """Initialize SessionTelemetry.
+        
+        Args:
+            event_bus: EventBus instance for publishing trace events
+            exporter: TraceExporter instance for persisting traces
+        """
+        self.event_bus = event_bus or EventBus()
+        self.exporter = exporter or NoOpTraceExporter()
+        self._traces: list[ExecutionTrace] = []
+        self._lock = threading.Lock()
+        self._trace_count = 0
+        self._event_count = 0
+        self._total_duration_ms = 0.0
+        self._total_tool_calls = 0
+        self._start_time = time.time()
+    
+    def record_trace(self, trace: ExecutionTrace) -> None:
+        """Record an execution trace.
+        
+        Args:
+            trace: ExecutionTrace instance to record
+        """
+        with self._lock:
+            self._traces.append(trace)
+            self._trace_count += 1
+            self._event_count += len(trace.events)
+            self._total_duration_ms += trace.duration_ms
+            self._total_tool_calls += trace.tool_call_count
+            
+            # Publish trace event via EventBus
+            self.event_bus.publish_trace_event(trace)
+    
+    def get_traces(self) -> list[ExecutionTrace]:
+        """Return all recorded traces (copy)."""
+        with self._lock:
+            return list(self._traces)
+    
+    def get_summary(self) -> dict[str, Any]:
+        """Get telemetry summary for reporter integration.
+        
+        Returns:
+            Dictionary with aggregated metrics for ObservabilitySection
+        """
+        with self._lock:
+            return {
+                "trace_count": self._trace_count,
+                "total_events": self._event_count,
+                "total_duration_ms": self._total_duration_ms,
+                "total_tool_calls": self._total_tool_calls,
+                "session_duration_s": time.time() - self._start_time,
+                "export_path": str(self.exporter.output_path) if hasattr(self.exporter, 'output_path') else "",
+                "export_format": "jsonl" if isinstance(self.exporter, JSONLTraceExporter) else "none",
+            }
+    
+    def flush(self) -> None:
+        """Export all traces and close exporter."""
+        with self._lock:
+            if self._traces:
+                self.exporter.export(self._traces)
+                self._traces.clear()
+        self.exporter.close()
+    
+    def __enter__(self) -> "SessionTelemetry":
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit - ensure flush."""
+        self.flush()

@@ -11,6 +11,7 @@ from engine.deadline import Deadline
 from engine.envelope import EnvelopeChecker
 from engine.security_probes import SecurityScanner
 from engine.trace_models import ExecutionTrace, TokenAccounting
+from engine.observability import SessionTelemetry
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class EvalRunner:
         model_name: str | None = None,
         cost_budget: float = 0.0,
         token_ledger: Any | None = None,
+        telemetry: SessionTelemetry | None = None,
     ):
         self.max_concurrency = max_concurrency
         self.rate_limit_rpm = rate_limit_rpm
@@ -50,6 +52,7 @@ class EvalRunner:
         )
         self._pricing = get_pricing()
         self.token_ledger = token_ledger
+        self.telemetry = telemetry
         self._traces: list[ExecutionTrace] = []
         self._traces_lock = threading.Lock()
 
@@ -203,6 +206,8 @@ class EvalRunner:
                     self._traces.append(trace)
                 if self.token_ledger:
                     self.token_ledger.record_trace(trace)
+                if self.telemetry:
+                    self.telemetry.record_trace(trace)
 
                 self.total_tokens += token_usage.get("total_tokens", 0)
                 self.total_cost += cost
@@ -370,7 +375,9 @@ class EvalRunner:
             return list(self._traces)
 
     def close(self):
-        """Flush token ledger if present."""
+        """Flush token ledger and telemetry if present."""
         if self.token_ledger:
             self.token_ledger.flush()
+        if self.telemetry:
+            self.telemetry.flush()
         pass

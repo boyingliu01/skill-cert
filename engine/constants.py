@@ -120,3 +120,10 @@ class ReportDefaults:
     FORMAT = "both"  # markdown | json | both
     SCHEMA_VERSION = "1.0"
     JSON_SCHEMA_VALIDATE = False
+
+
+class TraceFormats:
+    """Trace export format options."""
+
+    JSONL = "jsonl"
+    NONE = "none"

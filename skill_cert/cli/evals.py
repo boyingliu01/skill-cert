@@ -289,13 +289,25 @@ def _detect_and_print_drift(spec, adapters, grader) -> dict[str, Any] | None:
 
 
 def _build_structured_report_context(
-    metrics: dict[str, Any], args, all_traces: list
+    metrics: dict[str, Any], args, all_traces: list, telemetry=None
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Build token and observability data for structured report."""
     token_analysis = metrics.get("token_analysis")
     observability_data = None
 
-    if all_traces:
+    # Prefer telemetry summary if available
+    if telemetry is not None and hasattr(telemetry, 'get_summary'):
+        summary = telemetry.get_summary()
+        observability_data = {
+            "trace_count": summary.get("trace_count", 0),
+            "total_events": summary.get("total_events", 0),
+            "total_duration_ms": summary.get("total_duration_ms", 0),
+            "total_tool_calls": summary.get("total_tool_calls", 0),
+            "session_duration_s": summary.get("session_duration_s", 0),
+            "export_path": summary.get("export_path"),
+            "trace_format": summary.get("export_format", getattr(args, "trace_export", "jsonl")),
+        }
+    elif all_traces:
         observability_data = {
             "trace_count": len(all_traces),
             "total_events": sum(len(t.events) for t in all_traces),
@@ -379,7 +391,7 @@ def _export_traces(args, output_dir: Path, skill_name: str, all_traces: list) ->
 
 
 def _generate_and_write_reports(
-    args, output_dir, skill_name, spec, spec_path, adapters, metrics, drift_report, config
+    args, output_dir, skill_name, spec, spec_path, adapters, metrics, drift_report, config, telemetry=None
 ) -> tuple[str, dict[str, Any]]:
     """Generate and write reports, return md_report and json_report."""
     from skill_cert.cli import Reporter
@@ -398,6 +410,7 @@ def _generate_and_write_reports(
         metrics,
         args,
         [],  # all_traces would come from runner.get_traces()
+        telemetry,
     )
 
     structured_report = reporter.build_structured_report(
@@ -440,12 +453,23 @@ def _run_single_phase(
 
     # Create TokenLedger for per-eval token accounting
     token_ledger = TokenLedger()
+    
+    # Create SessionTelemetry for observability aggregation
+    from engine.observability import SessionTelemetry, create_trace_exporter
+    from engine.constants import TraceFormats
+    # Create exporter for trace persistence
+    exporter = create_trace_exporter(
+        format=TraceFormats.JSONL,
+        output_path=str(output_dir / f"{skill_name}-traces.jsonl"),
+    )
+    telemetry = SessionTelemetry(exporter=exporter)
 
     runner = EvalRunner(
         max_concurrency=config.max_concurrency,
         rate_limit_rpm=config.rate_limit_rpm,
         request_timeout=config.request_timeout,
         token_ledger=token_ledger,
+        telemetry=telemetry,
     )
     primary_adapter = list(adapters.values())[0]
     grader = Grader(llm_client=primary_adapter)
@@ -485,7 +509,7 @@ def _run_single_phase(
 
     # Phase 5: Generate Report
     md_report, json_report = _generate_and_write_reports(
-        args, output_dir, skill_name, spec, spec_path, adapters, metrics, drift_report, config
+        args, output_dir, skill_name, spec, spec_path, adapters, metrics, drift_report, config, telemetry
     )
 
     verdict = json_report.get("verdict", "FAIL")
