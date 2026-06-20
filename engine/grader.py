@@ -456,7 +456,9 @@ class Grader:
             if isinstance(swap_data, str):
                 swap_data = json.loads(swap_data)
             if not isinstance(swap_data, dict):
-                raise ValueError(f"Expected dict from swap response, got {type(swap_data).__name__}")
+                raise ValueError(
+                    f"Expected dict from swap response, got {type(swap_data).__name__}"
+                )
             swap_passed = bool(swap_data.get("passed", False))
             swap_confidence = float(swap_data.get("confidence", 0.5))
 

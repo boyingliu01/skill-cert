@@ -1,10 +1,12 @@
-"""Observability layer: EventBus + TraceExporter for skill-cert.
+"""Observability layer: EventBus + TraceExporter + SessionTelemetry for skill-cert.
 
 Design decisions (Delphi Review consensus):
 - EventBus is a lightweight pub/sub for trace events
 - TraceExporter supports JSONL (default) and optional OTLP
 - Exceptions in EventBus are LOGGED (not silently swallowed)
 - OTLP export failure raises ClickException when explicitly configured
+- SessionTelemetry extends observability.py (not a new telemetry.py module)
+- SessionTelemetry follows TokenLedger consumption pattern (record_trace)
 """
 
 from __future__ import annotations
@@ -15,7 +17,9 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
 
 from engine.trace_models import ExecutionTrace
 
@@ -228,91 +232,203 @@ def create_trace_exporter(
 # ── SessionTelemetry ───────────────────────────────────────────
 
 
+
+class LLMCallRecord(BaseModel):
+    """A single LLM call record within a session."""
+
+    role: Literal["simulator", "evaluator", "skill"] = "skill"
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
+    total_tokens: int = 0
+    timestamp: float = Field(default_factory=time.time)
+
+
+class SessionTelemetryTrace(BaseModel):
+    """Per-session trace data aggregated from ExecutionTrace objects."""
+
+    session_id: str = ""
+    eval_case_id: int | str = 0
+    llm_calls: list[LLMCallRecord] = Field(default_factory=list)
+    created_at: float = Field(default_factory=time.time)
+
+
+class TelemetrySummary(BaseModel):
+    """Aggregated token summary for a session."""
+
+    total_input: int = 0
+    total_output: int = 0
+    total_cached: int = 0
+    total: int = 0
+    by_role: dict[str, dict[str, int]] = Field(default_factory=dict)
+    session_id: str = ""
+    eval_case_id: int | str = 0
+
+
 class SessionTelemetry:
-    """Session-level telemetry aggregator for skill-cert evaluations.
-    
-    Wraps EventBus and TraceExporter to provide:
-    - Real-time trace aggregation across multiple evals
-    - Token/cost metrics computation
-    - Event publishing to registered handlers
-    - Trace export to configured destinations
-    
-    Usage:
-        telemetry = SessionTelemetry(
-            event_bus=EventBus(),
-            exporter=create_trace_exporter("jsonl", "traces.jsonl")
-        )
-        telemetry.record_trace(trace)
-        telemetry.flush()  # Export all traces
+    """Session-level token aggregation consuming ExecutionTrace objects.
+
+    Uses the same consumption pattern as TokenLedger — accepts ExecutionTrace
+    objects directly (not EventBus events). This avoids creating a new event
+    type and keeps SessionTelemetry aligned with existing aggregation patterns.
+    Thread-safe: uses threading.Lock for dict access.
     """
-    
-    def __init__(self, event_bus: EventBus | None = None, exporter: BaseTraceExporter | None = None):
-        """Initialize SessionTelemetry.
-        
-        Args:
-            event_bus: EventBus instance for publishing trace events
-            exporter: TraceExporter instance for persisting traces
-        """
-        self.event_bus = event_bus or EventBus()
-        self.exporter = exporter or NoOpTraceExporter()
-        self._traces: list[ExecutionTrace] = []
+
+    def __init__(
+        self, max_sessions: int = 1000, max_age_seconds: int = 3600
+    ) -> None:
+        self.sessions: dict[str, SessionTelemetryTrace] = {}
+        self._max_sessions = max_sessions
+        self._max_age_seconds = max_age_seconds
         self._lock = threading.Lock()
-        self._trace_count = 0
-        self._event_count = 0
-        self._total_duration_ms = 0.0
-        self._total_tool_calls = 0
-        self._start_time = time.time()
-    
+
+    def create_session(self, session_id: str, eval_case_id: int) -> str:
+        """Create a new session and return its ID."""
+        with self._lock:
+            self.sessions[session_id] = SessionTelemetryTrace(
+                session_id=session_id, eval_case_id=eval_case_id
+            )
+            self._evict_if_needed()
+            return session_id
+
+    def _derive_role(self, phase: str) -> str:
+        """Derive LLM call role from ExecutionTrace phase."""
+        if phase in ("with_skill", "without_skill"):
+            return "skill"
+        elif phase == "grading":
+            return "evaluator"
+        elif phase == "judge":
+            return "evaluator"
+        elif phase == "simulator":
+            return "simulator"
+        return "skill"
+
     def record_trace(self, trace: ExecutionTrace) -> None:
-        """Record an execution trace.
-        
-        Args:
-            trace: ExecutionTrace instance to record
-        """
+        """Record an ExecutionTrace — session_id derived from run_id."""
+        role = self._derive_role(trace.phase)
+        record = LLMCallRecord(
+            role=role,  # type: ignore[arg-type]
+            input_tokens=trace.token_usage.input_tokens,
+            output_tokens=trace.token_usage.output_tokens,
+            total_tokens=trace.token_usage.total_tokens,
+        )
         with self._lock:
-            self._traces.append(trace)
-            self._trace_count += 1
-            self._event_count += len(trace.events)
-            self._total_duration_ms += trace.duration_ms
-            self._total_tool_calls += trace.tool_call_count
-            
-            # Publish trace event via EventBus
-            self.event_bus.publish_trace_event(trace)
-    
-    def get_traces(self) -> list[ExecutionTrace]:
-        """Return all recorded traces (copy)."""
+            if trace.run_id not in self.sessions:
+                eid: int | str | Any = trace.eval_id
+                if isinstance(eid, (int, str)) and str(eid).lstrip("-").isdigit():
+                    eid = int(eid)
+                self.sessions[trace.run_id] = SessionTelemetryTrace(
+                    session_id=trace.run_id,
+                    eval_case_id=eid,
+                )
+            self.sessions[trace.run_id].llm_calls.append(record)
+            self._evict_if_needed()
+
+    def get_session_summary(
+        self, session_id: str
+    ) -> TelemetrySummary | None:
+        """Get aggregated token summary for a session."""
         with self._lock:
-            return list(self._traces)
-    
-    def get_summary(self) -> dict[str, Any]:
-        """Get telemetry summary for reporter integration.
-        
-        Returns:
-            Dictionary with aggregated metrics for ObservabilitySection
-        """
+            trace_data = self.sessions.get(session_id)
+            if not trace_data:
+                return None
+            return self._build_summary(trace_data)
+
+    def get_all_summaries(self) -> list[TelemetrySummary]:
+        """Get aggregated summaries for all sessions."""
         with self._lock:
-            return {
-                "trace_count": self._trace_count,
-                "total_events": self._event_count,
-                "total_duration_ms": self._total_duration_ms,
-                "total_tool_calls": self._total_tool_calls,
-                "session_duration_s": time.time() - self._start_time,
-                "export_path": str(self.exporter.output_path) if hasattr(self.exporter, 'output_path') else "",
-                "export_format": "jsonl" if isinstance(self.exporter, JSONLTraceExporter) else "none",
-            }
-    
+            return [self._build_summary(t) for t in self.sessions.values()]
+
+    def _build_summary(self, trace_data: SessionTelemetryTrace) -> TelemetrySummary:
+        total_input = 0
+        total_output = 0
+        total_cached = 0
+        by_role: dict[str, dict[str, int]] = {}
+        for call in trace_data.llm_calls:
+            total_input += call.input_tokens
+            total_output += call.output_tokens
+            total_cached += call.cached_tokens
+            if call.role not in by_role:
+                by_role[call.role] = {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                }
+            by_role[call.role]["input_tokens"] += call.input_tokens
+            by_role[call.role]["output_tokens"] += call.output_tokens
+            by_role[call.role]["total_tokens"] += call.total_tokens
+        return TelemetrySummary(
+            total_input=total_input,
+            total_output=total_output,
+            total_cached=total_cached,
+            total=total_input + total_output,
+            by_role=by_role,
+            session_id=trace_data.session_id,
+            eval_case_id=trace_data.eval_case_id,
+        )
+
+    def cleanup(self, max_sessions: int | None = None, max_age_seconds: float | None = None) -> int:
+        """Evict sessions beyond limits. Returns number of evicted sessions."""
+        max_s = max_sessions if max_sessions is not None else self._max_sessions
+        max_age = max_age_seconds if max_age_seconds is not None else self._max_age_seconds
+        now = time.time()
+        evicted = 0
+        with self._lock:
+            stale = [
+                sid
+                for sid, t in self.sessions.items()
+                if (now - t.created_at) > max_age
+            ]
+            for sid in stale:
+                del self.sessions[sid]
+                evicted += 1
+            while len(self.sessions) > max_s:
+                oldest = min(self.sessions.items(), key=lambda x: x[1].created_at)
+                del self.sessions[oldest[0]]
+                evicted += 1
+        return evicted
+
+    def _evict_if_needed(self) -> None:
+        """Evict if over max_sessions (called with lock held)."""
+        while len(self.sessions) > self._max_sessions:
+            oldest = min(self.sessions.items(), key=lambda x: x[1].created_at)
+            del self.sessions[oldest[0]]
+
+
+# ── CompositeLedger ────────────────────────────────────────────
+
+
+class CompositeLedger:
+    """Composite ledger that fans out record_trace() to both TokenLedger and SessionTelemetry.
+
+    Satisfies the same interface as TokenLedger for EvalRunner compatibility:
+    - record_trace(trace) → calls both ledger.record_trace and telemetry.record_trace
+    - flush() → calls both ledger.flush() and telemetry.cleanup()
+    - Delegates aggregate(), get_summary(), etc. to the underlying TokenLedger
+    - Exposes session_telemetry for report-level summary extraction
+    """
+
+    def __init__(self, ledger: Any, telemetry: SessionTelemetry | None = None) -> None:
+        self._ledger = ledger
+        self._telemetry = telemetry or SessionTelemetry()
+
+    def record_trace(self, trace: ExecutionTrace) -> None:
+        """Record a trace to both ledger and telemetry."""
+        self._ledger.record_trace(trace)
+        if self._telemetry:
+            self._telemetry.record_trace(trace)
+
     def flush(self) -> None:
-        """Export all traces and close exporter."""
-        with self._lock:
-            if self._traces:
-                self.exporter.export(self._traces)
-                self._traces.clear()
-        self.exporter.close()
-    
-    def __enter__(self) -> "SessionTelemetry":
-        """Context manager entry."""
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit - ensure flush."""
-        self.flush()
+        """Flush both ledger and telemetry."""
+        if hasattr(self._ledger, "flush"):
+            self._ledger.flush()
+        if self._telemetry:
+            self._telemetry.cleanup()
+
+    def __getattr__(self, name: str) -> Any:
+        """Fall through to the underlying ledger for any unknown attributes."""
+        return getattr(self._ledger, name)
+
+    @property
+    def session_telemetry(self) -> SessionTelemetry:
+        return self._telemetry  # type: ignore[return-value]

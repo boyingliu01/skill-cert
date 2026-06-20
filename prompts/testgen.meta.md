@@ -38,6 +38,7 @@ examples: {examples}
 ### 4. 触发词测试（trigger_evals）
 - should_trigger: 从 description 和 examples 推断，至少 5 个
 - should_not_trigger: 与该 skill 无关的指令，至少 5 个
+  - **IMPORTANT**: should_not_trigger cases MUST set negative_case: true
 
 ## 断言设计规则
 
@@ -52,10 +53,24 @@ examples: {examples}
 
 ```json
 {
-  "evals": [...],
+  "evals": [
+    {
+      "id": "string",
+      "name": "string",
+      "category": "normal|boundary|failure|trigger",
+      "input": "string",
+      "assertions": [...],
+      "negative_case": false  // boolean: true if skill should NOT trigger (for should_not_trigger cases)
+    }
+  ],
   "trigger_evals": {
     "should_trigger": [...],
     "should_not_trigger": [...]
   }
 }
 ```
+
+**CRITICAL**: 
+- All should_not_trigger test cases MUST include `"negative_case": true`
+- All should_trigger test cases should have `"negative_case": false` or omit the field (defaults to false)
+- The negative_case field is essential for L1 Trigger Accuracy calculation

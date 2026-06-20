@@ -76,13 +76,9 @@ class DialogueEvaluator:
         Returns:
             Dictionary with scores for all five dimensions and overall metrics
         """
-        # Record turn start event if telemetry is configured
-        if self.telemetry and self.telemetry.event_bus:
+        if self.telemetry:
             for idx in range(len(self._pair_messages(conversation))):
-                from engine.trace_models import TurnStartEvent
-                event = TurnStartEvent(turn_index=idx)
-                # Note: We don't have a trace here, so we skip direct recording
-                # Telemetry integration for dialogue is primarily through runner.py
+                pass
         
         round_scores = [
             self._score_turn(idx, user_msg, assistant_msg, workflow_steps)

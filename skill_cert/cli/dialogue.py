@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .helpers import EXIT_ERROR, EXIT_PASS, _create_adapter, _print_phase
+from engine.observability import CompositeLedger, SessionTelemetry
 
 
 def run_dialogue_mode(args, config) -> int:
@@ -32,6 +33,13 @@ def run_dialogue_mode(args, config) -> int:
         return EXIT_ERROR
 
     primary_adapter = _create_adapter(config.models[0], config.rate_limit_rpm)
+    # Initialize CompositeLedger for SessionTelemetry
+    try:
+        composite_ledger = CompositeLedger()
+        session_telemetry = composite_ledger.session_telemetry
+    except Exception as e:
+        print(f"  WARNING: Failed to initialize telemetry: {e}")
+        session_telemetry = None
 
     _print_phase(1, "Dialogue Evaluation")
     print(f"  Max turns: {max_turns}")
@@ -47,6 +55,7 @@ def run_dialogue_mode(args, config) -> int:
         evaluator=evaluator,
         skill_runner=runner,
         max_turns=max_turns,
+        telemetry=session_telemetry,
     )
 
     results = asyncio.run(dialogue_runner.run(spec_path))

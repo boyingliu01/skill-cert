@@ -251,7 +251,9 @@ class EvalRunner:
                                 try:
                                     results.append((i, f.result()))
                                 except Exception as e:
-                                    results.append((i, {"eval_id": evals[i].get("id"), "error": str(e)}))
+                                    results.append(
+                                        (i, {"eval_id": evals[i].get("id"), "error": str(e)})
+                                    )
                         break
                     idx = futures[future]
                     completed += 1
@@ -312,7 +314,9 @@ class EvalRunner:
                                 try:
                                     results.append((i, f.result()))
                                 except Exception as e:
-                                    results.append((i, {"eval_id": evals[i].get("id"), "error": str(e)}))
+                                    results.append(
+                                        (i, {"eval_id": evals[i].get("id"), "error": str(e)})
+                                    )
                         break
                     idx = futures[future]
                     completed += 1

@@ -286,6 +286,8 @@ Generate a JSON object with an array of eval_cases containing:
 - category: "normal", "boundary", "failure", or "trigger"
 - input: string (the input to test the skill with)
 - expected_triggers: boolean (whether the skill should trigger)
+- negative_case: boolean (true if skill should NOT trigger; defaults to false)
+- workflow_step: string (name of the workflow step this case targets, if applicable)
 - assertions: array of objects with type
     ("contains", "not_contains", "regex", "starts_with", "json_valid"),
     value, and weight
@@ -416,6 +418,25 @@ Minimum requirements:
         normalized.setdefault("id", idx + 1)
         normalized.setdefault("name", f"eval-{idx + 1}")
         normalized.setdefault("category", "normal")
+
+        # Normalize negative_case from ALL plausible LLM variants
+        # String-to-bool coercion before isinstance check
+        for key in ("negative_case", "is_negative", "negative", "should_not"):
+            if key in normalized and isinstance(normalized[key], str):
+                normalized[key] = normalized[key].lower() in ("true", "1", "yes")
+
+        if "is_negative" in normalized:
+            normalized["negative_case"] = bool(normalized.pop("is_negative"))
+        elif "negative" in normalized:
+            normalized["negative_case"] = bool(normalized.pop("negative"))
+        elif "should_not" in normalized:
+            normalized["negative_case"] = bool(normalized.pop("should_not"))
+        elif "triggers_on" in normalized:
+            normalized["negative_case"] = not bool(normalized.pop("triggers_on"))
+        elif "expected_triggers" in normalized:
+            normalized["negative_case"] = not bool(normalized.pop("expected_triggers"))
+        else:
+            normalized.setdefault("negative_case", False)
 
         return normalized
 

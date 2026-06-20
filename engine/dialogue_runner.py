@@ -1,4 +1,6 @@
 import logging
+from engine.observability import SessionTelemetry
+from engine.trace_models import ExecutionTrace
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +16,7 @@ class DialogueRunner:
         evaluator,
         skill_runner,
         max_turns: int = 10,
+        telemetry: SessionTelemetry | None = None,
         completion_signals: list[str] | None = None,
     ):
         """
@@ -30,6 +33,7 @@ class DialogueRunner:
         self.evaluator = evaluator
         self.skill_runner = skill_runner
         self.max_turns = max_turns
+        self.telemetry = telemetry
         self.completion_signals = completion_signals or [
             "COMPLETED:",
             "FINISHED:",
@@ -120,6 +124,19 @@ class DialogueRunner:
             # Check if history has reached max_turns after incrementing
             if completed_turns >= self.max_turns:
                 break
+
+        # Record the dialogue trace to telemetry if configured
+        if self.telemetry:
+            trace = ExecutionTrace(
+                run_id=f"dialogue_{eval_case.get('id', 'unknown')}",
+                eval_id=eval_case.get('id', ''),
+            )
+            # Add dialogue-specific metadata
+            trace.metadata["turn_count"] = len(history)
+            trace.metadata["steps"] = len(history)
+            trace.metadata["tool_call_count"] = sum(1 for msg in history if msg.get("role") == "assistant")
+            self.telemetry.record_trace(trace)
+            logger.debug(f"Recorded dialogue trace to telemetry: {trace.run_id}")
 
         # Once dialog is complete, evaluate the full conversation
         evaluation_result = await self.evaluator.evaluate_conversation(

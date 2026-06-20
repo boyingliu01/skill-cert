@@ -1,12 +1,10 @@
 """Tests for progressive disclosure module (Issue #41)."""
 
-import os
 import tempfile
 from pathlib import Path
 
 from engine.progressive_disclosure import (
     INDEX_TOKEN_LIMIT,
-    LOAD_TOKEN_LIMIT,
     TieredCostModel,
     progressive_disclosure_test,
 )

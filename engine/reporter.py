@@ -763,6 +763,7 @@ For detailed results, see the JSON output.
         maintainability: dict[str, Any] | None = None,
         token_analysis: dict[str, Any] | None = None,
         observability: dict[str, Any] | None = None,
+        session_telemetry: list[dict[str, Any]] | None = None,
     ) -> StructuredReport:
         """Build a StructuredReport from metrics and drift analysis.
 
@@ -804,6 +805,10 @@ For detailed results, see the JSON output.
         )
         improvements = self._convert_suggestions(suggestions)
 
+        extras: dict[str, Any] = {"raw_metrics": metrics}
+        if session_telemetry:
+            extras["session_telemetry"] = session_telemetry
+
         return StructuredReport(
             metadata=metadata,
             verdict=verdict_summary,
@@ -812,7 +817,7 @@ For detailed results, see the JSON output.
             observability=obs_section,
             improvements=improvements,
             drift=drift,
-            extras={"raw_metrics": metrics},
+            extras=extras,
         )
 
     def _build_metrics_section(

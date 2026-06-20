@@ -8,6 +8,7 @@ from typing import Any
 from engine.constants import StabilityThresholds, VerdictThresholds
 from engine.deadline import PhaseTimer
 from engine.grader import EvalAssertion, EvalCase
+from engine.observability import CompositeLedger, SessionTelemetry
 from engine.report_models import StructuredReport
 from engine.token_ledger import TokenLedger
 
@@ -192,7 +193,11 @@ def _calculate_metrics_with_stability(
     if num_runs > 1:
         _print_phase(4, f"Stability Analysis ({num_runs} runs)")
         _evals = spec["evals"]
-        eval_cases = _evals.get("eval_cases", _evals.get("cases", [])) if isinstance(_evals, dict) else []
+        eval_cases = (
+            _evals.get("eval_cases", _evals.get("cases", []))
+            if isinstance(_evals, dict)
+            else []
+        )
         stab_runner = StabilityRunner(
             base_runner=EvalRunner(
                 max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm
@@ -413,6 +418,13 @@ def _generate_and_write_reports(
         telemetry,
     )
 
+    # Add SessionTelemetry summary if available
+    session_telemetry_summaries = None
+    if telemetry is not None:
+        summaries = telemetry.get_all_summaries()
+        if summaries:
+            session_telemetry_summaries = [s.model_dump() for s in summaries]
+
     structured_report = reporter.build_structured_report(
         metrics=metrics,
         drift=drift_report,
@@ -425,6 +437,7 @@ def _generate_and_write_reports(
         maintainability=spec.get("maintainability"),
         token_analysis=token_analysis,
         observability=observability_data,
+        session_telemetry=session_telemetry_summaries,
     )
 
     # Write reports based on --format
@@ -455,14 +468,8 @@ def _run_single_phase(
     token_ledger = TokenLedger()
     
     # Create SessionTelemetry for observability aggregation
-    from engine.observability import SessionTelemetry, create_trace_exporter
-    from engine.constants import TraceFormats
-    # Create exporter for trace persistence
-    exporter = create_trace_exporter(
-        format=TraceFormats.JSONL,
-        output_path=str(output_dir / f"{skill_name}-traces.jsonl"),
-    )
-    telemetry = SessionTelemetry(exporter=exporter)
+    from engine.observability import SessionTelemetry
+    telemetry = SessionTelemetry()
 
     runner = EvalRunner(
         max_concurrency=config.max_concurrency,
@@ -508,6 +515,7 @@ def _run_single_phase(
     drift_report = _detect_and_print_drift(spec, adapters, grader)
 
     # Phase 5: Generate Report
+    all_traces = runner.get_traces()
     md_report, json_report = _generate_and_write_reports(
         args, output_dir, skill_name, spec, spec_path, adapters, metrics, drift_report, config, telemetry
     )

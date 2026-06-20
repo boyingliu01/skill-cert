@@ -886,3 +886,58 @@ class TestMetricsCalculator:
         passing_evals = [{"pass_rate": 0.6}, {"pass_rate": 0.8}]
         coverage = calc._calculate_step_coverage(passing_evals)
         assert coverage == pytest.approx(0.7)
+
+    def test_step_coverage_token_overlap_fallback(self):
+        """Step coverage uses token-overlap when workflow_step is a textual variant."""
+        calc = MetricsCalculator()
+        passing_evals = [
+            {"workflow_step": "first analyze the input code for patterns"},
+            {"workflow_step": "step 2 execute the transformation"},
+        ]
+        coverage = calc._calculate_step_coverage(
+            passing_evals,
+            ["step1: analyze code", "step2: execute transformation", "step3: verify output"],
+        )
+        # step1 jaccard=2/7=0.286 <0.6, step2 jaccard=2/5=0.4 <0.6, step3 none
+        # → 0/3 coverage
+        assert coverage == pytest.approx(0.0, abs=0.01)
+
+    def test_step_coverage_token_overlap_high_overlap_matches(self):
+        """Token-overlap covers steps with ≥60% token overlap."""
+        calc = MetricsCalculator()
+        passing_evals = [
+            {"workflow_step": "verify the output"},
+        ]
+        coverage = calc._calculate_step_coverage(
+            passing_evals,
+            ["step1: analyze code", "step2: execute transformation", "step3: verify output"],
+        )
+        # "verify the output" vs "step3: verify output"
+        # Tokens: {verify, the, output} ∩ {step3, verify, output} → {verify, output}
+        # jaccard = 2/3 = 0.667 >= 0.6 → matched
+        # step1, step2 → no/weak overlap → not matched
+        # token-only match → ×0.7 confidence multiplier
+        # → (1/3) × 0.7 = 0.233
+        assert coverage == pytest.approx((1 / 3) * 0.7, abs=0.01)
+
+    def test_step_coverage_token_overlap_multiple_matches(self):
+        """Token-overlap can match multiple steps from multiple evals."""
+        calc = MetricsCalculator()
+        passing_evals = [
+            {"workflow_step": "analyze the input code thoroughly"},
+            {"workflow_step": "verify the output"},
+        ]
+        coverage = calc._calculate_step_coverage(
+            passing_evals,
+            ["step1: analyze code", "step2: execute transformation", "step3: verify output"],
+        )
+        # "analyze the input code thoroughly" vs "step1: analyze code"
+        # Tokens: {analyze, the, input, code, thoroughly} ∩ {step1, analyze, code} → {analyze, code}
+        # jaccard = 2/5 = 0.4 < 0.6 → not matched
+        # "verify the output" vs "step3: verify output"
+        # Tokens: {verify, the, output} ∩ {step3, verify, output} → {verify, output}
+        # jaccard = 2/3 = 0.667 >= 0.6 → matched
+        # step2 → no match
+        # token-only match → ×0.7 confidence multiplier
+        # → (1/3) × 0.7 = 0.233
+        assert coverage == pytest.approx((1 / 3) * 0.7, abs=0.01)

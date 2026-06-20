@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-20
+
+> v0.5.0 sprint — L1 negative_case support, L3 token-overlap matching, OTel GenAI observability (SessionTelemetry), pre-commit quality gates, merge main v0.4.2 LSP fixes.
+
+### Added
+- **#31** L1 negative_case support — `EvalCase.negative_case` field, inverted grader logic, F1 scoring with confusion matrix; L3 token-overlap Jaccard matching (≥60% threshold, 0.7 confidence multiplier) for fuzzy workflow step alignment
+- **#25** OTel GenAI observability — `SessionTelemetry` class with `record_trace()` aggregation, `create_session()`/`get_summary()` for report-level summary, `CompositeLedger` fan-out pattern (TokenLedger + telemetry), dialogue runner trace recording
+- **Pre-commit quality gates** — 6-gate pipeline (version consistency, ruff lint, mypy type check, pytest, gate-check, gate-arch)
+- **`testgen.meta.md`** — `negative_case: true` documentation for should_not_trigger evals
+- **`prompts/testgen.meta.md`** — JSON schema for eval cases with `negative_case` field
+
+### Fixed
+- **#36** L1 always 0.0 — algorithm used `>=` threshold correctly but fail paths hit early return; `negative_case` inverted logic handles should_not_trigger cases properly now
+- **SessionTelemetry `event_bus` attribute** — removed dangling reference from dialogue_evaluator.py and dialogue_runner.py (mypy attr-defined)
+- **`ExecutionTrace.__init__`** — removed unsupported keyword args (`steps`, `tool_call_count`, `tokens`, `time_ms`, `cost`, `skill_name`); metadata now passed via `trace.metadata` dict
+
 ## [0.4.2] — 2026-06-20
 
 > Patch release — resolves 10+ pre-existing LSP (pyright) errors across the codebase, achieving zero-error state. No behavior changes, type-only fixes.
