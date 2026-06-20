@@ -55,8 +55,8 @@ class OpenAICompatAdapter(ModelAdapter):
         messages: list[dict[str, str]],
         model: str,
         timeout: int,
-        base_url: str = None,
-        api_key: str = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
         use_requests_fallback: bool = False,
     ) -> tuple[str, dict[str, int]]:
         use_base = base_url or self.base_url
@@ -128,7 +128,7 @@ class OpenAICompatAdapter(ModelAdapter):
         return content, token_data
 
     def _call_with_usage_sync(
-        self, messages: list[dict[str, str]], system: str = None, timeout: int = 120
+        self, messages: list[dict[str, str]], system: str | None = None, timeout: int = 120
     ) -> tuple[str, dict[str, int]]:
         prepared_messages = []
         if system:
@@ -150,14 +150,14 @@ class OpenAICompatAdapter(ModelAdapter):
                 )
                 return self._call_with_usage(
                     messages,
-                    self.fallback_model,
+                    self.fallback_model or model,
                     timeout,
                     base_url=self.fallback_base_url,
                     api_key=self.fallback_api_key,
                 )
             raise
 
-    def chat(self, messages: list[dict[str, str]], system: str = None, timeout: int = 120) -> str:
+    def chat(self, messages: list[dict[str, str]], system: str | None = None, timeout: int = 120) -> str:
         content, _ = self._call_with_usage_sync(messages, system, timeout)
         return content
 
@@ -172,7 +172,7 @@ class OpenAICompatAdapter(ModelAdapter):
     def batch_chat(self, requests: list[dict[str, Any]], max_concurrency: int = 5) -> list[str]:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        results = [None] * len(requests)
+        results: list[str] = []
         with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
             futures = {
                 executor.submit(
@@ -183,8 +183,10 @@ class OpenAICompatAdapter(ModelAdapter):
                 ): i
                 for i, req in enumerate(requests)
             }
+            result_map: dict[int, str] = {}
             for future in as_completed(futures):
-                results[futures[future]] = future.result()
+                result_map[futures[future]] = future.result()
+            results = [result_map[i] for i in range(len(requests))]
         return results
 
     def __del__(self):

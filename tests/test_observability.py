@@ -1,19 +1,15 @@
 """Tests for engine/observability.py — EventBus, TraceExporter, SessionTelemetry."""
 
 import json
-import time
 
 import pytest
 
 from engine.observability import (
-    CompositeLedger,
     EventBus,
     JSONLTraceExporter,
     NoOpTraceExporter,
-    SessionTelemetry,
     create_trace_exporter,
 )
-from engine.token_ledger import TokenLedger
 from engine.trace_models import ExecutionTrace, TokenAccounting
 
 

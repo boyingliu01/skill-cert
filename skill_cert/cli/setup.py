@@ -1,6 +1,7 @@
 """Setup subcommand — interactive model configuration for skill-cert."""
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -103,7 +104,7 @@ def _prompt_input(prompt: str, default: str = "", input_fn=input) -> str:
     return input_fn(f"  {prompt}: ").strip()
 
 
-def _print_setup_header(output_fn: "callable") -> None:
+def _print_setup_header(output_fn: Callable) -> None:
     """Print setup wizard header."""
     output_fn("\n=== Skill-Cert Model Setup ===\n")
     output_fn("Configure LLM models for skill evaluation.")
@@ -111,7 +112,7 @@ def _print_setup_header(output_fn: "callable") -> None:
 
 
 def _handle_existing_config(
-    existing: list[ModelConfig], input_fn: "callable", output_fn: "callable"
+    existing: list[ModelConfig], input_fn: Callable, output_fn: Callable
 ) -> bool:
     """Handle existing config. Return True if user wants to overwrite."""
     if not existing:
@@ -128,7 +129,7 @@ def _handle_existing_config(
     return True
 
 
-def _prompt_model_name(input_fn: "callable", output_fn: "callable") -> str | None:
+def _prompt_model_name(input_fn: Callable, output_fn: Callable) -> str | None:
     """Prompt for model name. Return None if invalid."""
     name = _prompt_input(
         "Model name (e.g. qwen3.6-plus, claude-sonnet-4-20250514)",
@@ -140,7 +141,7 @@ def _prompt_model_name(input_fn: "callable", output_fn: "callable") -> str | Non
     return name
 
 
-def _prompt_and_validate_url(input_fn: "callable", output_fn: "callable") -> str | None:
+def _prompt_and_validate_url(input_fn: Callable, output_fn: Callable) -> str | None:
     """Prompt for URL and validate. Return None if invalid."""
     url = _prompt_input("API base URL (e.g. https://api.example.com/v1)", input_fn=input_fn)
     err = _validate_base_url(url)
@@ -150,7 +151,7 @@ def _prompt_and_validate_url(input_fn: "callable", output_fn: "callable") -> str
     return url
 
 
-def _prompt_and_validate_key(input_fn: "callable", output_fn: "callable") -> str | None:
+def _prompt_and_validate_key(input_fn: Callable, output_fn: Callable) -> str | None:
     """Prompt for API key and validate. Return None if invalid."""
     key = _prompt_input("API key (or $ENV_VAR_NAME)", input_fn=input_fn)
     err = _validate_api_key(key)
@@ -160,7 +161,7 @@ def _prompt_and_validate_key(input_fn: "callable", output_fn: "callable") -> str
     return key
 
 
-def _prompt_fallback_model(input_fn: "callable") -> str | None:
+def _prompt_fallback_model(input_fn: Callable) -> str | None:
     """Prompt for fallback model. Return None if skipped."""
     fallback = _prompt_input(
         "Fallback model name (optional, press Enter to skip)",
@@ -172,9 +173,9 @@ def _prompt_fallback_model(input_fn: "callable") -> str | None:
 
 def _test_and_confirm_model(
     model: ModelConfig,
-    input_fn: "callable",
-    output_fn: "callable",
-    test_fn: "callable | None",
+    input_fn: Callable,
+    output_fn: Callable,
+    test_fn: Callable | None,
 ) -> bool:
     """Test connectivity and confirm with user. Return True if should save."""
     output_fn(f"  Testing connectivity to {model.model_name}...")
@@ -195,7 +196,7 @@ def _test_and_confirm_model(
     return True
 
 
-def _prompt_add_another_model(model_num: int, input_fn: "callable") -> bool:
+def _prompt_add_another_model(model_num: int, input_fn: Callable) -> bool:
     """Prompt if user wants to add another model. Return True if yes."""
     if model_num < 2:
         return True
@@ -206,7 +207,7 @@ def _prompt_add_another_model(model_num: int, input_fn: "callable") -> bool:
     return answer == "y"
 
 
-def _print_setup_summary(models: list[ModelConfig], path: Path, output_fn: "callable") -> None:
+def _print_setup_summary(models: list[ModelConfig], path: Path, output_fn: Callable) -> None:
     """Print setup completion summary."""
     output_fn(f"\nSetup complete! {len(models)} model(s) saved to {path}")
     output_fn("\nQuick start:")
@@ -216,9 +217,9 @@ def _print_setup_summary(models: list[ModelConfig], path: Path, output_fn: "call
 
 
 def _setup_interactive(
-    input_fn: "callable" = input,
-    output_fn: "callable" = print,
-    test_fn: "callable | None" = None,
+    input_fn: Callable = input,
+    output_fn: Callable = print,
+    test_fn: Callable | None = None,
 ) -> int:
     """Run interactive setup wizard.
 
@@ -289,7 +290,7 @@ def _setup_non_interactive(
     api_key: str,
     fallback_model: str = "",
     skip_test: bool = False,
-    test_fn: "callable | None" = None,
+    test_fn: Callable | None = None,
 ) -> int:
     """Run non-interactive setup with parameters.
 

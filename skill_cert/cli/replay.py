@@ -4,12 +4,12 @@ import asyncio
 import json
 from pathlib import Path
 
-from .helpers import EXIT_ERROR, EXIT_PASS, _create_adapter, _print_phase
+from .helpers import EXIT_ERROR, EXIT_PASS, _print_phase
 
 
 def run_replay_mode(args, config) -> int:
     # Lazy imports — use skill_cert.cli namespace so test patches intercept.
-    from skill_cert.cli import EvalRunner, Grader, HistoryReplay, parse_skill_md  # noqa: F811
+    from skill_cert.cli import EvalRunner, HistoryReplay, parse_skill_md  # noqa: F811
 
     spec_path = args.skill
     session_path = getattr(args, "session", None)
@@ -29,21 +29,18 @@ def run_replay_mode(args, config) -> int:
         print("\nERROR: No models configured.")
         return EXIT_ERROR
 
-    primary_adapter = _create_adapter(config.models[0], config.rate_limit_rpm)
-
     _print_phase(1, "Replay Session")
     print(f"  Session: {session_path}")
 
     runner = EvalRunner(
         max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm
     )
-    grader = Grader(llm_client=primary_adapter)
     replay = HistoryReplay(skill_runner=runner)
 
     messages = replay.load_session(session_path)
     print(f"  Loaded {len(messages)} messages")
 
-    results = asyncio.run(replay.replay_session(messages, spec_path, grader))
+    results = asyncio.run(replay.replay_session(messages, spec_path))
     runner.close()
 
     result_path = output_dir / f"{skill_name}-replay-result.json"

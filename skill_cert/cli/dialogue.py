@@ -4,8 +4,9 @@ import asyncio
 import json
 from pathlib import Path
 
+from engine.observability import CompositeLedger
+
 from .helpers import EXIT_ERROR, EXIT_PASS, _create_adapter, _print_phase
-from engine.observability import CompositeLedger, SessionTelemetry
 
 
 def run_dialogue_mode(args, config) -> int:
@@ -35,7 +36,10 @@ def run_dialogue_mode(args, config) -> int:
     primary_adapter = _create_adapter(config.models[0], config.rate_limit_rpm)
     # Initialize CompositeLedger for SessionTelemetry
     try:
-        composite_ledger = CompositeLedger()
+        from engine.token_ledger import TokenLedger
+
+        ledger = TokenLedger()
+        composite_ledger = CompositeLedger(ledger=ledger)
         session_telemetry = composite_ledger.session_telemetry
     except Exception as e:
         print(f"  WARNING: Failed to initialize telemetry: {e}")
@@ -48,7 +52,7 @@ def run_dialogue_mode(args, config) -> int:
         max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm
     )
     evaluator = DialogueEvaluator(judge_callback=primary_adapter)
-    simulator = UserSimulator(model_adapter=primary_adapter, skill_spec=spec)
+    simulator = UserSimulator()
 
     dialogue_runner = DialogueRunner(
         simulator=simulator,
@@ -58,7 +62,7 @@ def run_dialogue_mode(args, config) -> int:
         telemetry=session_telemetry,
     )
 
-    results = asyncio.run(dialogue_runner.run(spec_path))
+    results = asyncio.run(dialogue_runner.run_dialogue_eval({"id": "dialogue_eval"}, str(spec_path)))
     runner.close()
 
     print(f"  Completed turns: {results.get('turns_completed', 0)}")
