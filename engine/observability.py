@@ -94,7 +94,7 @@ class EventBus:
 class BaseTraceExporter(ABC):
     """Abstract base for trace exporters."""
 
-    output_path: str | Path = ""  # LSP compatibility: satisfies access in SessionTelemetry.get_summary()
+    output_path: str | Path = ""  # LSP compat: satisfies access in SessionTelemetry.get_summary()
 
     @abstractmethod
     def export(self, traces: list[ExecutionTrace]) -> None:
@@ -146,10 +146,18 @@ class OTLPTraceExporter(BaseTraceExporter):
 
         try:
             from opentelemetry import trace
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter  # type: ignore[import-untyped,import-not-found]
-            from opentelemetry.sdk.resources import Resource  # type: ignore[import-untyped,import-not-found]
-            from opentelemetry.sdk.trace import TracerProvider  # type: ignore[import-untyped,import-not-found]
-            from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore[import-untyped,import-not-found]
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter,  # type: ignore[import-untyped,import-not-found]
+            )
+            from opentelemetry.sdk.resources import (
+                Resource,  # type: ignore[import-untyped,import-not-found]
+            )
+            from opentelemetry.sdk.trace import (
+                TracerProvider,  # type: ignore[import-untyped,import-not-found]
+            )
+            from opentelemetry.sdk.trace.export import (
+                BatchSpanProcessor,  # type: ignore[import-untyped,import-not-found]
+            )
 
             resource = Resource.create({"service.name": service_name})
             provider = TracerProvider(resource=resource)

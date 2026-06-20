@@ -1,4 +1,5 @@
 import logging
+
 from engine.observability import SessionTelemetry
 from engine.trace_models import ExecutionTrace
 
@@ -134,7 +135,8 @@ class DialogueRunner:
             # Add dialogue-specific metadata
             trace.metadata["turn_count"] = len(history)
             trace.metadata["steps"] = len(history)
-            trace.metadata["tool_call_count"] = sum(1 for msg in history if msg.get("role") == "assistant")
+            assistant_msgs = [msg for msg in history if msg.get("role") == "assistant"]
+            trace.metadata["tool_call_count"] = sum(1 for _ in assistant_msgs)
             self.telemetry.record_trace(trace)
             logger.debug(f"Recorded dialogue trace to telemetry: {trace.run_id}")
 

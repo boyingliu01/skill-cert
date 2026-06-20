@@ -1,7 +1,8 @@
-from engine.observability import SessionTelemetry
 from collections.abc import Callable
 from difflib import SequenceMatcher
 from typing import Any
+
+from engine.observability import SessionTelemetry
 
 
 class DialogueJudgeResult:
@@ -26,7 +27,11 @@ class DialogueEvaluator:
     with mock-first testing capability.
     """
 
-    def __init__(self, judge_callback: Callable | None = None, telemetry: SessionTelemetry | None = None):
+    def __init__(
+        self,
+        judge_callback: Callable | None = None,
+        telemetry: SessionTelemetry | None = None,
+    ):
         """
         Initialize the DialogueEvaluator.
 
@@ -79,7 +84,7 @@ class DialogueEvaluator:
         if self.telemetry:
             for idx in range(len(self._pair_messages(conversation))):
                 pass
-        
+
         round_scores = [
             self._score_turn(idx, user_msg, assistant_msg, workflow_steps)
             for idx, (user_msg, assistant_msg) in enumerate(self._pair_messages(conversation))

@@ -9,9 +9,9 @@ from adapters.pricing import get_pricing
 from engine.constants import ConcurrencyLimits, SecurityLimits, TimingLimits
 from engine.deadline import Deadline
 from engine.envelope import EnvelopeChecker
+from engine.observability import SessionTelemetry
 from engine.security_probes import SecurityScanner
 from engine.trace_models import ExecutionTrace, TokenAccounting
-from engine.observability import SessionTelemetry
 
 logger = logging.getLogger(__name__)
 
