@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-06-20
+
+> Maintenance release — resolves all mypy type errors, eliminates ruff lint warnings, adds 100% skills_bench.py test coverage, and cleans up sprint legacy artifacts.
+
+### Fixed
+- **mypy**: 4 engine modules (golden_dataset/observer/token_ledger/testgen), observability/runner/dialogue modules, 6 CLI+adapter modules — Pydantic constructor mismatches, generator yield types, float/int inconsistencies, class scope shadowing, str|None annotations, callable→Callable alias fixes
+- **ruff**: F841 (unused Grader variable in replay.py), unnecessary _create_adapter import cleanup
+
+### Added
+- **skills_bench.py test coverage**: 31 tests covering SkillLoadResult, SweetSpotAnalysis, SkillsBenchAnalyzer — 0% → 100%
+
+### Chore
+- Remove sprint legacy state files (.sprint-state/sprint-2-state.yaml, sprint-state.yaml)
+
 ## [0.5.0] — 2026-06-20
 
 > v0.5.0 sprint — L1 negative_case support, L3 token-overlap matching, OTel GenAI observability (SessionTelemetry), pre-commit quality gates, merge main v0.4.2 LSP fixes.
