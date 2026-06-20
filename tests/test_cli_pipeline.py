@@ -489,8 +489,9 @@ description: "Test skill for dialogue mode"
 
                     with patch("skill_cert.cli.DialogueRunner") as mock_runner_class:
                         mock_runner = MagicMock()
-                        mock_runner.run = AsyncMock(
-                            return_value={
+
+                        async def _mock_eval(*args, **kwargs):
+                            return {
                                 "turns_completed": 2,
                                 "verdict": "PASS",
                                 "evaluation": {
@@ -499,7 +500,8 @@ description: "Test skill for dialogue mode"
                                     "verdict": "PASS",
                                 },
                             }
-                        )
+
+                        mock_runner.run_dialogue_eval = _mock_eval
                         mock_runner_class.return_value = mock_runner
 
                         # Run dialogue mode
