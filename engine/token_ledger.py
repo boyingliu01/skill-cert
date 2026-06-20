@@ -182,17 +182,17 @@ class TokenLedger:
                 )
 
         if cost_budget > 0:
-            used = self.total_cost
-            utilization = used / cost_budget
+            cost_used: float = self.total_cost
+            utilization = cost_used / cost_budget
             if utilization >= 1.0:
                 alerts.append(
                     BudgetAlert(
                         level="critical",
                         message=(
-                            f"Cost budget exceeded: ${used:.4f} / ${cost_budget:.4f} "
+                            f"Cost budget exceeded: ${cost_used:.4f} / ${cost_budget:.4f} "
                             f"({utilization:.0%})"
                         ),
-                        used=used,
+                        used=cost_used,
                         budget=cost_budget,
                     )
                 )
@@ -201,9 +201,9 @@ class TokenLedger:
                     BudgetAlert(
                         level="warning",
                         message=(
-                            f"Cost budget at {utilization:.0%}: ${used:.4f} / ${cost_budget:.4f}"
+                            f"Cost budget at {utilization:.0%}: ${cost_used:.4f} / ${cost_budget:.4f}"
                         ),
-                        used=used,
+                        used=cost_used,
                         budget=cost_budget,
                     )
                 )

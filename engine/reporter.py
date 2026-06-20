@@ -472,7 +472,7 @@ For detailed results, see the JSON output.
         models = config.get("models", [])
         model_names = (
             ", ".join(
-                (m.get("model_name", m.get("name", "unknown")) if isinstance(m, dict) else str(m))
+                str(m.get("model_name", m.get("name", "unknown")) if isinstance(m, dict) else m)
                 for m in models
             )
             if isinstance(models, list)

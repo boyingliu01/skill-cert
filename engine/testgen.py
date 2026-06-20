@@ -81,7 +81,7 @@ class EvalGenerator:
             }
 
     @staticmethod
-    def check_coverage_or_abort(coverage: float) -> "CoverageResult":
+    def check_coverage_or_abort(coverage: float) -> Any:
         """Classify coverage into PASS / DEGRADED / BLOCKED / FAILED."""
         if coverage >= CoverageThresholds.COVERAGE_TARGET:
             return CoverageResult.PASS
