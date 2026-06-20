@@ -201,7 +201,8 @@ class TokenLedger:
                     BudgetAlert(
                         level="warning",
                         message=(
-                            f"Cost budget at {utilization:.0%}: ${cost_used:.4f} / ${cost_budget:.4f}"
+                            f"Cost budget at {utilization:.0%}: "
+                            f"${cost_used:.4f} / ${cost_budget:.4f}"
                         ),
                         used=cost_used,
                         budget=cost_budget,

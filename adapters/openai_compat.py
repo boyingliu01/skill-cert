@@ -157,7 +157,12 @@ class OpenAICompatAdapter(ModelAdapter):
                 )
             raise
 
-    def chat(self, messages: list[dict[str, str]], system: str | None = None, timeout: int = 120) -> str:
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        system: str | None = None,
+        timeout: int = 120,
+    ) -> str:
         content, _ = self._call_with_usage_sync(messages, system, timeout)
         return content
 

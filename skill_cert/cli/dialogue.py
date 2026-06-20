@@ -62,7 +62,9 @@ def run_dialogue_mode(args, config) -> int:
         telemetry=session_telemetry,
     )
 
-    results = asyncio.run(dialogue_runner.run_dialogue_eval({"id": "dialogue_eval"}, str(spec_path)))
+    results = asyncio.run(
+        dialogue_runner.run_dialogue_eval({"id": "dialogue_eval"}, str(spec_path))
+    )
     runner.close()
 
     print(f"  Completed turns: {results.get('turns_completed', 0)}")
