@@ -425,3 +425,64 @@ class TestCrossModelUncertainty:
         assert "agreement_rate" in cmp
         assert "coefficient_of_variation" in cme
         assert "max_min_spread" in cme
+
+
+class TestDriftDictEvalCases:
+    """Tests for drift with dict-based eval cases (covers lines 33, 38-75, 82, 116)."""
+
+    def test_extract_prompt_from_dict_with_prompt(self):
+        detector = DriftDetector()
+        assert detector._extract_prompt({"prompt": "hello"}) == "hello"
+
+    def test_extract_prompt_from_dict_with_input(self):
+        detector = DriftDetector()
+        assert detector._extract_prompt({"input": "world"}) == "world"
+
+    def test_extract_prompt_from_dict_empty(self):
+        detector = DriftDetector()
+        assert detector._extract_prompt({}) == ""
+
+    def test_calculate_pass_rate_empty_results(self):
+        detector = DriftDetector()
+        assert detector._calculate_model_pass_rate([]) == 0.0
+
+    def test_build_assertions_from_dict(self):
+        detector = DriftDetector()
+        eval_case = {
+            "id": 1,
+            "name": "dict_test",
+            "category": "normal",
+            "assertions": [
+                {"name": "has_hello", "type": "contains", "value": "hello", "weight": "1"}
+            ],
+        }
+        assertions = detector._build_assertions(eval_case)
+        assert len(assertions) == 1
+        assert assertions[0].name == "has_hello"
+        assert assertions[0].value == "hello"
+
+    def test_build_assertions_empty(self):
+        detector = DriftDetector()
+        assert detector._build_assertions({}) == []
+
+    def test_convert_to_eval_case_from_dict(self):
+        detector = DriftDetector()
+        eval_case = {
+            "id": 1,
+            "name": "dict_case",
+            "category": "normal",
+            "assertions": [
+                {"name": "test", "type": "contains", "value": "x", "weight": 1}
+            ],
+        }
+        result = detector._convert_to_eval_case(eval_case, "test prompt")
+        assert isinstance(result, EvalCase)
+        assert result.id == 1
+        assert result.prompt == "test prompt"
+        assert result.name == "dict_case"
+
+    def test_convert_to_eval_case_passthrough(self):
+        detector = DriftDetector()
+        existing_case = EvalCase(id=2, name="existing", category="normal", prompt="p", assertions=[])
+        result = detector._convert_to_eval_case(existing_case, "ignored")
+        assert result is existing_case

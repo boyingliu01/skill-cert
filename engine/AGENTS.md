@@ -1,7 +1,7 @@
 # engine/ — Core Evaluation Pipeline
 
 ## OVERVIEW
-24-module evaluation pipeline: parses SKILL.md skills, validates schema, runs security probes, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L8 metrics, checks operating envelope, detects cross-model drift, integrates external tools, runs stress/stability/reliability/maintainability/multi-skill analysis, goal change testing, golden dataset calibration, skills bench analysis, and produces standardized reports.
+22-module evaluation pipeline: parses SKILL.md skills, validates schema, runs security probes, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L8 metrics, checks operating envelope, detects cross-model drift, integrates external tools, runs stress/stability/reliability/maintainability/multi-skill analysis, golden dataset calibration, skills bench analysis, and produces standardized reports.
 
 ## STRUCTURE
 ```
@@ -26,8 +26,6 @@ engine/
 ├── dialogue_runner.py     # Orchestrates dialogue evaluation sessions
 ├── simulator.py           # LLM behavior simulation for testing without live API
 ├── calibration.py         # Golden eval set calibration (Cohen's Kappa, FPR/FNR)
-├── goal_change.py         # AgentChangeBench-style mid-turn goal adaptation testing
-├── golden_dataset.py      # 50+ human-anchored test cases for calibration
 ├── skills_bench.py        # Multi-skill cognitive overload detection (sweet spot)
 ├── config.py              # Configuration management and validation
 └── __init__.py            # Public API: exports parse_skill_md
@@ -47,7 +45,6 @@ engine/
 | `EnvelopeChecker` | Operating envelope validation (wired into L5) |
 | `SecurityScanner` | 52-pattern security probe suite |
 | `DialogueJudgeResult` | LLM-as-Judge result with per-dimension scores |
-| `GoalChangeTester` | AgentChangeBench-style mid-turn adaptation testing |
 | `SkillsBenchAnalyzer` | Multi-skill cognitive overload detection |
 | `GoldenEvalSet` / `CalibrationRunner` | Human-anchored calibration framework |
 

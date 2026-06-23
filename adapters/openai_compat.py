@@ -75,7 +75,7 @@ class OpenAICompatAdapter(ModelAdapter):
             if not use_requests_fallback:
                 logger.warning(f"httpx SSL failed, falling back to requests: {e}")
                 import requests as _requests
-                response = _requests.post(
+                response = _requests.post(  # type: ignore[assignment]
                     f"{use_base}/chat/completions",
                     headers=headers,
                     json=payload,
@@ -141,7 +141,7 @@ class OpenAICompatAdapter(ModelAdapter):
         self, messages: list[dict[str, str]], model: str, timeout: int
     ) -> tuple[str, dict[str, int]]:
         try:
-            return self._call_with_usage(messages, model, timeout)
+            return self._call_with_usage(messages, model, timeout, use_requests_fallback=True)
         except (httpx.ConnectError, httpx.ConnectTimeout, OSError) as e:
             if self._has_fallback:
                 logger.warning(
@@ -154,6 +154,7 @@ class OpenAICompatAdapter(ModelAdapter):
                     timeout,
                     base_url=self.fallback_base_url,
                     api_key=self.fallback_api_key,
+                    use_requests_fallback=True,
                 )
             raise
 

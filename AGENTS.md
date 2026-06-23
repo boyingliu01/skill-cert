@@ -18,7 +18,7 @@ skill-cert/
 ├── engine/            # Core domain: parser, testgen, runner, grader, metrics, reporter, drift,
 │                      # dialogue, replay, security, envelope, integrations, reliability,
 │                      # maintainability, multi_skill, stress_test, stability, calibration,
-│                      # goal_change, golden_dataset, skills_bench
+│                      # skills_bench
 ├── skill_cert/cli/    # CLI entry point: main.py, setup.py
 ├── adapters/          # LLM provider adapters: base protocol, anthropic, openai, pricing
 ├── prompts/           # LLM prompt templates (.md files)
@@ -77,8 +77,6 @@ ruff check . && ruff format .
 | `engine/drift.py` | Cross-model drift detection (severity: none/low/moderate/high) |
 | `engine/security_probes.py` | 52 patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC) |
 | `engine/dialogue_evaluator.py` | Multi-turn evaluation + `judge_with_llm()` for LLM-as-Judge |
-| `engine/goal_change.py` | AgentChangeBench-style mid-turn goal adaptation testing |
-| `engine/golden_dataset.py` | 50+ human-anchored test cases for calibration |
 | `engine/skills_bench.py` | Multi-skill cognitive overload detection (sweet spot analysis) |
 | `engine/calibration.py` | Golden eval set calibration (Cohen's Kappa, FPR/FNR) |
 | `engine/reporter.py` | Markdown + JSON report generation |

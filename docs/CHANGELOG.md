@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-06-23
+
+> Maintenance release — 5 target modules reach 100% coverage, removes dead code, fixes subtle bugs.
+
+### Fixed
+- **openai_compat**: `_call_with_usage` missing `use_requests_fallback=True` on success path and fallback branch — SSL fallback never triggered correctly
+- **dialogue_evaluator**: JSON template f-string brace escaping (`{` → `{{`) — broken LLM-as-judge prompt
+
+### Added
+- **test_evals.py**: 368 lines — eval orchestration, trace export, telemetry summary, schema validation, degraded mode, coverage milestones
+- **test_single.py**: 278 lines — single mode setup, FAILED abort, coverage warning, fail-fast report
+- **test_openai_compat.py**: 321 lines — OpenAI-compatible adapter coverage, SSL fallback, streaming
+- **test_cli_helpers.py**: 148 lines — CLI helper utilities (_print_phase, _print_metric, deadline)
+- **test_anthropic_compat.py**: new — Anthropic adapter coverage
+- **test_runner.py**: +363 lines appended — deadline exception, future exception (set_exception), token_ledger/telemetry hooks, dict input
+- **test_observability.py**: +lines — SessionTelemetry 100% coverage
+- **test_grader.py**: +264 lines appended — deterministic assertions, LLM-as-judge
+- **test_dialogue_evaluator.py**: +176 lines appended — multi-turn evaluation
+- **test_drift.py**: +61 lines appended — cross-model drift detection
+
+### Chore
+- Remove dead code: `engine/goal_change.py` (P2 complete, no references), `engine/golden_dataset.py` (no references), `skill_cert/cli.py` (shadowed by `cli/` package)
+- Add mypy + types-* dev dependencies to pyproject.toml
+
+### Coverage
+- `adapters/openai_compat.py` — 100% (99 stmts, 0 missed)
+- `engine/observability.py` — 100% (212 stmts, 0 missed)
+- `engine/runner.py` — 100% (220 stmts, 0 missed)
+- `skill_cert/cli/evals.py` — 100% (249 stmts, 0 missed)
+- `skill_cert/cli/single.py` — 100% (99 stmts, 0 missed)
+- **TOTAL**: 879 stmts across 5 modules, 0 missed — 1134 tests pass
+
 ## [0.5.1] — 2026-06-20
 
 > Maintenance release — resolves all mypy type errors, eliminates ruff lint warnings, adds 100% skills_bench.py test coverage, and cleans up sprint legacy artifacts.

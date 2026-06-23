@@ -462,11 +462,11 @@ Rate each dimension 0.0-1.0:
 
 Respond in JSON format:
 {{
-    "scores": {
+    "scores": {{
             "intent_recognition": 0.0, "guidance_quality": 0.0,
         "workflow_adherence": 0.0, "exception_handling": 0.0,
         "output_quality": 0.0
-    }, "reasoning": "brief explanation"
+    }}, "reasoning": "brief explanation"
 }}
 """
 

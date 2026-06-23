@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+from engine.dialogue_evaluator import DialogueJudgeResult
 
 import pytest
 
@@ -182,6 +183,119 @@ class TestDialogueEvaluator:
         assert score_good_recovery > score_poor_recovery
 
     @pytest.mark.asyncio
+    async def test_judge_with_llm_no_callback_fallback(self):
+        """judge_with_llm falls back to heuristic when no judge_callback (covers line 431-439)."""
+        evaluator = DialogueEvaluator(judge_callback=None)
+        conversation = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        result = await evaluator.judge_with_llm(conversation)
+        assert isinstance(result.score, float)
+        assert result.used_llm is False
+        assert "Heuristic fallback" in result.reasoning
+
+    @pytest.mark.asyncio
+    async def test_judge_with_llm_success(self):
+        """judge_with_llm returns structured result with LLM judge (covers line 473-499)."""
+        mock_callback = AsyncMock(
+            return_value={
+                "scores": {
+                    "intent_recognition": 0.9,
+                    "guidance_quality": 0.8,
+                    "workflow_adherence": 0.7,
+                    "exception_handling": 0.6,
+                    "output_quality": 0.9,
+                },
+                "reasoning": "Good performance",
+            }
+        )
+        evaluator = DialogueEvaluator(judge_callback=mock_callback)
+        conversation = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        result = await evaluator.judge_with_llm(conversation)
+        assert isinstance(result.score, float)
+        assert result.used_llm is True
+        assert result.reasoning == "Good performance"
+        assert len(result.dimensions) == 5
+
+    @pytest.mark.asyncio
+    async def test_judge_with_llm_failure_fallback(self):
+        """judge_with_llm falls back to heuristic when judge raises (covers line 500-508)."""
+        mock_callback = AsyncMock(side_effect=RuntimeError("API error"))
+        evaluator = DialogueEvaluator(judge_callback=mock_callback)
+        conversation = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        result = await evaluator.judge_with_llm(conversation)
+        assert isinstance(result.score, float)
+        assert result.used_llm is False
+        assert "API error" in result.reasoning
+
+    @pytest.mark.asyncio
+    async def test_judge_with_llm_string_response(self):
+        """judge_with_llm handles JSON string response (covers line 476-479)."""
+        import json
+
+        mock_callback = AsyncMock(
+            return_value=json.dumps({
+                "scores": {
+                    "intent_recognition": 0.8,
+                    "guidance_quality": 0.7,
+                    "workflow_adherence": 0.7,
+                    "exception_handling": 0.6,
+                    "output_quality": 0.8,
+                },
+                "reasoning": "OK",
+            })
+        )
+        evaluator = DialogueEvaluator(judge_callback=mock_callback)
+        conversation = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        result = await evaluator.judge_with_llm(conversation)
+        assert result.used_llm is True
+        assert result.score > 0
+
+    def test_pair_messages_non_user_first(self):
+        """_pair_messages skips non-user first message (covers line 137)."""
+        evaluator = DialogueEvaluator()
+        pairs = evaluator._pair_messages([
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "ok"},
+        ])
+        assert len(pairs) == 1
+
+    def test_score_guidance_quality_clarifying(self):
+        """Guidance quality scores 1.0 for clarifying questions (covers line 184)."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._score_guidance_quality("help", "Can you elaborate?")
+        assert score == 1.0
+
+    @pytest.mark.asyncio
+    async def test_get_work_adherence_breakdown_empty(self):
+        """_get_work_adherence_breakdown returns empty dict for empty rounds (covers line 325)."""
+        evaluator = DialogueEvaluator()
+        result = await evaluator._get_work_adherence_breakdown([], 0.0)
+        assert result == {}
+
+    def test_format_conversation(self):
+        """_format_conversation formats multiple messages (covers line 513-518)."""
+        evaluator = DialogueEvaluator()
+        conv = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        formatted = evaluator._format_conversation(conv)
+        assert "User: hello" in formatted
+        assert "Assistant: hi there" in formatted
+
+    @pytest.mark.asyncio
     async def test_mock_callbacks_dont_create_real_llm_calls(self):
         """Test verifies that mock callbacks work correctly without real LLM calls."""
         # Create mock that mimics LLM behavior but without making real calls
@@ -301,3 +415,63 @@ class TestOutputQualitySemantic:
             "Fix the login bug", "The weather is nice today and birds are singing"
         )
         assert score < 0.7
+
+    @pytest.mark.asyncio
+    async def test_evaluate_conversation_with_telemetry(self):
+        """Telemetry loop in evaluate_conversation doesn't crash (covers line 85)."""
+        from engine.observability import SessionTelemetry
+
+        telemetry = MagicMock(spec=SessionTelemetry)
+        evaluator = DialogueEvaluator(telemetry=telemetry)
+        conversation = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "help me"},
+            {"role": "assistant", "content": "sure"},
+        ]
+        result = await evaluator.evaluate_conversation(conversation)
+        assert "overall_score" in result
+
+    def test_pair_messages_unpaired_user(self):
+        """_pair_messages handles user without matching assistant (covers line 137)."""
+        evaluator = DialogueEvaluator()
+        conv = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "unpaired"},
+        ]
+        pairs = evaluator._pair_messages(conv)
+        assert len(pairs) == 1
+        assert pairs[0][0]["content"] == "hello"
+
+    def test_score_guidance_quality_how_when_where(self):
+        """Guidance quality scores 0.7 for how/when/where keywords (covers line 185-186)."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._score_guidance_quality("fix this", "how you fix it")
+        assert score == 0.7
+
+    def test_exception_handling_recovery_and_apology(self):
+        """Exception handling scores 0.9 when recovery + apology present (covers line 278-279)."""
+        evaluator = DialogueEvaluator()
+        # User msg must contain an error indicator like "error occurred"
+        result = evaluator._score_turn(
+            0,
+            {"content": "error occurred when saving"},
+            {"content": "I apologize for the issue. As an alternative, try saving again."},
+            None,
+        )
+        assert result["exception_handling"] == 0.9
+
+    def test_output_quality_with_list(self):
+        """Output quality includes bonus for formatted structure (covers line 312-313)."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._score_output_quality(
+            "list steps", "1. step one\n2. step two\n3. step three"
+        )
+        assert 0.5 <= score <= 1.0
+
+    def test_output_quality_with_bullet_points(self):
+        """Output quality detects bullet points structure."""
+        evaluator = DialogueEvaluator()
+        score = evaluator._score_output_quality("explain", "* point one\n* point two")
+        assert 0.5 <= score <= 1.0
