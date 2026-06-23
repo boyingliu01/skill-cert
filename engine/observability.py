@@ -396,6 +396,10 @@ class SessionTelemetry:
                 evicted += 1
         return evicted
 
+    def flush(self) -> None:
+        """Flush telemetry data — alias for cleanup() for runner compatibility."""
+        self.cleanup()
+
     def _evict_if_needed(self) -> None:
         """Evict if over max_sessions (called with lock held)."""
         while len(self.sessions) > self._max_sessions:

@@ -254,7 +254,7 @@ For detailed results, see the JSON output.
     def generate_report(
         self,
         metrics: dict[str, Any],
-        drift: dict[str, Any],
+        drift: dict[str, Any] | None,
         config: dict[str, Any],
         maintainability: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
@@ -359,14 +359,14 @@ For detailed results, see the JSON output.
         return markdown_report, json_report
 
     def _determine_verdict(
-        self, overall_score: float, drift: dict[str, Any], degraded: bool = False
+        self, overall_score: float, drift: dict[str, Any] | None, degraded: bool = False
     ) -> str:
         """Determine verdict based on overall score and drift analysis.
 
         When ``degraded=True`` (coverage < 90% but above block threshold),
         the verdict is capped at PASS_WITH_CAVEATS — it cannot be PASS.
         """
-        drift_verdict = drift.get("overall_verdict", "PASS")
+        drift_verdict = "PASS" if drift is None else drift.get("overall_verdict", "PASS")
         if drift_verdict == "FAIL":
             return "FAIL"
         if drift_verdict == "PASS_WITH_CAVEATS" and overall_score < 0.8:
@@ -379,8 +379,17 @@ For detailed results, see the JSON output.
             return "PASS_WITH_CAVEATS"
         return "FAIL"
 
-    def _prepare_drift_data(self, drift: dict[str, Any]) -> dict[str, Any]:
+    def _prepare_drift_data(self, drift: dict[str, Any] | None) -> dict[str, Any]:
         """Prepare drift data for template rendering."""
+        if drift is None:
+            return {
+                "drift_detected": False,
+                "highest_severity": "none",
+                "average_variance": 0.0,
+                "max_variance": 0.0,
+                "drift_results": [],
+                "model_pairs_compared": 0,
+            }
         return {
             "drift_detected": drift.get("drift_detected", False),
             "highest_severity": drift.get("highest_severity", "none"),
@@ -510,7 +519,7 @@ For detailed results, see the JSON output.
     def _generate_suggestions(
         self,
         metrics: dict[str, Any],
-        drift: dict[str, Any],
+        drift: dict[str, Any] | None,
         verdict: str,
         overall_score: float,
         cost_analysis: dict[str, Any] | None = None,
@@ -524,7 +533,7 @@ For detailed results, see the JSON output.
         suggestions.extend(self._get_metric_suggestions(metrics))
 
         # Drift suggestions
-        if drift.get("drift_detected", False):
+        if drift and drift.get("drift_detected", False):
             suggestions.append(
                 f"Address cross-model drift "
                 f"(highest severity: {drift.get('highest_severity', 'none')})"
@@ -758,7 +767,7 @@ For detailed results, see the JSON output.
     def build_structured_report(
         self,
         metrics: dict[str, Any],
-        drift: dict[str, Any],
+        drift: dict[str, Any] | None,
         config: dict[str, Any],
         maintainability: dict[str, Any] | None = None,
         token_analysis: dict[str, Any] | None = None,
@@ -816,7 +825,7 @@ For detailed results, see the JSON output.
             token_analysis=token_section,
             observability=obs_section,
             improvements=improvements,
-            drift=drift,
+            drift=drift if drift is not None else {},
             extras=extras,
         )
 
@@ -896,7 +905,7 @@ For detailed results, see the JSON output.
                 )
         return improvements
 
-    def _build_verdict_reasons(self, metrics: dict[str, Any], drift: dict[str, Any]) -> list[str]:
+    def _build_verdict_reasons(self, metrics: dict[str, Any], drift: dict[str, Any] | None) -> list[str]:
         """Build verdict reasons from metrics and drift."""
         reasons = []
         l1 = self._num(metrics.get("l1_trigger_accuracy", 0.0))
@@ -910,19 +919,19 @@ For detailed results, see the JSON output.
             reasons.append(f"L3 step adherence: {l3:.0%}")
         return reasons
 
-    def _build_blocking_issues(self, drift: dict[str, Any]) -> list[str]:
+    def _build_blocking_issues(self, drift: dict[str, Any] | None) -> list[str]:
         """Build blocking issues from drift analysis."""
         issues = []
-        if drift.get("highest_severity") == "high":
+        if drift and drift.get("highest_severity") == "high":
             issues.append(
                 f"High severity drift detected (variance: {drift.get('max_variance', 0):.3f})"
             )
         return issues
 
-    def _build_caveats(self, metrics: dict[str, Any], drift: dict[str, Any]) -> list[str]:
+    def _build_caveats(self, metrics: dict[str, Any], drift: dict[str, Any] | None) -> list[str]:
         """Build caveats from metrics and drift."""
         caveats = []
-        if drift.get("drift_detected"):
+        if drift and drift.get("drift_detected"):
             caveats.append(f"Drift detected (severity: {drift.get('highest_severity', 'none')})")
         return caveats
 
