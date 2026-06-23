@@ -347,13 +347,16 @@ class TestOTLPTraceExporter:
     """Tests for OTLPTraceExporter class."""
 
     def test_init_raises_import_error(self):
-        with patch.dict("sys.modules", {
-            "opentelemetry": None,
-            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
-            "opentelemetry.sdk.resources": None,
-            "opentelemetry.sdk.trace": None,
-            "opentelemetry.sdk.trace.export": None,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "opentelemetry": None,
+                "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
+                "opentelemetry.sdk.resources": None,
+                "opentelemetry.sdk.trace": None,
+                "opentelemetry.sdk.trace.export": None,
+            },
+        ):
             with pytest.raises(ImportError, match="OTLP export requires"):
                 OTLPTraceExporter("http://localhost:4317")
 
@@ -392,13 +395,16 @@ class TestCreateTraceExporterExtra:
 
     def test_create_otlp_with_endpoint_raises_import_error(self):
         """create_trace_exporter('otlp') raises ImportError (covers line 235)."""
-        with patch.dict("sys.modules", {
-            "opentelemetry": None,
-            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
-            "opentelemetry.sdk.resources": None,
-            "opentelemetry.sdk.trace": None,
-            "opentelemetry.sdk.trace.export": None,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "opentelemetry": None,
+                "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
+                "opentelemetry.sdk.resources": None,
+                "opentelemetry.sdk.trace": None,
+                "opentelemetry.sdk.trace.export": None,
+            },
+        ):
             with pytest.raises(ImportError, match="OTLP export requires"):
                 create_trace_exporter("otlp", otlp_endpoint="http://localhost:4317")
 
@@ -474,9 +480,6 @@ class TestOTLPTraceExporterExtra:
         exporter._initialized = True
         exporter._tracer = mock_tracer
 
-        traces = [
-            ExecutionTrace(eval_id=i, phase="with_skill")
-            for i in range(3)
-        ]
+        traces = [ExecutionTrace(eval_id=i, phase="with_skill") for i in range(3)]
         exporter.export(traces)
         assert mock_tracer.start_as_current_span.call_count == 3

@@ -890,5 +890,306 @@ def test_negative_case_judge_low_confidence():
     assert result["final_passed"] is True  # pass_rate < 0.5, so inverted → True
 
 
+# ── Confidence clamping ────────────────────────────────
+
+
+def test_execute_llm_judge_clamps_confidence_above_1():
+    """LLM returns confidence > 1.0 → clamped to 1.0 before JudgeResult construction."""
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = json.dumps(
+        {"passed": True, "confidence": 1.5, "reasoning": "overconfident", "failure_reasons": []}
+    )
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
+    result = grader._execute_llm_judge(eval_case, "output", [])
+    assert result.confidence == 1.0
+    assert result.passed is True
+
+
+def test_execute_llm_judge_clamps_confidence_below_0():
+    """LLM returns confidence < 0.0 → clamped to 0.0 before JudgeResult construction."""
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = json.dumps(
+        {"passed": False, "confidence": -0.3, "reasoning": "negative", "failure_reasons": []}
+    )
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
+    result = grader._execute_llm_judge(eval_case, "output", [])
+    assert result.confidence == 0.0
+    assert result.passed is False
+
+
+def test_execute_llm_judge_clamps_confidence_string_value():
+    """LLM returns confidence as string '1.2' → parsed and clamped to 1.0."""
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = json.dumps(
+        {"passed": True, "confidence": "1.2", "reasoning": "str", "failure_reasons": []}
+    )
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
+    result = grader._execute_llm_judge(eval_case, "output", [])
+    assert result.confidence == 1.0
+
+
+# ── Robust JSON parsing ───────────────────────────────
+
+
+def test_parse_judge_response_brace_counting_with_surrounding_text():
+    """Parse JSON embedded in surrounding text via brace counting."""
+    grader = Grader()
+    response = (
+        "Sure, here is my evaluation:\n"
+        '{"passed": true, "confidence": 0.85, "reasoning": "good"}\n'
+        "Hope that helps!"
+    )
+    result = grader._parse_judge_response(response)
+    parsed = json.loads(result)
+    assert parsed["passed"] is True
+    assert parsed["confidence"] == 0.85
+
+
+def test_parse_judge_response_brace_counting_nested_braces():
+    """Parse JSON with nested braces via brace counting."""
+    grader = Grader()
+    response = (
+        "Here you go:\n"
+        '{"passed": false, "confidence": 0.7, "reasoning": "see {details}", '
+        '"failure_reasons": [{"msg": "missing {x}"}]}\n'
+        "Done."
+    )
+    result = grader._parse_judge_response(response)
+    parsed = json.loads(result)
+    assert parsed["passed"] is False
+    assert len(parsed["failure_reasons"]) == 1
+
+
+def test_parse_judge_response_strict_false_fallback():
+    """Parse JSON with control characters using strict=False fallback."""
+    grader = Grader()
+    response = '{"passed": true, "confidence": 0.9,\n"reasoning": "line1\nline2"}'
+    result = grader._parse_judge_response(response)
+    parsed = json.loads(result)
+    assert parsed["passed"] is True
+
+
+# ── JSONDecodeError retry ─────────────────────────────
+
+
+def test_llm_judge_with_call_retries_on_json_decode_error():
+    """JSONDecodeError on first call triggers one retry with stricter prompt."""
+    mock_llm = MagicMock()
+    mock_llm.chat.side_effect = [
+        "This is not JSON at all, just plain text",
+        json.dumps({"passed": True, "confidence": 0.9, "reasoning": "ok", "failure_reasons": []}),
+        json.dumps(
+            {"passed": True, "confidence": 0.85, "reasoning": "swap", "failure_reasons": []}
+        ),
+    ]
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="x", type="contains", value="x", weight=1)],
+    )
+    assertion_results = [
+        AssertionResult(
+            assertion=EvalAssertion(name="x", type="contains", value="x", weight=1),
+            passed=True,
+            confidence=1.0,
+            reason="found",
+        ),
+    ]
+    result = grader._llm_judge_with_call(eval_case, "output", assertion_results)
+    assert mock_llm.chat.call_count == 3
+    assert result.passed is True
+    assert result.confidence == 0.9
+    assert result.debias_runs == 2
+
+
+def test_llm_judge_with_call_json_decode_error_retry_also_fails():
+    """JSONDecodeError on both first and retry → falls back to assertion-based."""
+    mock_llm = MagicMock()
+    mock_llm.chat.side_effect = [
+        "not json",
+        "still not json",
+    ]
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="x", type="contains", value="x", weight=1)],
+    )
+    assertion_results = [
+        AssertionResult(
+            assertion=EvalAssertion(name="x", type="contains", value="x", weight=1),
+            passed=True,
+            confidence=1.0,
+            reason="found",
+        ),
+    ]
+    result = grader._llm_judge_with_call(eval_case, "output", assertion_results)
+    assert mock_llm.chat.call_count == 2
+    assert "failed" in result.reasoning.lower()
+
+
+# ── ValidationError separate handling ─────────────────
+
+
+def test_llm_judge_with_call_validation_error_clamps_and_reconstructs():
+    """ValidationError from Pydantic → clamp confidence and reconstruct JudgeResult."""
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = json.dumps(
+        {"passed": True, "confidence": 2.0, "reasoning": "over", "failure_reasons": []}
+    )
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="x", type="contains", value="x", weight=1)],
+    )
+    assertion_results = [
+        AssertionResult(
+            assertion=EvalAssertion(name="x", type="contains", value="x", weight=1),
+            passed=True,
+            confidence=1.0,
+            reason="found",
+        ),
+    ]
+    result = grader._llm_judge_with_call(eval_case, "output", assertion_results)
+    assert result.confidence == 1.0
+    assert result.passed is True
+    assert result.judge_model == "llm"
+
+
+# ── Other exception still falls back ──────────────────
+
+
+def test_llm_judge_with_call_other_exception_still_falls_back():
+    """Non-JSON/ValidationError exceptions still fall back to assertion-based."""
+    mock_llm = MagicMock()
+    mock_llm.chat.side_effect = ConnectionError("network down")
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="x", type="contains", value="x", weight=1)],
+    )
+    assertion_results = [
+        AssertionResult(
+            assertion=EvalAssertion(name="x", type="contains", value="x", weight=1),
+            passed=True,
+            confidence=1.0,
+            reason="found",
+        ),
+    ]
+    result = grader._llm_judge_with_call(eval_case, "output", assertion_results)
+    assert "failed" in result.reasoning.lower()
+    assert result.judge_model == ""
+
+
+# ── Position debiasing as default behavior (slice-7) ──────────────
+
+
+def test_grader_init_debias_position_default_true():
+    """Grader.__init__ defaults debias_position=True."""
+    grader = Grader()
+    assert grader.debias_position is True
+
+
+def test_grader_init_debias_position_can_disable():
+    """Grader.__init__ accepts debias_position=False."""
+    grader = Grader(debias_position=False)
+    assert grader.debias_position is False
+
+
+def test_llm_judge_with_call_runs_debias_by_default_high_confidence():
+    """_llm_judge_with_call runs debias even when confidence >= 0.8 (always-on)."""
+    mock_llm = MagicMock()
+    # First call: high confidence pass. Second call (swap): also pass.
+    mock_llm.chat.side_effect = [
+        json.dumps(dict(passed=True, confidence=0.95, reasoning="strong", failure_reasons=[])),
+        json.dumps(dict(passed=True, confidence=0.9, reasoning="agreed", failure_reasons=[])),
+    ]
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
+    result = grader._llm_judge_with_call(eval_case, "output", [])
+    # Should have made 2 LLM calls (original + swap)
+    assert mock_llm.chat.call_count == 2
+    assert result.debias_runs == 2
+
+
+def test_llm_judge_with_call_skips_debias_when_disabled():
+    """_llm_judge_with_call skips debias when debias_position=False."""
+    mock_llm = MagicMock()
+    mock_llm.chat.return_value = json.dumps(
+        dict(passed=True, confidence=0.95, reasoning="strong", failure_reasons=[])
+    )
+    grader = Grader(llm_client=mock_llm, debias_position=False)
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
+    result = grader._llm_judge_with_call(eval_case, "output", [])
+    # Should have made only 1 LLM call (no swap)
+    assert mock_llm.chat.call_count == 1
+    assert result.debias_runs == 1
+    assert result.position_sensitive is False
+
+
+def test_llm_judge_with_call_disagreement_reduces_confidence_30_percent():
+    """Disagreement between original and swap reduces confidence by 30%."""
+    mock_llm = MagicMock()
+    mock_llm.chat.side_effect = [
+        json.dumps(dict(passed=True, confidence=0.9, reasoning="first", failure_reasons=[])),
+        json.dumps(dict(passed=False, confidence=0.85, reasoning="swap", failure_reasons=[])),
+    ]
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
+    result = grader._llm_judge_with_call(eval_case, "output", [])
+    assert result.position_sensitive is True
+    assert result.debias_runs == 2
+    # Confidence should be min(0.9, 0.85) * 0.7 = 0.595
+    assert result.confidence == pytest.approx(min(0.9, 0.85) * 0.7)
+    assert "disagreement" in result.reasoning.lower()
+
+
+def test_llm_judge_with_call_debias_agreement_high_confidence():
+    """When both runs agree with high confidence, keep max confidence."""
+    mock_llm = MagicMock()
+    mock_llm.chat.side_effect = [
+        json.dumps(dict(passed=True, confidence=0.92, reasoning="first", failure_reasons=[])),
+        json.dumps(dict(passed=True, confidence=0.88, reasoning="swap", failure_reasons=[])),
+    ]
+    grader = Grader(llm_client=mock_llm)
+    eval_case = EvalCase(
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+    )
+    result = grader._llm_judge_with_call(eval_case, "output", [])
+    assert result.debias_runs == 2
+    assert result.position_sensitive is False
+    assert result.confidence == 0.92  # max(0.92, 0.88)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

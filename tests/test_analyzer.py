@@ -1,6 +1,5 @@
 """Tests for engine/analyzer.py — SKILL.md parsing."""
 
-
 import pytest
 
 from engine.analyzer import parse_skill_md
@@ -12,15 +11,33 @@ def _section_patterns() -> dict[str, list[str]]:
     """
     return {
         "workflow": [
-            "Workflow", "Process", "Flow", "完整流程", "核心流程", "流程", "步骤", "工作流程"
+            "Workflow",
+            "Process",
+            "Flow",
+            "完整流程",
+            "核心流程",
+            "流程",
+            "步骤",
+            "工作流程",
         ],
         "anti_patterns": [
-            "Anti-Patterns", "Anti-Patterns", "What Not To Do", "Gotchas",
-            "反模式", "错误做法", "注意事项",
+            "Anti-Patterns",
+            "Anti-Patterns",
+            "What Not To Do",
+            "Gotchas",
+            "反模式",
+            "错误做法",
+            "注意事项",
         ],
         "output_format": ["Output Format", "Response Format", "返回格式", "输出格式", "响应格式"],
         "triggers": [
-            "Triggers", "Trigger", "What I Do", "When To Use", "触发条件", "何时使用", "使用场景"
+            "Triggers",
+            "Trigger",
+            "What I Do",
+            "When To Use",
+            "触发条件",
+            "何时使用",
+            "使用场景",
         ],
     }
 
@@ -190,7 +207,8 @@ description: test-{desc}
     def test_anti_patterns_alias(self, tmp_path, alias: str):
         """Each anti-pattern alias should be extracted as anti_patterns."""
         skill_path = self._make_alias_skill(
-            tmp_path, alias,
+            tmp_path,
+            alias,
             "- First anti-pattern\n- Second anti-pattern\n",
         )
         result = parse_skill_md(skill_path)
@@ -202,7 +220,8 @@ description: test-{desc}
     def test_workflow_alias(self, tmp_path, alias: str):
         """Each workflow alias should be extracted as workflow_steps."""
         skill_path = self._make_alias_skill(
-            tmp_path, alias,
+            tmp_path,
+            alias,
             "1. Step Alpha\n2. Step Beta\n",
         )
         result = parse_skill_md(skill_path)
@@ -214,7 +233,8 @@ description: test-{desc}
     def test_output_format_alias(self, tmp_path, alias: str):
         """Each output format alias should be extracted as output_format."""
         skill_path = self._make_alias_skill(
-            tmp_path, alias,
+            tmp_path,
+            alias,
             "- JSON report\n- YAML config\n",
         )
         result = parse_skill_md(skill_path)
@@ -226,10 +246,169 @@ description: test-{desc}
     def test_triggers_alias(self, tmp_path, alias: str):
         """Each triggers alias should be extracted as triggers."""
         skill_path = self._make_alias_skill(
-            tmp_path, alias,
+            tmp_path,
+            alias,
             "- trigger-a\n- trigger-b\n",
         )
         result = parse_skill_md(skill_path)
         assert len(result["triggers"]) >= 2, (
             f"Alias '{alias}' should yield >= 2 triggers, got {result['triggers']}"
         )
+
+
+class TestSkillTypeDetection:
+    """Test skill_type field detection in SkillSpec and parse_skill_md()."""
+
+    def test_skill_spec_has_skill_type_default(self):
+        """SkillSpec should have skill_type field defaulting to 'agent_guide'."""
+        from engine.analyzer import SkillSpec
+
+        spec = SkillSpec(name="test")
+        assert spec.skill_type == "agent_guide"
+
+    def test_skill_type_in_model_dump(self):
+        """skill_type should appear in model_dump output."""
+        from engine.analyzer import SkillSpec
+
+        spec = SkillSpec(name="test")
+        dumped = spec.model_dump(by_alias=True)
+        assert "skill_type" in dumped
+        assert dumped["skill_type"] == "agent_guide"
+
+    def test_parse_agent_guide_default(self, tmp_path):
+        """Regular agent guide skill should have skill_type='agent_guide'."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: review-skill
+description: A code review skill
+---
+# Review Skill
+
+## Workflow
+1. Read the code
+2. Check for issues
+3. Provide feedback
+""")
+        result = parse_skill_md(str(skill_file))
+        assert result["skill_type"] == "agent_guide"
+
+    def test_parse_cli_tool_detection(self, tmp_path):
+        """CLI tool skill should be detected from ## Commands section + flag patterns."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: skill-cert
+description: AI Skill Evaluation Engine
+---
+# Skill-Cert
+
+## Usage
+
+```bash
+skill-cert --skill /path/to/SKILL.md --models "m1=url,key"
+```
+
+## Commands
+
+- `skill-cert evaluate` — Run evaluation
+- `skill-cert setup` — Interactive config
+- `skill-cert --version` — Print version
+
+## CLI Flags
+
+- `--skill` — Path to SKILL.md
+- `--models` — Model configuration
+- `--output` — Output directory
+- `--strict-schema` — Strict schema validation
+""")
+        result = parse_skill_md(str(skill_file))
+        assert result["skill_type"] == "cli_tool"
+
+    def test_parse_cli_tool_from_usage_with_flags(self, tmp_path):
+        """CLI tool detected from ## Usage section with --flag patterns."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: my-cli
+description: A CLI helper tool
+---
+# My CLI
+
+## Usage
+
+```
+my-cli --input file.txt --output result.json --verbose
+```
+
+Some description of the tool.
+""")
+        result = parse_skill_md(str(skill_file))
+        assert result["skill_type"] == "cli_tool"
+
+    def test_parse_library_detection(self, tmp_path):
+        """Library skill should be detected from ## API section."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: data-utils
+description: Data utility library
+---
+# Data Utils
+
+## API
+
+### parse_csv(content: str) -> list[dict]
+Parse CSV content into list of dicts.
+
+### validate_schema(data: dict, schema: dict) -> bool
+Validate data against schema.
+
+## Functions
+
+- `parse_csv` — Parse CSV files
+- `validate_schema` — Schema validation
+""")
+        result = parse_skill_md(str(skill_file))
+        assert result["skill_type"] == "library"
+
+    def test_parse_library_from_import_patterns(self, tmp_path):
+        """Library detected from import statements in code blocks."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: my-lib
+description: A utility library
+---
+# My Lib
+
+## Usage
+
+```python
+from my_lib import parse_data, transform
+result = parse_data("input.csv")
+```
+""")
+        result = parse_skill_md(str(skill_file))
+        assert result["skill_type"] == "library"
+
+    def test_backward_compat_existing_skills(self, tmp_path):
+        """Existing skills without skill_type signals should default to agent_guide."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: delphi-review
+description: Multi-expert consensus review
+---
+# Delphi Review
+
+## Workflow
+- Phase 0: Preparation
+- Round 1: Anonymous review
+
+## Anti-Patterns
+| Pattern | Fix |
+|---------|-----|
+| Skip Round 1 | Always run all rounds |
+
+## Output Format
+- Consensus report
+""")
+        result = parse_skill_md(str(skill_file))
+        assert result["skill_type"] == "agent_guide"
+        assert result["name"] == "delphi-review"
+        assert len(result["workflow_steps"]) >= 1

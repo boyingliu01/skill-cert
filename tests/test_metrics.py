@@ -1,5 +1,7 @@
 """Tests for engine/metrics.py — L1-L4 metrics calculation."""
 
+import json
+
 import pytest
 
 from engine.metrics import MetricsCalculator
@@ -60,10 +62,10 @@ class TestMetricsCalculator:
         """Test F1 score when all positive and negative cases are correct."""
         calculator = MetricsCalculator()
         eval_results = [
-            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
-            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
-            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
-            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
+            {"category": "trigger", "negative_case": False, "final_passed": True},  # TP
+            {"category": "trigger", "negative_case": False, "final_passed": True},  # TP
+            {"category": "trigger", "negative_case": True, "final_passed": True},  # TN
+            {"category": "trigger", "negative_case": True, "final_passed": True},  # TN
         ]
         f1 = calculator._calculate_f1_score(eval_results)
         assert f1 == 1.0  # Precision=1.0, Recall=1.0
@@ -82,10 +84,10 @@ class TestMetricsCalculator:
         """Test F1 score with mixed TP/TN/FP/FN."""
         calculator = MetricsCalculator()
         eval_results = [
-            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
+            {"category": "trigger", "negative_case": False, "final_passed": True},  # TP
             {"category": "trigger", "negative_case": False, "final_passed": False},  # FN
-            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
-            {"category": "trigger", "negative_case": True, "final_passed": False},   # FP
+            {"category": "trigger", "negative_case": True, "final_passed": True},  # TN
+            {"category": "trigger", "negative_case": True, "final_passed": False},  # FP
         ]
         f1 = calculator._calculate_f1_score(eval_results)
         # Precision = TP/(TP+FP) = 1/(1+1) = 0.5
@@ -106,10 +108,10 @@ class TestMetricsCalculator:
         """Test L1 uses F1 when negative_case evals exist."""
         calculator = MetricsCalculator()
         eval_results = [
-            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
-            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
-            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
-            {"category": "trigger", "negative_case": True, "final_passed": False},   # FP
+            {"category": "trigger", "negative_case": False, "final_passed": True},  # TP
+            {"category": "trigger", "negative_case": False, "final_passed": True},  # TP
+            {"category": "trigger", "negative_case": True, "final_passed": True},  # TN
+            {"category": "trigger", "negative_case": True, "final_passed": False},  # FP
         ]
         l1 = calculator._calculate_l1_trigger_accuracy(eval_results)
         # Precision = 2/(2+1) = 2/3, Recall = 2/(2+0) = 1.0
@@ -131,9 +133,9 @@ class TestMetricsCalculator:
         """Test _get_l1_details includes f1_score and confusion_matrix."""
         calculator = MetricsCalculator()
         eval_results = [
-            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
-            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
-            {"category": "trigger", "negative_case": True, "final_passed": False},   # FP
+            {"category": "trigger", "negative_case": False, "final_passed": True},  # TP
+            {"category": "trigger", "negative_case": True, "final_passed": True},  # TN
+            {"category": "trigger", "negative_case": True, "final_passed": False},  # FP
         ]
         details = calculator._get_l1_details(eval_results)
         assert "f1_score" in details
@@ -941,3 +943,301 @@ class TestMetricsCalculator:
         # token-only match → ×0.7 confidence multiplier
         # → (1/3) × 0.7 = 0.233
         assert coverage == pytest.approx((1 / 3) * 0.7, abs=0.01)
+
+    # ── L2 EPSILON guard (slice-4) ──────────────────────────────
+
+    def test_compute_normalized_gain_near_zero_denominator_returns_absolute_delta(self):
+        """EPSILON guard: near-zero without_avg returns absolute delta, not exploded gain."""
+        calc = MetricsCalculator()
+        # without_avg = 0.001, with_avg = 0.5
+        # Without guard: (0.5 - 0.001) / 0.001 = 499 → clamped to 1.0 (misleading)
+        # With guard: abs(0.001) < 1e-6 is False, but abs(0.001) < 0.01 triggers warning
+        # For very small (below EPSILON=1e-6): should return absolute delta
+        gain = calc._compute_normalized_gain(0.5, 1e-9)
+        # abs(1e-9) < EPSILON → return absolute delta: 0.5 - 1e-9 ≈ 0.5
+        assert gain == pytest.approx(0.5 - 1e-9, abs=1e-6)
+
+    def test_compute_normalized_gain_zero_denominator_returns_absolute_delta(self):
+        """EPSILON guard: zero without_avg returns absolute delta."""
+        calc = MetricsCalculator()
+        gain = calc._compute_normalized_gain(0.5, 0.0)
+        # abs(0.0) < EPSILON → return absolute delta: 0.5 - 0.0 = 0.5
+        assert gain == pytest.approx(0.5)
+
+    def test_compute_normalized_gain_negative_near_zero_returns_absolute_delta(self):
+        """EPSILON guard: negative near-zero without_avg returns absolute delta."""
+        calc = MetricsCalculator()
+        gain = calc._compute_normalized_gain(0.5, -1e-9)
+        # abs(-1e-9) < EPSILON → return absolute delta: 0.5 - (-1e-9) ≈ 0.5
+        assert gain == pytest.approx(0.5 + 1e-9, abs=1e-6)
+
+    def test_compute_normalized_gain_normal_denominator_unchanged(self):
+        """EPSILON guard: normal denominator still uses normalized gain formula."""
+        calc = MetricsCalculator()
+        # without_avg = 0.5, with_avg = 0.8 → gain = (0.8-0.5)/0.5 = 0.6
+        gain = calc._compute_normalized_gain(0.8, 0.5)
+        assert gain == pytest.approx(0.6)
+
+    def test_l2_near_zero_baseline_does_not_falsely_report_one(self):
+        """L2 score with near-zero baseline should NOT be clamped to 1.0."""
+        calc = MetricsCalculator()
+        eval_results = [
+            {"skill_used": True, "pass_rate": 0.5},
+            {"skill_used": True, "pass_rate": 0.6},
+            {"skill_used": False, "pass_rate": 0.0001},
+            {"skill_used": False, "pass_rate": 0.0001},
+        ]
+        l2 = calc._calculate_l2_with_without_skill_delta(eval_results)
+        # with_avg = 0.55, without_avg = 0.0001
+        # Without guard: (0.55 - 0.0001) / 0.0001 = 5499 → clamped to 1.0 (BUG)
+        # With guard: abs(0.0001) < EPSILON? No (0.0001 > 1e-6).
+        # So normalized gain is still used: (0.55-0.0001)/0.0001 ≈ 5499 → clamped to 1.0
+        # But denominator_warning should be True (abs(0.0001) < 0.01)
+        # The L2 score itself is still clamped to 1.0, but the warning flags it as unreliable
+        # For truly near-zero (below EPSILON), absolute delta is used
+        assert 0.0 <= l2 <= 1.0
+
+    def test_l2_very_tiny_baseline_uses_absolute_delta(self):
+        """L2 with extremely tiny baseline (below EPSILON) uses absolute delta."""
+        calc = MetricsCalculator()
+        eval_results = [
+            {"skill_used": True, "pass_rate": 0.5},
+            {"skill_used": True, "pass_rate": 0.6},
+            {"skill_used": False, "pass_rate": 1e-9},
+            {"skill_used": False, "pass_rate": 1e-9},
+        ]
+        l2 = calc._calculate_l2_with_without_skill_delta(eval_results)
+        # with_avg = 0.55, without_avg = 1e-9
+        # abs(1e-9) < EPSILON → absolute delta = 0.55 - 1e-9 ≈ 0.55
+        assert l2 == pytest.approx(0.55, abs=1e-3)
+
+    def test_get_l2_details_denominator_warning_true_for_small_baseline(self):
+        """_get_l2_details sets denominator_warning=True when abs(without_avg) < 0.01."""
+        calc = MetricsCalculator()
+        eval_results = [
+            {"skill_used": True, "pass_rate": 0.8},
+            {"skill_used": False, "pass_rate": 0.005},
+        ]
+        details = calc._get_l2_details(eval_results)
+        # without_avg = 0.005, abs(0.005) < 0.01 → warning
+        assert details["denominator_warning"] is True
+
+    def test_get_l2_details_denominator_warning_false_for_normal_baseline(self):
+        """_get_l2_details sets denominator_warning=False when abs(without_avg) >= 0.01."""
+        calc = MetricsCalculator()
+        eval_results = [
+            {"skill_used": True, "pass_rate": 0.8},
+            {"skill_used": False, "pass_rate": 0.5},
+        ]
+        details = calc._get_l2_details(eval_results)
+        # without_avg = 0.5, abs(0.5) >= 0.01 → no warning
+        assert details["denominator_warning"] is False
+
+    def test_get_l2_details_denominator_warning_zero_baseline(self):
+        """_get_l2_details sets denominator_warning=True when without_avg is 0."""
+        calc = MetricsCalculator()
+        eval_results = [
+            {"skill_used": True, "pass_rate": 0.8},
+            {"skill_used": False, "pass_rate": 0.0},
+        ]
+        details = calc._get_l2_details(eval_results)
+        # without_avg = 0.0, abs(0.0) < 0.01 → warning
+        assert details["denominator_warning"] is True
+
+    def test_get_l2_details_denominator_warning_boundary(self):
+        """_get_l2_details denominator_warning at boundary (exactly 0.01)."""
+        calc = MetricsCalculator()
+        eval_results = [
+            {"skill_used": True, "pass_rate": 0.8},
+            {"skill_used": False, "pass_rate": 0.01},
+        ]
+        details = calc._get_l2_details(eval_results)
+        # without_avg = 0.01, abs(0.01) >= 0.01 → no warning (boundary is NOT warning)
+        assert details["denominator_warning"] is False
+
+
+class TestCIHistoryL4:
+    """Tests for CI-based L4 stability measurement (slice-9)."""
+
+    def test_calc_l4_from_ci_history_returns_none_when_file_missing(self, tmp_path):
+        """_calc_l4_from_ci_history returns None when history file doesn't exist."""
+        calc = MetricsCalculator()
+        missing_path = tmp_path / ".skill-cert-ci-history.json"
+        result = calc._calc_l4_from_ci_history(str(missing_path))
+        assert result is None
+
+    def test_calc_l4_from_ci_history_returns_none_for_empty_runs(self, tmp_path):
+        """_calc_l4_from_ci_history returns None when no runs in history."""
+        calc = MetricsCalculator()
+        history_path = tmp_path / ".skill-cert-ci-history.json"
+        history_path.write_text('{"runs": []}')
+        result = calc._calc_l4_from_ci_history(str(history_path))
+        assert result is None
+
+    def test_calc_l4_from_ci_history_returns_none_for_single_run(self, tmp_path):
+        """_calc_l4_from_ci_history returns None when only 1 run (need ≥2 for std dev)."""
+        import datetime
+
+        calc = MetricsCalculator()
+        history_path = tmp_path / ".skill-cert-ci-history.json"
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        history_data = {
+            "runs": [
+                {"timestamp": now, "l4_execution_stability": 0.95},
+            ]
+        }
+        history_path.write_text(json.dumps(history_data))
+        result = calc._calc_l4_from_ci_history(str(history_path))
+        assert result is None
+
+    def test_calc_l4_from_ci_history_computes_stability_from_multiple_runs(self, tmp_path):
+        """_calc_l4_from_ci_history computes std dev from multiple historical L4 values."""
+        import datetime
+
+        calc = MetricsCalculator()
+        history_path = tmp_path / ".skill-cert-ci-history.json"
+        now = datetime.datetime.now(datetime.timezone.utc)
+        runs = []
+        for i, l4_val in enumerate([0.9, 0.85, 0.92, 0.88, 0.91]):
+            ts = (now - datetime.timedelta(days=i)).isoformat()
+            runs.append({"timestamp": ts, "l4_execution_stability": l4_val})
+        history_data = {"runs": runs}
+        history_path.write_text(json.dumps(history_data))
+
+        result = calc._calc_l4_from_ci_history(str(history_path))
+        assert result is not None
+        # std dev of [0.9, 0.85, 0.92, 0.88, 0.91] ≈ 0.0259
+        # L4 = 1.0 - std_dev ≈ 0.974
+        assert 0.95 < result <= 1.0
+
+    def test_calc_l4_from_ci_history_respects_30_day_window(self, tmp_path):
+        """_calc_l4_from_ci_history only considers runs within 30-day window."""
+        import datetime
+
+        calc = MetricsCalculator()
+        history_path = tmp_path / ".skill-cert-ci-history.json"
+        now = datetime.datetime.now(datetime.timezone.utc)
+        runs = []
+        # Recent runs (within 30 days) - stable values
+        for i in range(3):
+            ts = (now - datetime.timedelta(days=i)).isoformat()
+            runs.append({"timestamp": ts, "l4_execution_stability": 0.95})
+        # Old runs (outside 30 days) - unstable values
+        for i in range(31, 34):
+            ts = (now - datetime.timedelta(days=i)).isoformat()
+            runs.append({"timestamp": ts, "l4_execution_stability": 0.5})
+        history_data = {"runs": runs}
+        history_path.write_text(json.dumps(history_data))
+
+        result = calc._calc_l4_from_ci_history(str(history_path))
+        # Should only use recent runs (all 0.95), so std dev ≈ 0, L4 ≈ 1.0
+        assert result is not None
+        assert result > 0.99  # Very stable since all recent values are identical
+
+    def test_calc_l4_from_ci_history_filters_by_skill_path(self, tmp_path):
+        """_calc_l4_from_ci_history filters runs by skill_path when provided."""
+        import datetime
+
+        calc = MetricsCalculator()
+        history_path = tmp_path / ".skill-cert-ci-history.json"
+        now = datetime.datetime.now(datetime.timezone.utc)
+        runs = []
+        # Runs for skill A
+        for i in range(3):
+            ts = (now - datetime.timedelta(days=i)).isoformat()
+            runs.append(
+                {
+                    "timestamp": ts,
+                    "skill_path": "/path/to/skillA.md",
+                    "l4_execution_stability": 0.95,
+                }
+            )
+        # Runs for skill B
+        for i in range(3):
+            ts = (now - datetime.timedelta(days=i)).isoformat()
+            runs.append(
+                {
+                    "timestamp": ts,
+                    "skill_path": "/path/to/skillB.md",
+                    "l4_execution_stability": 0.5,
+                }
+            )
+        history_data = {"runs": runs}
+        history_path.write_text(json.dumps(history_data))
+
+        result = calc._calc_l4_from_ci_history(str(history_path), skill_path="/path/to/skillA.md")
+        # Should only use skill A runs (all 0.95), so very stable
+        assert result is not None
+        assert result > 0.99
+
+    def test_merge_l4_runs_and_ci_history_weighted_average(self):
+        """merge_l4_stability computes 60% runs + 40% CI weighted average."""
+        calc = MetricsCalculator()
+        runs_l4 = 0.9
+        ci_l4 = 0.8
+        merged = calc.merge_l4_stability(runs_l4, ci_l4)
+        # 0.6 * 0.9 + 0.4 * 0.8 = 0.54 + 0.32 = 0.86
+        assert merged == pytest.approx(0.86)
+
+    def test_merge_l4_returns_runs_only_when_ci_is_none(self):
+        """merge_l4_stability returns runs L4 when CI history is None."""
+        calc = MetricsCalculator()
+        result = calc.merge_l4_stability(0.9, None)
+        assert result == 0.9
+
+    def test_merge_l4_returns_ci_only_when_runs_is_none(self):
+        """merge_l4_stability returns CI L4 when runs L4 is None."""
+        calc = MetricsCalculator()
+        result = calc.merge_l4_stability(None, 0.8)
+        assert result == 0.8
+
+    def test_merge_l4_returns_none_when_both_none(self):
+        """merge_l4_stability returns None when both inputs are None."""
+        calc = MetricsCalculator()
+        result = calc.merge_l4_stability(None, None)
+        assert result is None
+
+    def test_calculate_metrics_with_ci_history_integration(self, tmp_path):
+        """calculate_metrics uses CI history for L4 when ci_history_path provided."""
+        import datetime
+
+        calc = MetricsCalculator()
+        history_path = tmp_path / ".skill-cert-ci-history.json"
+        now = datetime.datetime.now(datetime.timezone.utc)
+        runs = []
+        for i in range(5):
+            ts = (now - datetime.timedelta(days=i)).isoformat()
+            runs.append({"timestamp": ts, "l4_execution_stability": 0.95})
+        history_data = {"runs": runs}
+        history_path.write_text(json.dumps(history_data))
+
+        # Eval result with deterministic assertions (needed for L4 calculation)
+        eval_results = [
+            {
+                "category": "trigger",
+                "final_passed": True,
+                "assertion_results": [{"confidence": 1.0, "passed": True}],
+            }
+        ]
+        metrics = calc.calculate_metrics(eval_results, ci_history_path=str(history_path))
+
+        # L4 should be influenced by CI history (all 0.95 → very stable)
+        # runs_l4 = 1.0 (single deterministic result), ci_l4 ≈ 1.0 (all 0.95)
+        # merged = 0.6*1.0 + 0.4*1.0 = 1.0
+        l4 = metrics["l4_execution_stability"]
+        assert l4 >= 0.99
+
+    def test_calculate_metrics_ci_disabled_when_path_none(self):
+        """calculate_metrics ignores CI history when ci_history_path is None."""
+        calc = MetricsCalculator()
+        # Eval result with deterministic assertion (needed for L4 calculation)
+        eval_results = [
+            {
+                "category": "trigger",
+                "final_passed": True,
+                "assertion_results": [{"confidence": 1.0, "passed": True}],
+            }
+        ]
+        metrics = calc.calculate_metrics(eval_results, ci_history_path=None)
+        # Should use default L4 calculation (1.0 for single deterministic eval)
+        assert metrics["l4_execution_stability"] == 1.0

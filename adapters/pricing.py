@@ -1,5 +1,9 @@
 """Model pricing table — converts token usage to $ cost."""
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _MODEL_PRICING = {
     # Anthropic Claude family (per 1M tokens)
     "claude-sonnet-4-5-20250514": {"input_per_m": 3.0, "output_per_m": 15.0},
@@ -34,7 +38,18 @@ class ModelPricing:
         self.models: dict[str, dict[str, float]] = dict(_MODEL_PRICING)
 
     def get_model_price(self, model_name: str) -> dict[str, float] | None:
-        return self.models.get(model_name)
+        price = self.models.get(model_name)
+        if price is not None:
+            return price
+        for known_name, known_price in self.models.items():
+            if model_name.startswith(known_name):
+                logger.warning(
+                    "Model '%s' not in pricing table, falling back to prefix match '%s'",
+                    model_name,
+                    known_name,
+                )
+                return known_price
+        return None
 
     def add_model(self, model_name: str, input_per_m: float, output_per_m: float):
         self.models[model_name] = {"input_per_m": input_per_m, "output_per_m": output_per_m}

@@ -345,7 +345,6 @@ def test_run_single_exception_inner_without():
     assert "Unexpected error" in results[1].get("error", "")
 
 
-
 def test_run_with_skill_progress_logging(caplog):
     """run_with_skill logs per-eval progress at completion points."""
     caplog.set_level("INFO")
@@ -496,9 +495,7 @@ def test_prepare_input_reads_skill_file(tmp_path):
     runner = EvalRunner()
     skill_file = tmp_path / "SKILL.md"
     skill_file.write_text("line1\nline2\nline3\n")
-    result = runner._prepare_input(
-        {"input": "do something"}, str(skill_file), with_skill=True
-    )
+    result = runner._prepare_input({"input": "do something"}, str(skill_file), with_skill=True)
     assert "line1" in result
     assert "line2" in result
     assert "line3" in result
@@ -574,11 +571,13 @@ def test_run_with_skill_deadline_expired_in_loop():
     ]
 
     adapter = Mock()
-    adapter.chat = Mock(side_effect=[
-        "fast response",
-        Exception("fail fast"),
-        Exception("another fast fail"),
-    ])
+    adapter.chat = Mock(
+        side_effect=[
+            "fast response",
+            Exception("fail fast"),
+            Exception("another fast fail"),
+        ]
+    )
     adapter.model_name = "test-model"
 
     dl = Deadline(max_total_time=0.001)
@@ -612,11 +611,13 @@ def test_run_without_skill_deadline_expired_in_loop():
     ]
 
     adapter = Mock()
-    adapter.chat = Mock(side_effect=[
-        "fast response",
-        Exception("fail fast"),
-        Exception("another fast fail"),
-    ])
+    adapter.chat = Mock(
+        side_effect=[
+            "fast response",
+            Exception("fail fast"),
+            Exception("another fast fail"),
+        ]
+    )
     adapter.model_name = "test-model"
 
     dl = Deadline(max_total_time=0.001)
@@ -644,6 +645,65 @@ def test_calc_cost_with_model():
     pricing.calculate_cost.assert_called_once_with(100, 50, "test-model")
 
 
+def test_calc_cost_accepts_model_name_parameter():
+    """_calc_cost accepts model_name parameter instead of using self.model_name."""
+    pricing = MagicMock()
+    pricing.calculate_cost.return_value = 0.012
+
+    runner = EvalRunner()  # self.model_name is None
+    runner._pricing = pricing
+
+    cost = runner._calc_cost(
+        {"prompt_tokens": 200, "completion_tokens": 100}, model_name="qwen3.6-plus"
+    )
+    assert cost == 0.012
+    pricing.calculate_cost.assert_called_once_with(200, 100, "qwen3.6-plus")
+
+
+def test_calc_cost_model_name_param_overrides_self():
+    """_calc_cost model_name parameter takes precedence over self.model_name."""
+    pricing = MagicMock()
+    pricing.calculate_cost.return_value = 0.007
+
+    runner = EvalRunner(model_name="self-model")
+    runner._pricing = pricing
+
+    cost = runner._calc_cost(
+        {"prompt_tokens": 100, "completion_tokens": 50}, model_name="param-model"
+    )
+    assert cost == 0.007
+    pricing.calculate_cost.assert_called_once_with(100, 50, "param-model")
+
+
+def test_run_single_uses_per_call_model_for_cost():
+    """_run_single uses adapter's model_name for cost even when self.model_name is None."""
+    pricing = MagicMock()
+    pricing.calculate_cost.return_value = 0.025
+
+    runner = EvalRunner(max_concurrency=1, rate_limit_rpm=300, request_timeout=10)
+    runner._pricing = pricing
+    # self.model_name is None — bug would skip cost calculation entirely
+
+    adapter = MockModelAdapter(["response text"], model_name="qwen3.6-plus")
+
+    eval_case = {
+        "id": 1,
+        "name": "cost-test",
+        "category": "normal",
+        "input": "test input",
+        "assertions": [],
+    }
+
+    result = runner._run_single(eval_case, None, adapter, with_skill=False)
+    assert result["error"] is None
+    # Cost should be calculated using adapter's model_name, not skipped
+    assert result["cost"] == 0.025
+    pricing.calculate_cost.assert_called()
+    # Verify the model_name passed to calculate_cost is the adapter's model
+    call_args = pricing.calculate_cost.call_args
+    assert call_args[0][2] == "qwen3.6-plus"
+
+
 def test_run_with_skill_future_exception():
     """Covers run_with_skill lines 266-267: exception in future.result()."""
     runner = EvalRunner(max_concurrency=1, rate_limit_rpm=300, request_timeout=3)
@@ -658,7 +718,8 @@ def test_run_with_skill_future_exception():
     import engine.runner as _runner_mod
 
     with patch.object(
-        _runner_mod.EvalRunner, "_run_single",
+        _runner_mod.EvalRunner,
+        "_run_single",
         side_effect=ValueError("future boom"),
     ):
         results = runner.run_with_skill(evals, "/path/to/skill", adapter)
@@ -679,6 +740,7 @@ def test_run_without_skill_future_exception():
     adapter.model_name = "test-model"
 
     import engine.runner as _runner_mod
+
     with patch.object(_runner_mod.EvalRunner, "_run_single", side_effect=ValueError("future boom")):
         results = runner.run_without_skill(evals, adapter)
 
@@ -695,7 +757,9 @@ def test_run_with_skill_deadline_exception_collect():
     runner = EvalRunner(max_concurrency=2, rate_limit_rpm=300, request_timeout=3)
     evals = [
         {
-            "id": i, "name": f"eval-{i}", "input": f"input {i}",
+            "id": i,
+            "name": f"eval-{i}",
+            "input": f"input {i}",
             "assertions": [{"type": "contains", "value": "ok", "weight": 1}],
         }
         for i in range(2)
@@ -714,16 +778,12 @@ def test_run_with_skill_deadline_exception_collect():
 
     with patch("engine.runner.ThreadPoolExecutor") as mock_executor_cls:
         mock_executor = MagicMock()
-        mock_executor_cls.return_value.__enter__ = MagicMock(
-            return_value=mock_executor
-        )
+        mock_executor_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
         mock_executor_cls.return_value.__exit__ = MagicMock(return_value=False)
         mock_executor.submit.return_value = failing_future
 
         with patch("engine.runner.as_completed", return_value=iter([failing_future])):
-            results = runner.run_with_skill(
-                evals, "/path/to/skill", adapter, deadline=dl
-            )
+            results = runner.run_with_skill(evals, "/path/to/skill", adapter, deadline=dl)
 
     assert any("error" in r for r in results)
 
@@ -736,7 +796,9 @@ def test_run_without_skill_deadline_expired_future_exception():
     runner = EvalRunner(max_concurrency=2, rate_limit_rpm=300, request_timeout=3)
     evals = [
         {
-            "id": i, "name": f"eval-{i}", "input": f"input {i}",
+            "id": i,
+            "name": f"eval-{i}",
+            "input": f"input {i}",
             "assertions": [{"type": "contains", "value": "ok", "weight": 1}],
         }
         for i in range(2)
@@ -755,9 +817,7 @@ def test_run_without_skill_deadline_expired_future_exception():
 
     with patch("engine.runner.ThreadPoolExecutor") as mock_executor_cls:
         mock_executor = MagicMock()
-        mock_executor_cls.return_value.__enter__ = MagicMock(
-            return_value=mock_executor
-        )
+        mock_executor_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
         mock_executor_cls.return_value.__exit__ = MagicMock(return_value=False)
         mock_executor.submit.return_value = failing_future
 

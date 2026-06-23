@@ -40,9 +40,7 @@ class TestChat:
 
     def test_chat_basic_user_message(self, adapter):
         """chat() should format user messages and return content string."""
-        mock_resp = _mock_response(
-            {"content": [{"type": "text", "text": "Hello!"}], "usage": {}}
-        )
+        mock_resp = _mock_response({"content": [{"type": "text", "text": "Hello!"}], "usage": {}})
         with patch.object(adapter.session, "post", return_value=mock_resp) as mock_post:
             result = adapter.chat([{"role": "user", "content": "Hi"}])
 
@@ -55,9 +53,7 @@ class TestChat:
 
     def test_chat_with_system_prompt(self, adapter):
         """chat() should include system prompt in payload when provided."""
-        mock_resp = _mock_response(
-            {"content": [{"type": "text", "text": "OK"}], "usage": {}}
-        )
+        mock_resp = _mock_response({"content": [{"type": "text", "text": "OK"}], "usage": {}})
         with patch.object(adapter.session, "post", return_value=mock_resp) as mock_post:
             result = adapter.chat(
                 [{"role": "user", "content": "Hi"}],
@@ -70,9 +66,7 @@ class TestChat:
 
     def test_chat_filters_non_user_assistant_roles(self, adapter):
         """chat() should filter out messages with roles other than user/assistant."""
-        mock_resp = _mock_response(
-            {"content": [{"type": "text", "text": "filtered"}], "usage": {}}
-        )
+        mock_resp = _mock_response({"content": [{"type": "text", "text": "filtered"}], "usage": {}})
         messages = [
             {"role": "user", "content": "Hello"},
             {"role": "system", "content": "ignored"},
@@ -101,9 +95,7 @@ class TestChat:
 
     def test_chat_empty_messages(self, adapter):
         """chat() with empty messages should send empty list."""
-        mock_resp = _mock_response(
-            {"content": [{"type": "text", "text": "empty"}], "usage": {}}
-        )
+        mock_resp = _mock_response({"content": [{"type": "text", "text": "empty"}], "usage": {}})
         with patch.object(adapter.session, "post", return_value=mock_resp) as mock_post:
             result = adapter.chat([])
 
@@ -150,9 +142,7 @@ class TestChatWithUsage:
             }
         )
         with patch.object(adapter.session, "post", return_value=mock_resp) as mock_post:
-            content, usage = adapter.chat_with_usage(
-                [{"role": "user", "content": "test"}]
-            )
+            content, usage = adapter.chat_with_usage([{"role": "user", "content": "test"}])
 
         assert content == "resp"
         payload = mock_post.call_args.kwargs["json"]
@@ -174,29 +164,34 @@ class TestBatchChat:
             _mock_response({"content": [{"type": "text", "text": "B"}], "usage": {}}),
         ]
         with patch.object(adapter.session, "post", side_effect=responses):
-            results = adapter.batch_chat([
-                {"messages": [{"role": "user", "content": "1"}]},
-                {"messages": [{"role": "user", "content": "2"}]},
-            ])
+            results = adapter.batch_chat(
+                [
+                    {"messages": [{"role": "user", "content": "1"}]},
+                    {"messages": [{"role": "user", "content": "2"}]},
+                ]
+            )
 
         assert results == ["A", "B"]
 
     def test_batch_chat_with_error(self, adapter):
         """batch_chat() should catch exceptions and return error strings."""
-        ok_resp = _mock_response(
-            {"content": [{"type": "text", "text": "OK"}], "usage": {}}
-        )
+        ok_resp = _mock_response({"content": [{"type": "text", "text": "OK"}], "usage": {}})
         # _request_with_usage retries 3 times, so need 3 failures for the 2nd request
         fail = RuntimeError("API down")
-        with patch.object(
-            adapter.session,
-            "post",
-            side_effect=[ok_resp, fail, fail, fail],
-        ), patch("adapters.anthropic_compat.time.sleep"):
-            results = adapter.batch_chat([
-                {"messages": [{"role": "user", "content": "good"}]},
-                {"messages": [{"role": "user", "content": "bad"}]},
-            ])
+        with (
+            patch.object(
+                adapter.session,
+                "post",
+                side_effect=[ok_resp, fail, fail, fail],
+            ),
+            patch("adapters.anthropic_compat.time.sleep"),
+        ):
+            results = adapter.batch_chat(
+                [
+                    {"messages": [{"role": "user", "content": "good"}]},
+                    {"messages": [{"role": "user", "content": "bad"}]},
+                ]
+            )
 
         assert results[0] == "OK"
         assert results[1].startswith("ERROR:")
@@ -205,15 +200,20 @@ class TestBatchChat:
     def test_batch_chat_all_errors(self, adapter):
         """batch_chat() should handle all requests failing."""
         fail = ConnectionError("fail")
-        with patch.object(
-            adapter.session,
-            "post",
-            side_effect=[fail] * 6,
-        ), patch("adapters.anthropic_compat.time.sleep"):
-            results = adapter.batch_chat([
-                {"messages": [{"role": "user", "content": "a"}]},
-                {"messages": [{"role": "user", "content": "b"}]},
-            ])
+        with (
+            patch.object(
+                adapter.session,
+                "post",
+                side_effect=[fail] * 6,
+            ),
+            patch("adapters.anthropic_compat.time.sleep"),
+        ):
+            results = adapter.batch_chat(
+                [
+                    {"messages": [{"role": "user", "content": "a"}]},
+                    {"messages": [{"role": "user", "content": "b"}]},
+                ]
+            )
 
         assert all(r.startswith("ERROR:") for r in results)
 
@@ -224,16 +224,16 @@ class TestBatchChat:
 
     def test_batch_chat_with_system_in_request(self, adapter):
         """batch_chat() should pass system from request dict."""
-        mock_resp = _mock_response(
-            {"content": [{"type": "text", "text": "sys"}], "usage": {}}
-        )
+        mock_resp = _mock_response({"content": [{"type": "text", "text": "sys"}], "usage": {}})
         with patch.object(adapter.session, "post", return_value=mock_resp) as mock_post:
-            results = adapter.batch_chat([
-                {
-                    "messages": [{"role": "user", "content": "hi"}],
-                    "system": "Be brief.",
-                }
-            ])
+            results = adapter.batch_chat(
+                [
+                    {
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "system": "Be brief.",
+                    }
+                ]
+            )
 
         assert results == ["sys"]
         payload = mock_post.call_args.kwargs["json"]
@@ -241,9 +241,7 @@ class TestBatchChat:
 
     def test_batch_chat_missing_messages_key(self, adapter):
         """batch_chat() should handle request dict without 'messages' key."""
-        mock_resp = _mock_response(
-            {"content": [{"type": "text", "text": "default"}], "usage": {}}
-        )
+        mock_resp = _mock_response({"content": [{"type": "text", "text": "default"}], "usage": {}})
         with patch.object(adapter.session, "post", return_value=mock_resp):
             results = adapter.batch_chat([{}])
 
@@ -322,9 +320,10 @@ class TestRequestWithUsage:
             }
         )
 
-        with patch.object(
-            adapter.session, "post", side_effect=[fail_resp, success_resp]
-        ), patch("adapters.anthropic_compat.time.sleep") as mock_sleep:
+        with (
+            patch.object(adapter.session, "post", side_effect=[fail_resp, success_resp]),
+            patch("adapters.anthropic_compat.time.sleep") as mock_sleep,
+        ):
             content, usage = adapter._request_with_usage(
                 {"model": "test", "max_tokens": 100, "messages": []},
                 max_retries=3,
@@ -339,9 +338,10 @@ class TestRequestWithUsage:
         fail_resp = MagicMock()
         fail_resp.raise_for_status.side_effect = RuntimeError("persistent error")
 
-        with patch.object(
-            adapter.session, "post", return_value=fail_resp
-        ), patch("adapters.anthropic_compat.time.sleep") as mock_sleep:
+        with (
+            patch.object(adapter.session, "post", return_value=fail_resp),
+            patch("adapters.anthropic_compat.time.sleep") as mock_sleep,
+        ):
             with pytest.raises(RuntimeError, match="persistent error"):
                 adapter._request_with_usage(
                     {"model": "test", "max_tokens": 100, "messages": []},
@@ -358,9 +358,10 @@ class TestRequestWithUsage:
         fail_resp = MagicMock()
         fail_resp.raise_for_status.side_effect = RuntimeError("immediate fail")
 
-        with patch.object(
-            adapter.session, "post", return_value=fail_resp
-        ), patch("adapters.anthropic_compat.time.sleep") as mock_sleep:
+        with (
+            patch.object(adapter.session, "post", return_value=fail_resp),
+            patch("adapters.anthropic_compat.time.sleep") as mock_sleep,
+        ):
             with pytest.raises(RuntimeError, match="immediate fail"):
                 adapter._request_with_usage(
                     {"model": "test", "max_tokens": 100, "messages": []},
@@ -388,9 +389,7 @@ class TestRequestWithUsage:
 
     def test_missing_usage_fields_default_to_zero(self, adapter):
         """Should default to 0 when usage fields are missing."""
-        mock_resp = _mock_response(
-            {"content": [{"type": "text", "text": "ok"}], "usage": {}}
-        )
+        mock_resp = _mock_response({"content": [{"type": "text", "text": "ok"}], "usage": {}})
         with patch.object(adapter.session, "post", return_value=mock_resp):
             _, usage = adapter._request_with_usage(
                 {"model": "test", "max_tokens": 100, "messages": []}
@@ -402,9 +401,7 @@ class TestRequestWithUsage:
 
     def test_missing_usage_key_defaults_to_zero(self, adapter):
         """Should default to 0 when 'usage' key is absent entirely."""
-        mock_resp = _mock_response(
-            {"content": [{"type": "text", "text": "ok"}]}
-        )
+        mock_resp = _mock_response({"content": [{"type": "text", "text": "ok"}]})
         with patch.object(adapter.session, "post", return_value=mock_resp):
             _, usage = adapter._request_with_usage(
                 {"model": "test", "max_tokens": 100, "messages": []}

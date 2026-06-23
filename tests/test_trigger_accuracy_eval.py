@@ -25,10 +25,10 @@ class TestTriggerAccuracyEval:
     def test_evaluate_some_failures(self):
         evaluator = TriggerAccuracyEval()
         results = [
-            {"category": "trigger", "negative_case": False, "final_passed": True},   # TP
+            {"category": "trigger", "negative_case": False, "final_passed": True},  # TP
             {"category": "trigger", "negative_case": False, "final_passed": False},  # FN
-            {"category": "trigger", "negative_case": True, "final_passed": True},    # TN
-            {"category": "trigger", "negative_case": True, "final_passed": False},   # FP
+            {"category": "trigger", "negative_case": True, "final_passed": True},  # TN
+            {"category": "trigger", "negative_case": True, "final_passed": False},  # FP
         ]
         r = evaluator.evaluate(results)
         assert r.tp == 1
@@ -119,12 +119,18 @@ class TestTriggerAccuracyEval:
         evaluator = TriggerAccuracyEval()
         results = [
             {
-                "category": "trigger", "negative_case": False,
-                "final_passed": True, "eval_id": "e1", "eval_name": "test",
+                "category": "trigger",
+                "negative_case": False,
+                "final_passed": True,
+                "eval_id": "e1",
+                "eval_name": "test",
             },
             {
-                "category": "trigger", "negative_case": True,
-                "final_passed": False, "eval_id": "e2", "eval_name": "neg",
+                "category": "trigger",
+                "negative_case": True,
+                "final_passed": False,
+                "eval_id": "e2",
+                "eval_name": "neg",
             },
         ]
         r = evaluator.evaluate(results)

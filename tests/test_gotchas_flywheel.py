@@ -40,12 +40,16 @@ class TestGotchasFlywheel:
             "pass_rate": 0.25,
             "assertion_results": [
                 {
-                    "passed": False, "assertion_type": "contains",
-                    "expected": "foo", "description": "check foo",
+                    "passed": False,
+                    "assertion_type": "contains",
+                    "expected": "foo",
+                    "description": "check foo",
                 },
                 {
-                    "passed": True, "assertion_type": "regex",
-                    "expected": "bar", "description": "check bar",
+                    "passed": True,
+                    "assertion_type": "regex",
+                    "expected": "bar",
+                    "description": "check bar",
                 },
             ],
         }
@@ -92,21 +96,30 @@ class TestGotchasFlywheel:
             flywheel = GotchasFlywheel(gotchas_dir=tmpdir)
             graded_results = [
                 {
-                    "final_passed": False, "eval_name": "fail1",
-                    "eval_id": "e1", "category": "trigger",
-                    "negative_case": False, "pass_rate": 0.0,
+                    "final_passed": False,
+                    "eval_name": "fail1",
+                    "eval_id": "e1",
+                    "category": "trigger",
+                    "negative_case": False,
+                    "pass_rate": 0.0,
                     "assertion_results": [],
                 },
                 {
-                    "final_passed": True, "eval_name": "pass1",
-                    "eval_id": "e2", "category": "trigger",
-                    "negative_case": False, "pass_rate": 1.0,
+                    "final_passed": True,
+                    "eval_name": "pass1",
+                    "eval_id": "e2",
+                    "category": "trigger",
+                    "negative_case": False,
+                    "pass_rate": 1.0,
                     "assertion_results": [],
                 },
                 {
-                    "final_passed": False, "eval_name": "fail2",
-                    "eval_id": "e3", "category": "boundary",
-                    "negative_case": True, "pass_rate": 0.0,
+                    "final_passed": False,
+                    "eval_name": "fail2",
+                    "eval_id": "e3",
+                    "category": "boundary",
+                    "negative_case": True,
+                    "pass_rate": 0.0,
                     "assertion_results": [],
                 },
             ]
@@ -119,8 +132,15 @@ class TestGotchasFlywheel:
         with tempfile.TemporaryDirectory() as tmpdir:
             flywheel = GotchasFlywheel(gotchas_dir=tmpdir)
             graded_results = [
-                {"final_passed": True, "eval_name": "p1", "eval_id": "e1", "category": "trigger",
-                 "negative_case": False, "pass_rate": 1.0, "assertion_results": []},
+                {
+                    "final_passed": True,
+                    "eval_name": "p1",
+                    "eval_id": "e1",
+                    "category": "trigger",
+                    "negative_case": False,
+                    "pass_rate": 1.0,
+                    "assertion_results": [],
+                },
             ]
             count = flywheel.process_failures(graded_results)
             assert count == 0

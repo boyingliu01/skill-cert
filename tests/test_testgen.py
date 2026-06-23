@@ -951,5 +951,361 @@ def test_normalize_eval_case_negative_case(input_case, expected):
     )
 
 
+class TestPrepareGenerationPromptBranching:
+    """Test _prepare_generation_prompt branches on skill_type."""
+
+    def test_prompt_for_agent_guide_default(self):
+        """Default agent_guide skill_type produces standard eval prompt."""
+        generator = EvalGenerator()
+        skill_spec = {
+            "name": "review-skill",
+            "description": "A code review skill",
+            "skill_type": "agent_guide",
+            "triggers": ["review"],
+            "workflow_steps": [{"name": "Read code"}],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        prompt = generator._prepare_generation_prompt(skill_spec)
+        assert "workflow" in prompt.lower() or "Workflow" in prompt
+        assert "trigger" in prompt.lower() or "Trigger" in prompt
+        assert "cli" not in prompt.lower().split("skill")[0]
+
+    def test_prompt_for_cli_tool(self):
+        """CLI tool skill_type produces prompt with CLI-specific eval guidance."""
+        generator = EvalGenerator()
+        skill_spec = {
+            "name": "skill-cert",
+            "description": "AI Skill Evaluation Engine",
+            "skill_type": "cli_tool",
+            "triggers": ["evaluate"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        prompt = generator._prepare_generation_prompt(skill_spec)
+        assert "cli" in prompt.lower() or "command" in prompt.lower()
+        assert "flag" in prompt.lower() or "exit" in prompt.lower() or "--" in prompt
+
+    def test_prompt_for_library(self):
+        """Library skill_type produces prompt with API/function-specific eval guidance."""
+        generator = EvalGenerator()
+        skill_spec = {
+            "name": "data-utils",
+            "description": "Data utility library",
+            "skill_type": "library",
+            "triggers": [],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        prompt = generator._prepare_generation_prompt(skill_spec)
+        assert "api" in prompt.lower() or "function" in prompt.lower() or "import" in prompt.lower()
+
+    def test_prompt_missing_skill_type_defaults_to_agent_guide(self):
+        """Missing skill_type key should behave as agent_guide (backward compat)."""
+        generator = EvalGenerator()
+        skill_spec = {
+            "name": "old-skill",
+            "description": "No skill_type field",
+            "triggers": ["test"],
+            "workflow_steps": [{"name": "Step 1"}],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        prompt = generator._prepare_generation_prompt(skill_spec)
+        assert "trigger" in prompt.lower() or "Trigger" in prompt
+        assert "workflow" in prompt.lower() or "Workflow" in prompt
+
+    def test_cli_prompt_includes_exit_code_guidance(self):
+        """CLI tool prompt should mention exit codes or return codes."""
+        generator = EvalGenerator()
+        skill_spec = {
+            "name": "my-cli",
+            "description": "A CLI tool",
+            "skill_type": "cli_tool",
+            "triggers": [],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        prompt = generator._prepare_generation_prompt(skill_spec)
+        prompt_lower = prompt.lower()
+        assert "exit" in prompt_lower or "return code" in prompt_lower or "non-zero" in prompt_lower
+
+
+# ---------------------------------------------------------------------------
+# Multi-strategy JSON extraction tests (slice-6)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractJson:
+    """Tests for _extract_json() — 4-level fallback JSON extraction."""
+
+    def test_strategy1_clean_json(self):
+        """Strategy 1: Clean JSON passes through directly."""
+        result = EvalGenerator._extract_json('{"eval_cases": [{"id": 1}]}')
+        assert result == {"eval_cases": [{"id": 1}]}
+
+    def test_strategy1_markdown_fenced_json(self):
+        """Strategy 1: JSON inside ```json fence."""
+        response = '```json\n{"eval_cases": [{"id": 1}]}\n```'
+        result = EvalGenerator._extract_json(response)
+        assert result == {"eval_cases": [{"id": 1}]}
+
+    def test_strategy1_json_with_prose_before(self):
+        """Strategy 1: JSON with prose before it."""
+        response = 'Here are the evals:\n{"eval_cases": [{"id": 1}]}'
+        result = EvalGenerator._extract_json(response)
+        assert result == {"eval_cases": [{"id": 1}]}
+
+    def test_strategy2_balanced_brace_extraction(self):
+        """Strategy 2: Extract outermost balanced braces when first{last} fails."""
+        # Multiple JSON objects — first{ to last} would span across them
+        response = '{"a": 1} some text {"b": 2}'
+        result = EvalGenerator._extract_json(response)
+        # Should extract the first valid JSON object
+        assert isinstance(result, dict)
+        assert "a" in result or "b" in result
+
+    def test_strategy2_nested_braces(self):
+        """Strategy 2: Handles nested braces correctly."""
+        response = 'prefix {"eval_cases": [{"id": 1, "assertions": [{"type": "contains"}]}]} suffix'
+        result = EvalGenerator._extract_json(response)
+        assert result is not None
+        assert result["eval_cases"][0]["id"] == 1
+
+    def test_strategy3_largest_first(self):
+        """Strategy 3: Try largest brace block first when smaller ones fail."""
+        # Outer JSON is valid but contains inner fragments that could confuse simpler parsers
+        response = 'noise {broken} {"eval_cases": [{"id": 1}]}'
+        result = EvalGenerator._extract_json(response)
+        assert isinstance(result, dict)
+        assert "eval_cases" in result
+
+    def test_strategy4_strict_false(self):
+        """Strategy 4: json.loads with strict=False handles control chars."""
+        response = '{"eval_cases": [{"id": 1, "name": "test\x01value"}]}'
+        result = EvalGenerator._extract_json(response)
+        assert isinstance(result, dict)
+
+    def test_all_strategies_fail_returns_none(self):
+        """When all strategies fail, returns None."""
+        result = EvalGenerator._extract_json("no json here at all")
+        assert result is None
+
+    def test_empty_string_returns_none(self):
+        """Empty string returns None."""
+        result = EvalGenerator._extract_json("")
+        assert result is None
+
+    def test_strategy2_prose_with_multiple_brace_groups(self):
+        """Strategy 2: Picks first valid balanced JSON from multiple groups."""
+        response = 'text {invalid stuff} more text {"valid": true} end'
+        result = EvalGenerator._extract_json(response)
+        assert isinstance(result, dict)
+
+    def test_json_with_array_at_top_level_not_extracted(self):
+        """Non-object JSON (arrays) — should still extract if wrapped in object."""
+        response = '{"eval_cases": [1, 2, 3]}'
+        result = EvalGenerator._extract_json(response)
+        assert result == {"eval_cases": [1, 2, 3]}
+
+
+class TestParseEvalsResponseMultiStrategy:
+    """Tests that _parse_evals_response uses multi-strategy extraction."""
+
+    def test_extracts_from_prose_with_multiple_json_objects(self):
+        """Parse evals when response has multiple JSON-like blocks."""
+        generator = EvalGenerator()
+        response = (
+            'Here is one example: {"old": true}\n'
+            "And here are the evals:\n"
+            '{"eval_cases": [{"id": 1, "name": "test", "category": "normal", '
+            '"input": "test", "expected_triggers": true, '
+            '"assertions": [{"type": "contains", "value": "test", "weight": 1}]}]}'
+        )
+        result = generator._parse_evals_response(response)
+        assert "eval_cases" in result
+        assert len(result["eval_cases"]) >= 1
+
+    def test_fallback_to_template_when_all_fail(self):
+        """All strategies fail → returns minimum_evals_template."""
+        generator = EvalGenerator()
+        result = generator._parse_evals_response("completely unparseable garbage!!!")
+        assert "eval_cases" in result or "evals" in result
+        assert result == generator.minimum_evals_template
+
+    def test_markdown_fenced_with_extra_prose(self):
+        """Markdown fence with prose around it."""
+        generator = EvalGenerator()
+        response = (
+            "Sure! Here are the evaluation cases:\n"
+            "```json\n"
+            '{"eval_cases": [{"id": 1, "name": "test", "category": "normal", '
+            '"input": "test", "expected_triggers": true, '
+            '"assertions": [{"type": "contains", "value": "test", "weight": 1}]}]}\n'
+            "```\n"
+            "Let me know if you need more!"
+        )
+        result = generator._parse_evals_response(response)
+        assert "eval_cases" in result
+        assert len(result["eval_cases"]) == 1
+
+
+class TestParseReviewResponseMultiStrategy:
+    """Tests that _parse_review_response uses multi-strategy extraction."""
+
+    def test_extracts_from_fenced_response(self):
+        """Parse review from markdown-fenced response."""
+        generator = EvalGenerator()
+        response = (
+            "```json\n"
+            '{"coverage": 0.85, "gaps": ["missing trigger test"], '
+            '"needs_improvement": true}\n'
+            "```"
+        )
+        result = generator._parse_review_response(response, 0.5)
+        assert result["coverage"] == 0.85
+        assert result["gaps"] == ["missing trigger test"]
+        assert result["needs_improvement"] is True
+
+    def test_extracts_from_prose_wrapped_response(self):
+        """Parse review when JSON is wrapped in prose."""
+        generator = EvalGenerator()
+        response = (
+            "Based on my review:\n"
+            '{"coverage": 0.9, "gaps": [], "needs_improvement": false}\n'
+            "This looks good."
+        )
+        result = generator._parse_review_response(response, 0.5)
+        assert result["coverage"] == 0.9
+        assert result["needs_improvement"] is False
+
+    def test_fallback_when_all_strategies_fail(self):
+        """All strategies fail → returns error dict with current coverage."""
+        generator = EvalGenerator()
+        result = generator._parse_review_response("garbage!!!", 0.6)
+        assert result["coverage"] == 0.6
+        assert result["needs_improvement"] is True
+
+
+class TestGenerateInitialEvalsRetry:
+    """Tests for retry logic in generate_initial_evals()."""
+
+    def test_retries_on_parse_failure(self):
+        """generate_initial_evals retries once when first parse fails."""
+        generator = EvalGenerator()
+        adapter = MockModelAdapter(
+            responses=[
+                "garbage that cannot be parsed as json!!!",
+                '{"eval_cases": [{"id": 1, "name": "test", "category": "normal", '
+                '"input": "test", "expected_triggers": true, '
+                '"assertions": [{"type": "contains", "value": "test", "weight": 1}]}]}',
+            ]
+        )
+        skill_spec = {
+            "name": "test-skill",
+            "description": "A test skill",
+            "triggers": ["test"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        result = generator.generate_initial_evals(skill_spec, adapter)
+        assert adapter.call_count == 2  # First attempt + 1 retry
+        assert "eval_cases" in result
+        assert len(result["eval_cases"]) >= 1
+
+    def test_returns_template_after_retry_failure(self):
+        """Both attempts fail → returns minimum_evals_template."""
+        generator = EvalGenerator()
+        adapter = MockModelAdapter(
+            responses=[
+                "garbage!!!",
+                "more garbage!!!",
+            ]
+        )
+        skill_spec = {
+            "name": "test-skill",
+            "description": "A test skill",
+            "triggers": ["test"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        result = generator.generate_initial_evals(skill_spec, adapter)
+        assert adapter.call_count == 2
+        assert result == generator.minimum_evals_template
+
+    def test_no_retry_on_success(self):
+        """First attempt succeeds → no retry."""
+        generator = EvalGenerator()
+        adapter = MockModelAdapter(
+            responses=[
+                '{"eval_cases": [{"id": 1, "name": "test", "category": "normal", '
+                '"input": "test", "expected_triggers": true, '
+                '"assertions": [{"type": "contains", "value": "test", "weight": 1}]}]}',
+            ]
+        )
+        skill_spec = {
+            "name": "test-skill",
+            "description": "A test skill",
+            "triggers": ["test"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        result = generator.generate_initial_evals(skill_spec, adapter)
+        assert adapter.call_count == 1
+        assert "eval_cases" in result
+
+    def test_retry_sends_json_only_hint(self):
+        """Retry includes explicit JSON-only system hint."""
+        generator = EvalGenerator()
+        calls_made = []
+
+        class TrackingAdapter:
+            def __init__(self):
+                self.skill_spec = {}
+                self.call_count = 0
+
+            def chat(self, messages, **kwargs):
+                calls_made.append(messages)
+                self.call_count += 1
+                if self.call_count == 1:
+                    return "garbage!!!"
+                return (
+                    '{"eval_cases": [{"id": 1, "name": "test", "category": "normal", '
+                    '"input": "test", "expected_triggers": true, '
+                    '"assertions": [{"type": "contains", "value": "test", "weight": 1}]}]}'
+                )
+
+        adapter = TrackingAdapter()
+        skill_spec = {
+            "name": "test-skill",
+            "description": "A test skill",
+            "triggers": ["test"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        generator.generate_initial_evals(skill_spec, adapter)
+        assert len(calls_made) == 2
+        # Second call should have a system hint about JSON-only
+        second_messages = calls_made[1]
+        has_json_hint = any("JSON" in str(m) or "json" in str(m) for m in second_messages)
+        assert has_json_hint
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

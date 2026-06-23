@@ -39,8 +39,11 @@ class TestBuildEvalCaseFromDict:
 
     def test_line38_json_dumps_dict_prompt(self):
         d = {
-            "id": 1, "name": "test", "category": "normal",
-            "input": {"key": "val"}, "assertions": [],
+            "id": 1,
+            "name": "test",
+            "category": "normal",
+            "input": {"key": "val"},
+            "assertions": [],
         }
         result = _build_eval_case_from_dict(d)
         assert isinstance(result.prompt, str)
@@ -174,9 +177,7 @@ class TestWriteJsonReport:
         args.format = "json"
 
         mock_reporter = mock_reporter_class.return_value
-        mock_reporter.generate_json_report.return_value = (
-            '{"metadata": {"skill_name": "test"}}'
-        )
+        mock_reporter.generate_json_report.return_value = '{"metadata": {"skill_name": "test"}}'
 
         structured_report = StructuredReport()
         json_path, json_str = _write_json_report(
@@ -263,8 +264,16 @@ class TestGenerateAndWriteReports:
 
         with patch("skill_cert.cli.Reporter", return_value=mock_reporter):
             md_report, json_report_val = _generate_and_write_reports(
-                args, tmp_path, "test-skill", {"evals": {"test": 1}}, "/fake/path",
-                {"m1": MagicMock()}, {"overall": 0.9}, {}, config, telemetry,
+                args,
+                tmp_path,
+                "test-skill",
+                {"evals": {"test": 1}},
+                "/fake/path",
+                {"m1": MagicMock()},
+                {"overall": 0.9},
+                {},
+                config,
+                telemetry,
             )
         call_kwargs = mock_reporter.build_structured_report.call_args[1]
         summaries = call_kwargs["session_telemetry"]
@@ -289,8 +298,16 @@ class TestGenerateAndWriteReports:
 
         with patch("skill_cert.cli.Reporter", return_value=mock_reporter):
             md_report, json_report_val = _generate_and_write_reports(
-                args, tmp_path, "test-skill", {"evals": {"test": 1}}, "/fake/path",
-                {"m1": MagicMock()}, {"overall": 0.9}, {}, config, telemetry,
+                args,
+                tmp_path,
+                "test-skill",
+                {"evals": {"test": 1}},
+                "/fake/path",
+                {"m1": MagicMock()},
+                {"overall": 0.9},
+                {},
+                config,
+                telemetry,
             )
         call_kwargs = mock_reporter.build_structured_report.call_args[1]
         assert call_kwargs["session_telemetry"] is None
@@ -304,7 +321,8 @@ class TestRunSinglePhaseDegraded:
         mock_calc_metrics = MagicMock(return_value={"overall": 0.9})
         mock_tracker_report = MagicMock()
         mock_tracker_report.generate_report.return_value = {
-            "success_rate": 1.0, "error_rate": 0.0,
+            "success_rate": 1.0,
+            "error_rate": 0.0,
             "errors_by_category": {},
             "retry_stats": {"total_retries": 0},
         }
@@ -313,6 +331,8 @@ class TestRunSinglePhaseDegraded:
         args = MagicMock()
         args.runs = 1
         args.format = "both"
+        args.ci_history = False  # Disable CI history for this test
+        args.ci_history_path = ".skill-cert-ci-history.json"
 
         config = MagicMock()
         config.max_concurrency = 1
@@ -340,8 +360,13 @@ class TestRunSinglePhaseDegraded:
             patch("skill_cert.cli.evals._generate_and_write_reports", mock_gen_reports),
         ):
             exit_code = _run_single_phase(
-                args, config, str(spec_path), tmp_path, "test-degraded",
-                spec, {"m1": MagicMock()},
+                args,
+                config,
+                str(spec_path),
+                tmp_path,
+                "test-degraded",
+                spec,
+                {"m1": MagicMock()},
             )
             assert exit_code == 0
 
@@ -368,12 +393,11 @@ class TestWriteJsonReportSchemaFail:
         )
 
         with patch.object(
-            StructuredReport, "model_validate",
+            StructuredReport,
+            "model_validate",
             side_effect=ValueError("invalid schema"),
         ):
-            path, json_str = _write_json_report(
-                args, tmp_path, "test", structured_report, "json"
-            )
+            path, json_str = _write_json_report(args, tmp_path, "test", structured_report, "json")
 
         assert path is not None
         assert json_str is not None

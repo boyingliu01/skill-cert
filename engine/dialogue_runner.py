@@ -130,7 +130,7 @@ class DialogueRunner:
         if self.telemetry:
             trace = ExecutionTrace(
                 run_id=f"dialogue_{eval_case.get('id', 'unknown')}",
-                eval_id=eval_case.get('id', ''),
+                eval_id=eval_case.get("id", ""),
             )
             # Add dialogue-specific metadata
             trace.metadata["turn_count"] = len(history)

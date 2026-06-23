@@ -95,6 +95,20 @@ class EvalGenerator:
         try:
             prompt = self._prepare_generation_prompt(skill_spec)
             response = model_adapter.chat([{"role": "user", "content": prompt}])
+
+            parsed = self._extract_json(response)
+            if parsed is None:
+                # Retry once with explicit JSON-only hint
+                logger.warning("Failed to parse JSON from model response, retrying once")
+                retry_messages = [
+                    {
+                        "role": "system",
+                        "content": "Respond ONLY with a JSON object. No prose, no explanation.",
+                    },
+                    {"role": "user", "content": prompt},
+                ]
+                response = model_adapter.chat(retry_messages)
+
             evals = self._parse_evals_response(response)
 
             if not self._has_sufficient_evals(evals):
@@ -269,6 +283,16 @@ class EvalGenerator:
         return current_evals
 
     def _prepare_generation_prompt(self, skill_spec: dict[str, Any]) -> str:
+        skill_type = skill_spec.get("skill_type", "agent_guide")
+
+        if skill_type == "cli_tool":
+            return self._prepare_cli_tool_prompt(skill_spec)
+        elif skill_type == "library":
+            return self._prepare_library_prompt(skill_spec)
+        else:
+            return self._prepare_agent_guide_prompt(skill_spec)
+
+    def _prepare_agent_guide_prompt(self, skill_spec: dict[str, Any]) -> str:
         return f"""
 Generate evaluation test cases for the following skill specification:
 
@@ -314,45 +338,260 @@ Minimum requirements:
 - Cover workflow steps, anti-patterns, and output formats mentioned in the spec
 """
 
+    def _prepare_cli_tool_prompt(self, skill_spec: dict[str, Any]) -> str:
+        return f"""
+Generate evaluation test cases for the following CLI tool skill:
+
+Skill Name: {skill_spec.get("name", "Unknown")}
+Description: {skill_spec.get("description", "No description")}
+Triggers: {skill_spec.get("triggers", [])}
+Anti-Patterns: {skill_spec.get("anti_patterns", [])}
+Output Format: {skill_spec.get("output_format", [])}
+Examples: {skill_spec.get("examples", [])}
+
+This is a CLI tool skill. Generate eval cases that test:
+- Command-line flag parsing and validation (--flag, -f, --option value)
+- Exit codes (0 for success, non-zero for errors)
+- Standard output and standard error behavior
+- Subcommand dispatch and argument handling
+- Invalid input handling and error messages
+
+Generate a JSON object with an array of eval_cases containing:
+- id: integer
+- name: string
+- category: "normal", "boundary", "failure", or "trigger"
+- input: string (the CLI command to test, e.g. "tool --flag value")
+- expected_triggers: boolean
+- negative_case: boolean
+- assertions: array of objects with type
+    ("contains", "not_contains", "regex", "starts_with"),
+    value, and weight
+
+IMPORTANT: Focus on CLI-specific assertions:
+- Check exit code behavior (e.g., exit code 0 for success, non-zero for failure)
+- Verify command-line flags produce expected output
+- Test error messages for invalid flags or missing arguments
+- Example: {{"type": "regex", "value": "(exit code|return code|non-zero|returned 0)", "weight": 3}}
+- Example: {{"type": "contains", "value": "--help", "weight": 2}}
+- Example: {{"type": "regex", "value": "(usage|Usage|USAGE)", "weight": 2}}
+
+Each eval case MUST have at least 2 assertions.
+Use weights >= 2 for critical assertions.
+
+Minimum requirements:
+- At least 4 eval cases total
+- At least 3 CLI flag/option test cases
+- At least 2 exit code / error handling test cases
+"""
+
+    def _prepare_library_prompt(self, skill_spec: dict[str, Any]) -> str:
+        return f"""
+Generate evaluation test cases for the following library/API skill:
+
+Skill Name: {skill_spec.get("name", "Unknown")}
+Description: {skill_spec.get("description", "No description")}
+Triggers: {skill_spec.get("triggers", [])}
+Anti-Patterns: {skill_spec.get("anti_patterns", [])}
+Output Format: {skill_spec.get("output_format", [])}
+Examples: {skill_spec.get("examples", [])}
+
+This is a library/API skill. Generate eval cases that test:
+- Function/method import and invocation
+- API parameter validation and type checking
+- Return value correctness
+- Error handling and exception behavior
+- Edge cases in function arguments
+
+Generate a JSON object with an array of eval_cases containing:
+- id: integer
+- name: string
+- category: "normal", "boundary", "failure", or "trigger"
+- input: string (the function call or import to test)
+- expected_triggers: boolean
+- negative_case: boolean
+- assertions: array of objects with type
+    ("contains", "not_contains", "regex", "starts_with", "json_valid"),
+    value, and weight
+
+IMPORTANT: Focus on API-specific assertions:
+- Check that import statements are correct
+- Verify function signatures and parameter types
+- Test return values and error handling
+- Example: {{"type": "regex", "value": "(import|from.*import)", "weight": 2}}
+- Example: {{"type": "contains", "value": "def ", "weight": 2}}
+- Example: {{"type": "regex", "value": "(TypeError|ValueError|raises|Exception)", "weight": 2}}
+
+Each eval case MUST have at least 2 assertions.
+Use weights >= 2 for critical assertions.
+
+Minimum requirements:
+- At least 4 eval cases total
+- At least 3 function/API test cases
+- At least 2 error handling test cases
+"""
+
     def _parse_evals_response(self, response: str) -> dict[str, Any]:
-        try:
-            cleaned = self._strip_markdown_fences(response)
-            start_idx = cleaned.find("{")
-            end_idx = cleaned.rfind("}") + 1
+        parsed = self._extract_json(response)
 
-            if start_idx != -1 and end_idx != 0:
-                json_str = cleaned[start_idx:end_idx]
-                parsed = json.loads(json_str)
-
-                # Normalize to use eval_cases key
-                if "eval_cases" not in parsed:
-                    for key in ["evals", "cases", "test_cases", "evaluations", "eval"]:
-                        if key in parsed and isinstance(parsed[key], list):
-                            parsed["eval_cases"] = parsed[key]
-                            break
-                    else:
-                        parsed["eval_cases"] = [
-                            {
-                                "id": 1,
-                                "name": "fallback-case",
-                                "category": "normal",
-                                "input": "Execute the skill",
-                                "expected_triggers": True,
-                                "assertions": [{"type": "contains", "value": "skill", "weight": 1}],
-                            }
-                        ]
-
-                # Normalize each eval case
-                parsed["eval_cases"] = [
-                    self._normalize_eval_case(c, idx) for idx, c in enumerate(parsed["eval_cases"])
-                ]
-
-                return parsed
-            else:
-                return self.minimum_evals_template
-        except json.JSONDecodeError:
+        if parsed is None:
             logger.warning("Could not parse JSON from model response, using template")
             return self.minimum_evals_template
+
+        if "eval_cases" not in parsed:
+            for key in ["evals", "cases", "test_cases", "evaluations", "eval"]:
+                if key in parsed and isinstance(parsed[key], list):
+                    parsed["eval_cases"] = parsed[key]
+                    break
+            else:
+                parsed["eval_cases"] = [
+                    {
+                        "id": 1,
+                        "name": "fallback-case",
+                        "category": "normal",
+                        "input": "Execute the skill",
+                        "expected_triggers": True,
+                        "assertions": [{"type": "contains", "value": "skill", "weight": 1}],
+                    }
+                ]
+
+        parsed["eval_cases"] = [
+            self._normalize_eval_case(c, idx) for idx, c in enumerate(parsed["eval_cases"])
+        ]
+
+        return parsed
+
+    @staticmethod
+    def _extract_json(response: str) -> dict[str, Any] | None:
+        """Extract JSON object from LLM response using 4-level fallback.
+
+        Strategy 1: Strip markdown fences + json.loads (backward compat)
+        Strategy 2: Balanced brace counting to find outermost {..}
+        Strategy 3: Largest-first — try all {..} blocks largest to smallest
+        Strategy 4: json.loads with strict=False on full response
+        """
+        if not response or not response.strip():
+            return None
+
+        # Strategy 1: Strip markdown fences + json.loads
+        try:
+            cleaned = EvalGenerator._strip_markdown_fences(response)
+            start_idx = cleaned.find("{")
+            end_idx = cleaned.rfind("}") + 1
+            if start_idx != -1 and end_idx > start_idx:
+                parsed = json.loads(cleaned[start_idx:end_idx])
+                if isinstance(parsed, dict):
+                    return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Strategy 2: Balanced brace extraction — find first valid outermost {..}
+        result = EvalGenerator._balanced_brace_extract(response)
+        if result is not None:
+            return result
+
+        # Strategy 3: Largest-first — find all {..} blocks, try largest first
+        result = EvalGenerator._largest_first_extract(response)
+        if result is not None:
+            return result
+
+        # Strategy 4: json.loads with strict=False on full response
+        try:
+            parsed = json.loads(response, strict=False)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Also try strict=False on the first{..}last slice
+        try:
+            start_idx = response.find("{")
+            end_idx = response.rfind("}") + 1
+            if start_idx != -1 and end_idx > start_idx:
+                parsed = json.loads(response[start_idx:end_idx], strict=False)
+                if isinstance(parsed, dict):
+                    return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        return None
+
+    @staticmethod
+    def _balanced_brace_extract(response: str) -> dict[str, Any] | None:
+        """Strategy 2: Find first valid outermost {..} via balanced brace counting."""
+        start = response.find("{")
+        while start != -1:
+            depth = 0
+            in_string = False
+            escape_next = False
+            for i in range(start, len(response)):
+                ch = response[i]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == "\\" and in_string:
+                    escape_next = True
+                    continue
+                if ch == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = response[start : i + 1]
+                        try:
+                            parsed = json.loads(candidate)
+                            if isinstance(parsed, dict):
+                                return parsed
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                        break
+            start = response.find("{", start + 1)
+        return None
+
+    @staticmethod
+    def _largest_first_extract(response: str) -> dict[str, Any] | None:
+        """Strategy 3: Find all top-level {..} blocks, try largest to smallest."""
+        blocks: list[tuple[int, int]] = []
+        start = response.find("{")
+        while start != -1:
+            depth = 0
+            in_string = False
+            escape_next = False
+            for i in range(start, len(response)):
+                ch = response[i]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == "\\" and in_string:
+                    escape_next = True
+                    continue
+                if ch == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        blocks.append((start, i + 1))
+                        break
+            start = response.find("{", start + 1)
+
+        blocks.sort(key=lambda b: b[1] - b[0], reverse=True)
+        for s, e in blocks:
+            try:
+                parsed = json.loads(response[s:e])
+                if isinstance(parsed, dict):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                continue
+        return None
 
     @staticmethod
     def _strip_markdown_fences(text: str) -> str:
@@ -662,34 +901,23 @@ Return a JSON object with:
 """
 
     def _parse_review_response(self, response: str, current_coverage: float) -> dict[str, Any]:
-        try:
-            start_idx = response.find("{")
-            end_idx = response.rfind("}") + 1
+        parsed = self._extract_json(response)
 
-            if start_idx != -1 and end_idx != 0:
-                json_str = response[start_idx:end_idx]
-                parsed = json.loads(json_str)
-
-                if "coverage" not in parsed:
-                    parsed["coverage"] = current_coverage
-                if "gaps" not in parsed:
-                    parsed["gaps"] = []
-                if "needs_improvement" not in parsed:
-                    parsed["needs_improvement"] = len(parsed["gaps"]) > 0
-
-                return parsed
-            else:
-                return {
-                    "coverage": current_coverage,
-                    "gaps": ["Could not parse review response"],
-                    "needs_improvement": True,
-                }
-        except json.JSONDecodeError:
+        if parsed is None:
             return {
                 "coverage": current_coverage,
                 "gaps": ["Could not parse review response"],
                 "needs_improvement": True,
             }
+
+        if "coverage" not in parsed:
+            parsed["coverage"] = current_coverage
+        if "gaps" not in parsed:
+            parsed["gaps"] = []
+        if "needs_improvement" not in parsed:
+            parsed["needs_improvement"] = len(parsed["gaps"]) > 0
+
+        return parsed
 
     def _prepare_gap_filling_prompt(self, gaps: dict[str, Any], skill_spec: dict[str, Any]) -> str:
         return f"""

@@ -1161,6 +1161,8 @@ description: "A test skill"
 
         args = MagicMock()
         args.runs = 1
+        args.ci_history = False  # Disable CI history for this test
+        args.ci_history_path = ".skill-cert-ci-history.json"
         adapters = {"m1": MagicMock()}
         spec = self.make_mock_parse_result()
         spec["evals"] = {"eval_cases": []}
@@ -1235,6 +1237,8 @@ description: "A test skill"
 
         args = MagicMock()
         args.runs = 3
+        args.ci_history = False  # Disable CI history for this test
+        args.ci_history_path = ".skill-cert-ci-history.json"
         adapters = {"m1": MagicMock(), "m2": MagicMock()}
         spec = self.make_mock_parse_result()
         spec["evals"] = {"eval_cases": [{"id": 1}]}
@@ -1319,6 +1323,8 @@ description: "A test skill"
 
         args = MagicMock()
         args.runs = 1
+        args.ci_history = False  # Disable CI history for this test
+        args.ci_history_path = ".skill-cert-ci-history.json"
         adapters = {"m1": MagicMock()}
         spec = self.make_mock_parse_result()
         spec["evals"] = {"eval_cases": []}
@@ -1375,6 +1381,8 @@ description: "A test skill"
 
         args = MagicMock()
         args.runs = 1
+        args.ci_history = False  # Disable CI history for this test
+        args.ci_history_path = ".skill-cert-ci-history.json"
         adapters = {"m1": MagicMock()}
         spec = self.make_mock_parse_result()
         spec["evals"] = {"eval_cases": []}

@@ -240,7 +240,6 @@ def create_trace_exporter(
 # ── SessionTelemetry ───────────────────────────────────────────
 
 
-
 class LLMCallRecord(BaseModel):
     """A single LLM call record within a session."""
 
@@ -282,9 +281,7 @@ class SessionTelemetry:
     Thread-safe: uses threading.Lock for dict access.
     """
 
-    def __init__(
-        self, max_sessions: int = 1000, max_age_seconds: int = 3600
-    ) -> None:
+    def __init__(self, max_sessions: int = 1000, max_age_seconds: int = 3600) -> None:
         self.sessions: dict[str, SessionTelemetryTrace] = {}
         self._max_sessions = max_sessions
         self._max_age_seconds = max_age_seconds
@@ -332,9 +329,7 @@ class SessionTelemetry:
             self.sessions[trace.run_id].llm_calls.append(record)
             self._evict_if_needed()
 
-    def get_session_summary(
-        self, session_id: str
-    ) -> TelemetrySummary | None:
+    def get_session_summary(self, session_id: str) -> TelemetrySummary | None:
         """Get aggregated token summary for a session."""
         with self._lock:
             trace_data = self.sessions.get(session_id)
@@ -382,11 +377,7 @@ class SessionTelemetry:
         now = time.time()
         evicted = 0
         with self._lock:
-            stale = [
-                sid
-                for sid, t in self.sessions.items()
-                if (now - t.created_at) > max_age
-            ]
+            stale = [sid for sid, t in self.sessions.items() if (now - t.created_at) > max_age]
             for sid in stale:
                 del self.sessions[sid]
                 evicted += 1

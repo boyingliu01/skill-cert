@@ -82,10 +82,7 @@ class GotchasFlywheel:
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        entry = (
-            f"## Gotcha: {timestamp}\n\n"
-            f"{gotcha}\n"
-        )
+        entry = f"## Gotcha: {timestamp}\n\n{gotcha}\n"
 
         if self.gotchas_path.exists():
             with open(self.gotchas_path, "a", encoding="utf-8") as f:

@@ -180,6 +180,31 @@ Examples:
         action="store_true",
         help="Validate JSON report against schema",
     )
+    parser.add_argument(
+        "--debias-position",
+        type=lambda x: x.lower() not in ("false", "0", "no"),
+        default=True,
+        help=(
+            "Enable position debiasing for LLM-as-Judge (default: true, set false to save 2x cost)"
+        ),
+    )
+    parser.add_argument(
+        "--calibration-set",
+        help="Path to golden eval set JSON for calibration analysis",
+    )
+    parser.add_argument(
+        "--ci-history",
+        type=lambda x: x.lower() not in ("false", "0", "no"),
+        default=True,
+        help=(
+            "Enable CI history for L4 stability (default: true, set false to disable)"
+        ),
+    )
+    parser.add_argument(
+        "--ci-history-path",
+        default=".skill-cert-ci-history.json",
+        help="Path to CI history file (default: .skill-cert-ci-history.json)",
+    )
 
     return parser
 
@@ -221,6 +246,7 @@ def _run_with_error_handling(func) -> int:
         return EXIT_ERROR
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         print(f"ERROR: {e}", file=sys.stderr)
         return EXIT_ERROR
