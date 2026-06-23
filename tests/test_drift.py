@@ -471,9 +471,7 @@ class TestDriftDictEvalCases:
             "id": 1,
             "name": "dict_case",
             "category": "normal",
-            "assertions": [
-                {"name": "test", "type": "contains", "value": "x", "weight": 1}
-            ],
+            "assertions": [{"name": "test", "type": "contains", "value": "x", "weight": 1}],
         }
         result = detector._convert_to_eval_case(eval_case, "test prompt")
         assert isinstance(result, EvalCase)
@@ -483,6 +481,12 @@ class TestDriftDictEvalCases:
 
     def test_convert_to_eval_case_passthrough(self):
         detector = DriftDetector()
-        existing_case = EvalCase(id=2, name="existing", category="normal", prompt="p", assertions=[])
+        existing_case = EvalCase(
+            id=2,
+            name="existing",
+            category="normal",
+            prompt="p",
+            assertions=[],
+        )
         result = detector._convert_to_eval_case(existing_case, "ignored")
         assert result is existing_case

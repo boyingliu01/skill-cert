@@ -1,7 +1,7 @@
 # tests/ — Test Suite
 
 ## OVERVIEW
-pytest suite mirroring engine/ modules 1:1. **684 tests**, 1 skipped. Tests use standard pytest patterns: fixtures, parametrize, mock patches.
+pytest suite mirroring engine/ modules 1:1. **1134 tests**, 1 skipped. Tests use standard pytest patterns: fixtures, parametrize, mock patches.
 
 ## STRUCTURE
 ```
@@ -32,6 +32,12 @@ tests/
 ├── test_pricing.py               # Model pricing table
 ├── test_cross_endpoint.py        # Cross-endpoint fallback
 ├── test_scalability.py           # Scalability scoring
+├── test_observability.py         # OTel GenAI telemetry (SessionTelemetry)
+├── test_openai_compat.py         # OpenAI-compatible adapter + SSL fallback + usage tracking
+├── test_anthropic_compat.py      # Anthropic adapter coverage
+├── test_evals.py                 # Eval orchestration + trace export + telemetry summary
+├── test_single.py                # Single mode setup + FAILED abort + coverage warning
+├── test_cli_helpers.py           # CLI helper utilities (_print_phase, _print_metric)
 └── conftest.py                   # Shared fixtures
 ```
 

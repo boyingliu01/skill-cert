@@ -1,5 +1,4 @@
 from unittest.mock import AsyncMock, MagicMock
-from engine.dialogue_evaluator import DialogueJudgeResult
 
 import pytest
 
@@ -241,16 +240,18 @@ class TestDialogueEvaluator:
         import json
 
         mock_callback = AsyncMock(
-            return_value=json.dumps({
-                "scores": {
-                    "intent_recognition": 0.8,
-                    "guidance_quality": 0.7,
-                    "workflow_adherence": 0.7,
-                    "exception_handling": 0.6,
-                    "output_quality": 0.8,
-                },
-                "reasoning": "OK",
-            })
+            return_value=json.dumps(
+                {
+                    "scores": {
+                        "intent_recognition": 0.8,
+                        "guidance_quality": 0.7,
+                        "workflow_adherence": 0.7,
+                        "exception_handling": 0.6,
+                        "output_quality": 0.8,
+                    },
+                    "reasoning": "OK",
+                }
+            )
         )
         evaluator = DialogueEvaluator(judge_callback=mock_callback)
         conversation = [
@@ -264,11 +265,13 @@ class TestDialogueEvaluator:
     def test_pair_messages_non_user_first(self):
         """_pair_messages skips non-user first message (covers line 137)."""
         evaluator = DialogueEvaluator()
-        pairs = evaluator._pair_messages([
-            {"role": "assistant", "content": "hi"},
-            {"role": "user", "content": "hello"},
-            {"role": "assistant", "content": "ok"},
-        ])
+        pairs = evaluator._pair_messages(
+            [
+                {"role": "assistant", "content": "hi"},
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "ok"},
+            ]
+        )
         assert len(pairs) == 1
 
     def test_score_guidance_quality_clarifying(self):

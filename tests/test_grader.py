@@ -530,7 +530,9 @@ def test_debias_position_swap_parsing_code_block():
     """Debias: swap response with ```json code block parsing (lines 450-453)."""
     mock_llm = MagicMock()
     mock_llm.chat.return_value = (
-        "Here is the result:\n```json\n{\"passed\": false, \"confidence\": 0.6, \"reasoning\": \"no\", \"failure_reasons\": []}\n```"
+        "Here is the result:\n```json\n"
+        '{"passed": false, "confidence": 0.6, "reasoning": "no", '
+        '"failure_reasons": []}\n```'
     )
     grader = Grader(llm_client=mock_llm)
 
@@ -567,7 +569,10 @@ def test_debias_position_swap_response_is_string():
     """Debias: swap response where json.loads returns a string (triggers line 457)."""
     mock_llm = MagicMock()
     # Response body is a JSON string containing another JSON string
-    mock_llm.chat.return_value = '"{\\"passed\\": false, \\"confidence\\": 0.6, \\"reasoning\\": \\"no\\", \\"failure_reasons\\": []}"'
+    mock_llm.chat.return_value = (
+        '"{\\"passed\\": false, \\"confidence\\": 0.6, '
+        '\\"reasoning\\": \\"no\\", \\"failure_reasons\\": []}"'
+    )
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
@@ -664,8 +669,8 @@ def test_llm_judge_with_call_triggers_debias():
     """_llm_judge_with_call triggers _debias_position when confidence < 0.8."""
     mock_llm = MagicMock()
     mock_llm.chat.side_effect = [
-        json.dumps({"passed": True, "confidence": 0.75, "reasoning": "borderline", "failure_reasons": []}),
-        json.dumps({"passed": True, "confidence": 0.8, "reasoning": "agreed", "failure_reasons": []}),
+        json.dumps(dict(passed=True, confidence=0.75, reasoning="borderline", failure_reasons=[])),
+        json.dumps(dict(passed=True, confidence=0.8, reasoning="agreed", failure_reasons=[])),
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
@@ -685,11 +690,15 @@ def test_negative_case_with_llm_judge_high_confidence():
     """Negative case: judge_result.confidence >= 0.8 -> final_passed = not judge_passed."""
     mock_llm = MagicMock()
     mock_llm.chat.return_value = json.dumps(
-        {"passed": True, "confidence": 0.9, "reasoning": "shouldn't have triggered", "failure_reasons": []}
+        dict(passed=True, confidence=0.9, reasoning="not triggered", failure_reasons=[])
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e",
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
         assertions=[EvalAssertion(name="x", type="contains", value="x", weight=1)],
         negative_case=True,
     )
@@ -733,13 +742,19 @@ def test_llm_judge_double_encoded_json():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e",
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
         assertions=[EvalAssertion(name="has_x", type="contains", value="x", weight=1)],
     )
     assertion_results = [
         AssertionResult(
             assertion=EvalAssertion(name="has_x", type="contains", value="x", weight=1),
-            passed=True, confidence=1.0, reason="found",
+            passed=True,
+            confidence=1.0,
+            reason="found",
         ),
     ]
     result = grader._llm_judge(eval_case, "x found", assertion_results)
@@ -750,7 +765,8 @@ def test_execute_llm_judge_double_encoded_main_response():
     """_execute_llm_judge handles double-encoded JSON in main response (line 307)."""
     mock_llm = MagicMock()
     mock_llm.chat.return_value = (
-        '"{\\"passed\\": true, \\"confidence\\": 0.85, \\"reasoning\\": \\"ok\\", \\"failure_reasons\\": []}"'
+        '"{\\"passed\\": true, \\"confidence\\": 0.85, '
+        '\\"reasoning\\": \\"ok\\", \\"failure_reasons\\": []}"'
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
@@ -775,18 +791,25 @@ def test_execute_llm_judge_non_dict_response():
 
 
 def test_llm_judge_with_call_exception_fallback():
-    """_llm_judge_with_call falls back to error handler when _execute_llm_judge raises (lines 276-278)."""
+    """_llm_judge_with_call falls back to error handler when
+    _execute_llm_judge raises (lines 276-278)."""
     mock_llm = MagicMock()
     mock_llm.chat.side_effect = RuntimeError("Network error")
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e",
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
         assertions=[EvalAssertion(name="x", type="contains", value="x", weight=1)],
     )
     assertion_results = [
         AssertionResult(
             assertion=EvalAssertion(name="x", type="contains", value="x", weight=1),
-            passed=True, confidence=1.0, reason="found",
+            passed=True,
+            confidence=1.0,
+            reason="found",
         ),
     ]
     result = grader._llm_judge_with_call(eval_case, "output", assertion_results)
@@ -804,11 +827,15 @@ def test_llm_judge_error_fallback():
     assertion_results = [
         AssertionResult(
             assertion=EvalAssertion(name="test", type="contains", value="test", weight=1),
-            passed=True, confidence=1.0, reason="ok",
+            passed=True,
+            confidence=1.0,
+            reason="ok",
         ),
         AssertionResult(
             assertion=EvalAssertion(name="test2", type="contains", value="x", weight=1),
-            passed=False, confidence=0.0, reason="missing",
+            passed=False,
+            confidence=0.0,
+            reason="missing",
         ),
     ]
     result = grader._llm_judge_error_fallback(assertion_results, RuntimeError("network error"))
@@ -833,8 +860,13 @@ def test_negative_case_judge_high_confidence():
     """_build_grade_result: negative case + high confidence judge → inverted."""
     grader = Grader()
     eval_case = EvalCase(
-        id=1, name="n", category="normal", prompt="p", expected_output="e",
-        assertions=[], negative_case=True,
+        id=1,
+        name="n",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[],
+        negative_case=True,
     )
     judge_result = JudgeResult(passed=True, confidence=0.9, reasoning="high conf")
     result = grader._build_grade_result(eval_case, "out", [], 0, 0, 0.0, judge_result)
@@ -845,8 +877,13 @@ def test_negative_case_judge_low_confidence():
     """_build_grade_result: negative case + low confidence judge → uses pass_rate."""
     grader = Grader()
     eval_case = EvalCase(
-        id=1, name="n", category="normal", prompt="p", expected_output="e",
-        assertions=[], negative_case=True,
+        id=1,
+        name="n",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[],
+        negative_case=True,
     )
     judge_result = JudgeResult(passed=True, confidence=0.5, reasoning="low conf")
     result = grader._build_grade_result(eval_case, "out", [], 0, 0, 0.3, judge_result)

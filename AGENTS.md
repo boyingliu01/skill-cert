@@ -3,7 +3,7 @@
 This file provides guidance to Qoder (qoder.com) when working with code in this repository.
 
 **Project:** skill-cert — AI Skill Evaluation Engine  
-**Version:** 0.3.0  
+**Version:** 0.5.2  
 **Python:** 3.10+  
 **Framework:** Pydantic v2, pytest, httpx, markdown-it-py
 
@@ -24,7 +24,7 @@ skill-cert/
 ├── prompts/           # LLM prompt templates (.md files)
 ├── schemas/           # JSON schemas: evals, skillspec
 ├── templates/         # Eval fallback: minimum-evals.json
-├── tests/             # pytest suite — 684 tests, mirrors engine/ 1:1
+├── tests/             # pytest suite — 1134 tests, mirrors engine/ 1:1
 └── results/           # Output: {skill}-report.md, {skill}-result.json, {skill}-evals-cache.json
 ```
 
@@ -48,6 +48,9 @@ skill-cert --skill /path/to/SKILL.md --models "m1=url,key|m2=url,key" --output .
 --mode single|dialogue|replay
 --runs N               # Multi-run for L4 stability
 --max-turns N          # Dialogue turn limit
+--stress               # Enable stress testing
+--stress-concurrency N # Stress test concurrency level
+--stress-evals N       # Stress test eval count
 
 # Setup wizard (interactive config)
 skill-cert setup
@@ -118,10 +121,10 @@ ruff check . && ruff format .
 
 ## NOTES
 
-- 684 tests pass, 1 skipped
+- 1134 tests pass, 1 skipped
 - Security probes: 52 patterns across 6 categories
 - L2 formula: normalized gain `Δ = (with - without) / without` (not absolute delta)
 - EnvelopeChecker is wired into L5 step efficiency scoring
 - `DialogueJudgeResult` supports both LLM-as-Judge and heuristic fallback
 - API keys via environment variables (no hardcoded secrets)
-- Pricing table: 17 models across 5 providers (Anthropic, OpenAI, Qwen, DeepSeek, Gemini, Whalecloud LOCAL)
+- Pricing table: 17 models across 6 providers (Anthropic, OpenAI, Qwen, DeepSeek, Gemini, Whalecloud LOCAL)

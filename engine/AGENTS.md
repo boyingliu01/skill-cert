@@ -1,15 +1,15 @@
 # engine/ — Core Evaluation Pipeline
 
 ## OVERVIEW
-22-module evaluation pipeline: parses SKILL.md skills, validates schema, runs security probes, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L8 metrics, checks operating envelope, detects cross-model drift, integrates external tools, runs stress/stability/reliability/maintainability/multi-skill analysis, golden dataset calibration, skills bench analysis, and produces standardized reports.
+33-module evaluation pipeline: parses SKILL.md skills, validates schema, runs security probes, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L8 metrics, checks operating envelope, detects cross-model drift, integrates external tools, runs stress/stability/reliability/maintainability/multi-skill analysis, golden dataset calibration, skills bench analysis, OTel telemetry, token ledger, trigger accuracy eval, trajectory evaluation, adversarial testing, gotchas flywheel, progressive disclosure, deadline enforcement, and produces standardized reports.
 
 ## STRUCTURE
 ```
 engine/
 ├── analyzer.py            # SKILL.md parser → SkillSpec (regex + AST, LLM fallback, SchemaValidationError)
-├── security_probes.py     # Security scanner: 52 patterns across 6 categories
+├── security_probes.py     # Security scanner: 52 patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC)
 ├── testgen.py             # EvalGenerator: generate → review → gap-fill loop until coverage ≥90%
-├── runner.py              # Execution engine: with/without skill, concurrency, rate limiting
+├── runner.py              # Execution engine: with/without skill, concurrency, rate limiting, deadline
 ├── grader.py              # Grader: deterministic assertions + LLM-as-judge (temp=0)
 ├── metrics.py             # L1-L8 calculation (L2 normalized gain, L5 envelope wired)
 ├── envelope.py            # Operating envelope checker: steps/tokens/timeout/tool_calls
@@ -20,14 +20,25 @@ engine/
 ├── stress_test.py         # Concurrency stress testing: fairness, memory, scalability
 ├── reliability.py         # Error classification, retry stats, graceful degradation
 ├── maintainability.py     # SKILL.md readability, completeness, freshness scoring
-├── multi_skill.py         # Multi-skill conflict: trigger overlap, prompt contamination
+├── multi_skill.py         # Multi-skill conflict: trigger overlap, prompt contamination, token overflow
 ├── replay.py              # Regression testing with historical session data
 ├── dialogue_evaluator.py  # Multi-turn evaluation + judge_with_llm() LLM-as-Judge
-├── dialogue_runner.py     # Orchestrates dialogue evaluation sessions
+├── dialogue_runner.py     # Dialogue execution with OTel trace recording
 ├── simulator.py           # LLM behavior simulation for testing without live API
 ├── calibration.py         # Golden eval set calibration (Cohen's Kappa, FPR/FNR)
-├── skills_bench.py        # Multi-skill cognitive overload detection (sweet spot)
+├── skills_bench.py        # Multi-skill cognitive overload detection (sweet spot analysis)
 ├── config.py              # Configuration management and validation
+├── observability.py       # OTel GenAI session telemetry: SessionTelemetry, record_trace
+├── token_ledger.py        # Real-time token usage tracking (not approximations)
+├── trigger_accuracy_eval.py  # L1 trigger accuracy evaluation
+├── trajectory_evaluator.py   # L6 trajectory quality evaluation
+├── adversarial.py         # Adversarial testing support
+├── gotchas_flywheel.py    # Gotcha patterns accumulation
+├── progressive_disclosure.py # Progressive disclosure evaluation
+├── deadline.py            # Global deadline enforcement
+├── constants.py           # Shared constants and defaults
+├── report_models.py       # Report data models (Pydantic)
+├── trace_models.py        # Telemetry trace data models
 └── __init__.py            # Public API: exports parse_skill_md
 ```
 

@@ -148,7 +148,7 @@ Security scanning runs before test generation. It checks 5 categories:
 | CRD | Credential Access |
 | OBF | Obfuscation |
 
-19 built-in probe patterns. Results: PASS / WARN / BLOCK. A BLOCK verdict causes immediate evaluation failure.
+52 built-in probe patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC). Results: PASS / WARN / BLOCK. A BLOCK verdict causes immediate evaluation failure.
 
 ### Phase 1: Auto-Generate Eval Tests
 
@@ -291,8 +291,9 @@ Two output formats:
 | Maintainability Scoring | `maintainability.py` | SKILL.md readability, completeness, freshness |
 | External Integrations | `integrations.py` | SkillLab / DeepEval providers (graceful degradation) |
 | Operating Envelope | `envelope.py` | Steps/tokens/timeout/tool_calls limit enforcement |
-| Real Token Tracking | `adapters/` | TokenUsage dataclass, not approximations |
-| Cost Analysis | `adapters/pricing.py` | 17 models across 5 provider families |
+| Cost Analysis | `adapters/pricing.py` | 17 models across 6 provider families |
+| OTel Telemetry | `engine/observability.py` | SessionTelemetry, record_trace, session summary |
+| Token Ledger | `engine/token_ledger.py` | Real-time token usage tracking (not approximations) |
 
 ---
 
@@ -314,7 +315,7 @@ templates/        Support layer: prompts, schemas, templates
 
 ### 5.1 Presentation: CLI Layer
 
-Location: `skill_cert/cli.py`, `skill_cert/cli/main.py`. Responsibilities: parse CLI arguments, load configuration, invoke core pipeline, emit exit codes, generate report files.
+Location: `skill_cert/cli/`. Responsibilities: parse CLI arguments, load configuration, invoke core pipeline, emit exit codes, generate report files. Entry point: `main.py`, config wizard: `setup.py`.
 
 ### 5.2 Domain: Core Evaluation Layer
 
@@ -333,12 +334,28 @@ Location: `engine/`.
 | `envelope.py` | Operating envelope checks |
 | `config.py` | Configuration loading and validation |
 | `dialogue_evaluator.py` | Multi-turn dialogue evaluation |
+| `dialogue_runner.py` | Dialogue execution with OTel trace recording |
 | `replay.py` | Historical session replay |
 | `simulator.py` | LLM behavior simulation for testing |
 | `multi_skill.py` | Multi-skill conflict detection |
 | `stress_test.py` | Stress testing |
 | `reliability.py` | Reliability tracking |
 | `maintainability.py` | SKILL.md maintainability scoring |
+| `skills_bench.py` | Multi-skill cognitive overload detection |
+| `calibration.py` | Golden eval set calibration (Cohen's Kappa) |
+| `stability.py` | Execution stability analysis |
+| `integrations.py` | SkillLab / DeepEval external integrations |
+| `observability.py` | OTel GenAI session telemetry |
+| `token_ledger.py` | Real-time token usage tracking |
+| `trigger_accuracy_eval.py` | L1 trigger accuracy evaluation |
+| `trajectory_evaluator.py` | L6 trajectory quality evaluation |
+| `adversarial.py` | Adversarial testing support |
+| `gotchas_flywheel.py` | Gotcha patterns accumulation |
+| `progressive_disclosure.py` | Progressive disclosure evaluation |
+| `deadline.py` | Global deadline enforcement |
+| `constants.py` | Shared constants and defaults |
+| `report_models.py` | Report data models |
+| `trace_models.py` | Telemetry trace data models |
 
 ### 5.3 Infrastructure: Model Adapter Layer
 
@@ -500,17 +517,22 @@ ruff check . && ruff format .
 
 ```
 skill-cert/
-├── engine/          # Core pipeline: parser, testgen, runner, grader, metrics, reporter, drift,
-│                    # dialogue, replay, simulator, security_probes, envelope, integrations,
-│                    # reliability, maintainability, multi_skill, stress_test, stability, config
-├── skill_cert/      # CLI entry (cli.py)
+├── engine/          # Core pipeline: 33 modules — parser, testgen, runner, grader, metrics, reporter, drift,
+│                    # dialogue_evaluator, dialogue_runner, replay, simulator, security_probes, envelope,
+│                    # integrations, reliability, maintainability, multi_skill, stress_test, stability, config,
+│                    # skills_bench, calibration, observability, token_ledger, trigger_accuracy_eval,
+│                    # trajectory_evaluator, adversarial, gotchas_flywheel, progressive_disclosure,
+│                    # deadline, constants, report_models, trace_models
+├── skill_cert/cli/  # CLI entry (main.py, setup.py)
 ├── adapters/        # LLM provider adapters (Anthropic, OpenAI-compatible) + pricing table
 ├── prompts/         # LLM prompt templates (judge, dialogue, drift, testgen, test-review, test-gap)
 ├── schemas/         # JSON schemas (eval cases, SkillSpec)
 ├── templates/       # Fallback eval template (minimum-evals.json)
-├── tests/           # pytest suite — 402 tests, mirrors engine/ modules 1:1
-└── results/         # Output: {skill}-report.md, {skill}-result.json
+├── tests/           # pytest suite — 1134 tests, mirrors engine/ modules 1:1
+└── results/         # Output: {skill}-report.md, {skill}-result.json, {skill}-evals-cache.json
 ```
+
+Note: `skill_cert/cli.py` was deleted (shadowed by `cli/` package directory).
 
 ---
 
@@ -539,7 +561,7 @@ Multi-turn dialogue evaluation currently over-relies on word overlap rather than
 
 **Security scan coverage is limited**
 
-19 probe patterns vs. industry recommendation of 52+ (e.g., SpecWeave). Some attack vectors may be uncovered.
+52 probe patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC). Industry recommendation is 100+ (e.g., SpecWeave). Some attack vectors may still be uncovered.
 
 **Single-model evaluation is insufficient**
 

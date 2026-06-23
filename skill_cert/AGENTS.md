@@ -29,6 +29,12 @@ skill_cert/
 | `--max-turns` | Dialogue turn limit |
 | `--session` | Replay session JSONL file |
 | `--output` | Output directory (default: ./results) |
+| `--stress` | Enable stress testing |
+| `--stress-concurrency` | Stress test concurrency level |
+| `--stress-evals` | Stress test eval count |
+| `--stress` | Enable stress testing |
+| `--stress-concurrency` | Stress test concurrency level |
+| `--stress-evals` | Stress test eval count |
 
 ## EXIT CODES
 - 0: PASS
