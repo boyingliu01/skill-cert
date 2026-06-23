@@ -75,11 +75,9 @@ class OpenAICompatAdapter(ModelAdapter):
             if not use_requests_fallback:
                 logger.warning(f"httpx SSL failed, falling back to requests: {e}")
                 import requests as _requests
+
                 response = _requests.post(  # type: ignore[assignment]
-                    f"{use_base}/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=timeout
+                    f"{use_base}/chat/completions", headers=headers, json=payload, timeout=timeout
                 )
                 if response.status_code == 401:
                     raise RuntimeError("Invalid API key")

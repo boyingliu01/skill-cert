@@ -16,6 +16,7 @@ class WorkflowStep(BaseModel):
 class SkillSpec(BaseModel):
     name: str
     description: str = ""
+    skill_type: str = "agent_guide"
     triggers: list[str] = Field(default_factory=list)
     workflow_steps: list[WorkflowStep] = Field(default_factory=list)
     anti_patterns: list[str] = Field(default_factory=list)
@@ -161,6 +162,44 @@ def _has_flow_language(text: str) -> bool:
     return False
 
 
+CLI_SPECIFIC_SECTION_RE = re.compile(
+    r"^##\s+(?:Commands|CLI\s+Flags|CLI\s+Options|Subcommands)\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+CLI_USAGE_SECTION_RE = re.compile(
+    r"^##\s+Usage\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+CLI_FLAG_PATTERN_RE = re.compile(r"(?:^|\s)(?:\w[\w-]*\s+)?--\w+")
+LIBRARY_SECTION_HEADERS_RE = re.compile(
+    r"^##\s+(?:API|Functions?|Methods?|Modules?|Public\s+API)\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+LIBRARY_IMPORT_PATTERN_RE = re.compile(r"^\s*(?:from\s+\w+\s+import\s|import\s+\w+)", re.MULTILINE)
+
+
+def _detect_skill_type(content: str) -> str:
+    """Detect skill type from content signals.
+
+    Returns one of: "cli_tool", "library", "agent_guide".
+    """
+    has_cli_specific_section = bool(CLI_SPECIFIC_SECTION_RE.search(content))
+    has_usage_section = bool(CLI_USAGE_SECTION_RE.search(content))
+    cli_flag_count = len(CLI_FLAG_PATTERN_RE.findall(content))
+    has_cli_flags = cli_flag_count >= 2
+
+    if has_cli_specific_section or (has_usage_section and has_cli_flags):
+        return "cli_tool"
+
+    lib_section = bool(LIBRARY_SECTION_HEADERS_RE.search(content))
+    lib_import = bool(LIBRARY_IMPORT_PATTERN_RE.search(content))
+
+    if lib_section or lib_import:
+        return "library"
+
+    return "agent_guide"
+
+
 def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
     """Parse a SKILL.md file and return structured SkillSpec as dict.
 
@@ -203,6 +242,7 @@ def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
     spec.output_format = output_format
     spec.triggers = triggers
     spec.examples = examples
+    spec.skill_type = _detect_skill_type(content)
 
     # Step 4: Calculate parse confidence
     spec.parse_confidence = _calculate_confidence(

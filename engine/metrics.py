@@ -1,7 +1,10 @@
 """Metrics module for skill-cert engine — calculates L1-L8 evaluation metrics."""
 
+import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from engine.constants import TimingLimits
@@ -36,13 +39,25 @@ class MetricsCalculator:
         pass
 
     def calculate_metrics(
-        self, eval_results: list[dict[str, Any]], workflow_steps: list[str] | None = None
+        self,
+        eval_results: list[dict[str, Any]],
+        workflow_steps: list[str] | None = None,
+        ci_history_path: str | None = None,
     ) -> dict[str, Any]:
         """Calculate all L1-L6 metrics from evaluation results."""
         l1_score = self._calculate_l1_trigger_accuracy(eval_results)
         l2_score = self._calculate_l2_with_without_skill_delta(eval_results)
         l3_score = self._calculate_l3_step_adherence(eval_results, workflow_steps)
-        l4_score = self._calculate_l4_execution_stability(eval_results)
+        l4_runs = self._calculate_l4_execution_stability(eval_results)
+
+        if ci_history_path:
+            l4_ci = self._calc_l4_from_ci_history(ci_history_path)
+            l4_score = self.merge_l4_stability(l4_runs, l4_ci)
+            if l4_score is None:
+                l4_score = l4_runs
+        else:
+            l4_score = l4_runs
+
         l5_score = self._calculate_l5_step_efficiency(eval_results)
         l6_score = self._calculate_l6_trajectory_quality(eval_results)
 
@@ -170,11 +185,13 @@ class MetricsCalculator:
             return 0.0
         return sum(r.get("pass_rate", 0.0) for r in results) / len(results)
 
+    _L2_EPSILON = 1e-6
+
     @staticmethod
     def _compute_normalized_gain(with_avg, without_avg):
-        if without_avg > 0:
-            return (with_avg - without_avg) / without_avg
-        return with_avg - without_avg
+        if abs(without_avg) < MetricsCalculator._L2_EPSILON:
+            return with_avg - without_avg
+        return (with_avg - without_avg) / without_avg
 
     def _calculate_l2_with_without_skill_delta(self, eval_results: list[dict[str, Any]]) -> float:
         with_skill, without_skill = self._extract_with_without_groups(eval_results)
@@ -353,6 +370,66 @@ class MetricsCalculator:
         std_dev = self._compute_std_dev(deterministic_results)
         return max(0.0, 1.0 - std_dev)
 
+    def _calc_l4_from_ci_history(
+        self, ci_history_path: str, window_days: int = 30, skill_path: str | None = None
+    ) -> float | None:
+        """Calculate L4 stability from CI history file.
+
+        Reads historical L4 values from .skill-cert-ci-history.json, filters to
+        the specified window and skill_path, then computes std dev.
+        Returns None if insufficient data (< 2 runs in window).
+        """
+        path = Path(ci_history_path)
+        if not path.exists():
+            return None
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+        runs = data.get("runs", [])
+        if not runs:
+            return None
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+        l4_values = []
+        for run in runs:
+            ts_str = run.get("timestamp")
+            if not ts_str:
+                continue
+            try:
+                ts = datetime.fromisoformat(ts_str)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+            if ts < cutoff:
+                continue
+            if skill_path and run.get("skill_path") != skill_path:
+                continue
+            l4_val = run.get("l4_execution_stability")
+            if l4_val is not None:
+                l4_values.append(float(l4_val))
+
+        if len(l4_values) < 2:
+            return None
+
+        std_dev = self._compute_std_dev(l4_values)
+        return max(0.0, 1.0 - std_dev)
+
+    def merge_l4_stability(
+        self, runs_l4: float | None, ci_l4: float | None
+    ) -> float | None:
+        """Merge L4 from --runs and CI history with 60/40 weighting."""
+        if runs_l4 is not None and ci_l4 is not None:
+            return 0.6 * runs_l4 + 0.4 * ci_l4
+        if runs_l4 is not None:
+            return runs_l4
+        if ci_l4 is not None:
+            return ci_l4
+        return None
+
     def _get_l1_details(self, eval_results: list[dict[str, Any]]) -> dict[str, Any]:
         """Get detailed information for L1 metric."""
         trigger_results = [r for r in eval_results if r.get("category") == "trigger"]
@@ -405,6 +482,7 @@ class MetricsCalculator:
             )
             if without_skill_avg > 0
             else 0.0,
+            "denominator_warning": abs(without_skill_avg) < 0.01,
         }
 
     def _get_l3_details(

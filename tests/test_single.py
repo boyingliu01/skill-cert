@@ -15,9 +15,13 @@ class TestSetupSingleMode:
 
     def _make_mock_spec(self):
         return {
-            "name": "test-skill", "parse_method": "regex",
-            "parse_confidence": 0.95, "workflow_steps": [], "anti_patterns": [],
-            "output_format": {}, "triggers": [],
+            "name": "test-skill",
+            "parse_method": "regex",
+            "parse_confidence": 0.95,
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": {},
+            "triggers": [],
         }
 
     def test_setup_fail_fast_coverage(self, tmp_path):
@@ -48,6 +52,7 @@ class TestSetupSingleMode:
                     mock_create.return_value = MagicMock()
                     with patch("skill_cert.cli.EvalGenerator") as mock_gen_cls:
                         from engine.testgen import EvalGenerator as _EvalGen
+
                         mock_gen = MagicMock()
                         mock_gen_cls.return_value = mock_gen
                         mock_gen.generate_evals_with_convergence.return_value = {}
@@ -160,6 +165,7 @@ class TestGenerateFailFastReport:
         assert (output_dir / "test-skill-result.json").exists()
 
         import json
+
         json_data = json.loads((output_dir / "test-skill-result.json").read_text())
         assert json_data["fail_fast"] is True
 
@@ -245,6 +251,7 @@ class TestRunSingleMode:
                 mock_report.return_value = {"verdict": "FAIL"}
 
                 from skill_cert.cli import EXIT_ERROR
+
                 exit_code = run_single_mode(args, config)
                 assert exit_code == EXIT_ERROR
 
@@ -275,6 +282,7 @@ class TestRunSingleMode:
             )
             with patch("skill_cert.cli._run_single_phase") as mock_phase:
                 from skill_cert.cli import EXIT_PASS
+
                 mock_phase.return_value = EXIT_PASS
                 exit_code = run_single_mode(args, config)
                 assert exit_code == EXIT_PASS

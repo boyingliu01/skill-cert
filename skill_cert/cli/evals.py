@@ -187,15 +187,24 @@ def _calculate_metrics_with_stability(
     )
 
     calc = MetricsCalculator()
-    metrics = calc.calculate_metrics(all_results)
+
+    # Determine CI history path
+    ci_history_enabled = getattr(args, "ci_history", True)
+    ci_history_path = getattr(args, "ci_history_path", ".skill-cert-ci-history.json")
+    if not ci_history_enabled:
+        ci_history_path = None
+
+    metrics = calc.calculate_metrics(all_results, ci_history_path=ci_history_path)
 
     num_runs = getattr(args, "runs", 1) or 1
     if num_runs > 1:
         _print_phase(4, f"Stability Analysis ({num_runs} runs)")
         _evals = spec["evals"]
         eval_cases: list[Any] = (
-            _evals.get("eval_cases") or _evals.get("cases") or []
-        ) if isinstance(_evals, dict) else []
+            (_evals.get("eval_cases") or _evals.get("cases") or [])
+            if isinstance(_evals, dict)
+            else []
+        )
         stab_runner = StabilityRunner(
             base_runner=EvalRunner(
                 max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm
@@ -279,9 +288,9 @@ def _detect_and_print_drift(spec, adapters, grader) -> dict[str, Any] | None:
         detector = DriftDetector()
         _evals = spec["evals"]
         drift_results = detector.detect_drift(
-            (
-                _evals.get("eval_cases") or _evals.get("cases") or []
-            ) if isinstance(_evals, dict) else [],
+            (_evals.get("eval_cases") or _evals.get("cases") or [])
+            if isinstance(_evals, dict)
+            else [],
             adapters,
             grader,
         )
@@ -293,6 +302,47 @@ def _detect_and_print_drift(spec, adapters, grader) -> dict[str, Any] | None:
     return None
 
 
+def _run_calibration(args, all_results) -> dict[str, Any] | None:
+    """Run calibration analysis if --calibration-set is provided."""
+    calibration_set_path = getattr(args, "calibration_set", None)
+    if not calibration_set_path:
+        return None
+
+    from dataclasses import asdict
+
+    from engine.calibration import CalibrationRunner, GoldenEvalSet
+
+    _print_phase(4, "Calibration Analysis")
+    try:
+        cal_path = Path(calibration_set_path)
+        if not cal_path.exists():
+            print(f"  WARNING: Calibration set not found: {calibration_set_path}")
+            return None
+
+        raw_data = json.loads(cal_path.read_text(encoding="utf-8"))
+        golden_set = GoldenEvalSet.from_dicts(raw_data)
+
+        auto_results = [r.get("grade", {}).get("final_passed", False) for r in all_results]
+        if len(auto_results) < len(golden_set):
+            auto_results.extend([False] * (len(golden_set) - len(auto_results)))
+        auto_results = auto_results[: len(golden_set)]
+
+        runner = CalibrationRunner()
+        report = runner.calibrate(golden_set, auto_results)
+        cal_data = asdict(report)
+
+        print(f"  Agreement rate: {cal_data['agreement_rate']:.2%}")
+        print(f"  Cohen's kappa: {cal_data['cohens_kappa']:.4f}")
+        print(
+            f"  FPR: {cal_data['false_positive_rate']:.2%}, "
+            f"FNR: {cal_data['false_negative_rate']:.2%}"
+        )
+        return cal_data
+    except Exception as e:
+        print(f"  WARNING: Calibration failed: {e}")
+        return None
+
+
 def _build_structured_report_context(
     metrics: dict[str, Any], args, all_traces: list, telemetry=None
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -301,7 +351,7 @@ def _build_structured_report_context(
     observability_data = None
 
     # Prefer telemetry summary if available
-    if telemetry is not None and hasattr(telemetry, 'get_summary'):
+    if telemetry is not None and hasattr(telemetry, "get_summary"):
         summary = telemetry.get_summary()
         observability_data = {
             "trace_count": summary.get("trace_count", 0),
@@ -395,9 +445,57 @@ def _export_traces(args, output_dir: Path, skill_name: str, all_traces: list) ->
     return traces_path
 
 
+def _append_to_ci_history(
+    args, spec_path: str, metrics: dict[str, Any]
+) -> None:
+    """Append current run metrics to CI history file."""
+    ci_history_enabled = getattr(args, "ci_history", True)
+    if not ci_history_enabled:
+        return
+
+    from datetime import datetime, timezone
+
+    ci_history_path = Path(getattr(args, "ci_history_path", ".skill-cert-ci-history.json"))
+
+    # Load existing history or create new
+    if ci_history_path.exists():
+        try:
+            data = json.loads(ci_history_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            data = {"runs": []}
+    else:
+        data = {"runs": []}
+
+    # Append current run
+    run_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "skill_path": spec_path,
+        "l1_trigger_accuracy": metrics.get("l1_trigger_accuracy"),
+        "l2_with_without_skill_delta": metrics.get("l2_with_without_skill_delta"),
+        "l3_step_adherence": metrics.get("l3_step_adherence"),
+        "l4_execution_stability": metrics.get("l4_execution_stability"),
+        "l5_step_efficiency": metrics.get("l5_step_efficiency"),
+        "l6_trajectory_quality": metrics.get("l6_trajectory_quality"),
+        "overall_score": metrics.get("overall_score"),
+    }
+    data["runs"].append(run_entry)
+
+    # Write back
+    ci_history_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
 def _generate_and_write_reports(
-    args, output_dir, skill_name, spec, spec_path,
-    adapters, metrics, drift_report, config, telemetry=None,
+    args,
+    output_dir,
+    skill_name,
+    spec,
+    spec_path,
+    adapters,
+    metrics,
+    drift_report,
+    config,
+    telemetry=None,
+    calibration_data=None,
 ) -> tuple[str, dict[str, Any]]:
     """Generate and write reports, return md_report and json_report."""
     from skill_cert.cli import Reporter
@@ -439,6 +537,8 @@ def _generate_and_write_reports(
         token_analysis=token_analysis,
         observability=observability_data,
         session_telemetry=session_telemetry_summaries,
+        eval_results=metrics.get("_results"),
+        calibration_data=calibration_data,
     )
 
     # Write reports based on --format
@@ -479,7 +579,8 @@ def _run_single_phase(
         telemetry=telemetry,
     )
     primary_adapter = list(adapters.values())[0]
-    grader = Grader(llm_client=primary_adapter)
+    debias_position = getattr(args, "debias_position", True)
+    grader = Grader(llm_client=primary_adapter, debias_position=debias_position)
     tracker = ReliabilityTracker()
 
     # Phase 1: Run evaluations
@@ -495,6 +596,9 @@ def _run_single_phase(
     metrics = _calculate_metrics_with_stability(
         all_results, args, spec, spec_path, primary_adapter, config
     )
+
+    # Append metrics to CI history
+    _append_to_ci_history(args, spec_path, metrics)
 
     # Aggregate token data
     _aggregate_token_data(runner, token_ledger, metrics)
@@ -514,10 +618,22 @@ def _run_single_phase(
     # Phase 4: Drift Detection
     drift_report = _detect_and_print_drift(spec, adapters, grader)
 
+    # Phase 4.5: Calibration Analysis (optional)
+    calibration_data = _run_calibration(args, all_results)
+
     # Phase 5: Generate Report
     md_report, json_report = _generate_and_write_reports(
-        args, output_dir, skill_name, spec, spec_path,
-        adapters, metrics, drift_report, config, telemetry,
+        args,
+        output_dir,
+        skill_name,
+        spec,
+        spec_path,
+        adapters,
+        metrics,
+        drift_report,
+        config,
+        telemetry,
+        calibration_data=calibration_data,
     )
 
     verdict = json_report.get("verdict", "FAIL")

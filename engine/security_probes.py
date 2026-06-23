@@ -111,6 +111,43 @@ INJECTION_PATTERNS = [
         "HIGH",
         "Encoding bypass: base64 encoded injection",
     ),
+    # Slice-11: expanded injection patterns
+    (
+        re.compile(r"\b(output|reveal|display|print|show)\b.*\bsystem\s+prompt\b", re.IGNORECASE),
+        "INJECTION",
+        "CRITICAL",
+        "Prompt injection: system prompt leakage",
+    ),
+    (
+        re.compile(r"<system>.*</system>", re.DOTALL | re.IGNORECASE),
+        "INJECTION",
+        "HIGH",
+        "Prompt injection: XML tag injection in structured prompts",
+    ),
+    (
+        re.compile(r"^---\s*\nrole:\s*(system|assistant)\b", re.IGNORECASE | re.MULTILINE),
+        "INJECTION",
+        "HIGH",
+        "Prompt injection: YAML frontmatter role override",
+    ),
+    (
+        re.compile(r"\\(input|include|includegraphics)\s*\{", re.IGNORECASE),
+        "INJECTION",
+        "MEDIUM",
+        "Prompt injection: LaTeX command injection",
+    ),
+    (
+        re.compile(r"=(HYPERLINK|CMD|SUM|MACRO)\s*\(", re.IGNORECASE),
+        "INJECTION",
+        "MEDIUM",
+        "Prompt injection: CSV injection via formula",
+    ),
+    (
+        re.compile(r"[\r\n]X-[\w-]+\s*:\s*[^\n]+", re.IGNORECASE),
+        "INJECTION",
+        "HIGH",
+        "Prompt injection: HTTP header injection",
+    ),
 ]
 
 DANGEROUS_COMMAND_PATTERNS = [
@@ -187,6 +224,37 @@ DANGEROUS_COMMAND_PATTERNS = [
         "CRITICAL",
         "Dangerous command: sudo privilege use",
     ),
+    # Slice-11: expanded dangerous command patterns
+    (
+        re.compile(r"\bos\.symlink\s*\(", re.IGNORECASE),
+        "DANGEROUS_CMD",
+        "HIGH",
+        "Dangerous command: symlink attack via os.symlink",
+    ),
+    (
+        re.compile(r"\b(echo|printf|cat)\b.*>>\s*\.env\b", re.IGNORECASE),
+        "DANGEROUS_CMD",
+        "HIGH",
+        "Dangerous command: environment variable injection via .env file",
+    ),
+    (
+        re.compile(r">>\s*/etc/hosts\b", re.IGNORECASE),
+        "DANGEROUS_CMD",
+        "CRITICAL",
+        "Dangerous command: DNS manipulation via /etc/hosts",
+    ),
+    (
+        re.compile(r"\bcrontab\b", re.IGNORECASE),
+        "DANGEROUS_CMD",
+        "HIGH",
+        "Dangerous command: cron job persistence",
+    ),
+    (
+        re.compile(r"\bLD_PRELOAD\s*=", re.IGNORECASE),
+        "DANGEROUS_CMD",
+        "CRITICAL",
+        "Dangerous command: LD_PRELOAD injection",
+    ),
 ]
 
 CREDENTIAL_PATTERNS = [
@@ -235,6 +303,31 @@ CREDENTIAL_PATTERNS = [
         "CREDENTIAL",
         "HIGH",
         "Hardcoded password",
+    ),
+    # Slice-11: expanded credential patterns
+    (
+        re.compile(r"redirect_uri\s*=\s*https?://", re.IGNORECASE),
+        "CREDENTIAL",
+        "HIGH",
+        "Credential access: OAuth token theft via redirect URI",
+    ),
+    (
+        re.compile(r"\bSSH_AUTH_SOCK\b"),
+        "CREDENTIAL",
+        "HIGH",
+        "Credential access: SSH agent socket hijacking",
+    ),
+    (
+        re.compile(r"~/.docker/config\.json\b"),
+        "CREDENTIAL",
+        "HIGH",
+        "Credential access: Docker credential store access",
+    ),
+    (
+        re.compile(r"~/.aws/credentials\b"),
+        "CREDENTIAL",
+        "CRITICAL",
+        "Credential access: AWS credential file exfiltration",
     ),
 ]
 
@@ -288,6 +381,37 @@ EXFILTRATION_PATTERNS = [
         "HIGH",
         "Data exfiltration: webhook POST",
     ),
+    # Slice-11: expanded exfiltration patterns
+    (
+        re.compile(r"\b(dig|nslookup|host|dig)\b.*\$\(.*\)\.\w+\.\w+", re.IGNORECASE),
+        "EXFILTRATION",
+        "HIGH",
+        "Data exfiltration: DNS exfiltration via encoded subdomains",
+    ),
+    (
+        re.compile(r"data:image/\w+;base64,", re.IGNORECASE),
+        "EXFILTRATION",
+        "MEDIUM",
+        "Data exfiltration: image data URI embedding",
+    ),
+    (
+        re.compile(r"\bnew\s+WebSocket\s*\(\s*['\"]wss?://", re.IGNORECASE),
+        "EXFILTRATION",
+        "HIGH",
+        "Data exfiltration: WebSocket channel to external server",
+    ),
+    (
+        re.compile(r"\bcurl\b\s+.*-L\b.*https?://", re.IGNORECASE),
+        "EXFILTRATION",
+        "MEDIUM",
+        "Data exfiltration: HTTP redirect chain following",
+    ),
+    (
+        re.compile(r"\bqrencode\b.*<\s*/etc/", re.IGNORECASE),
+        "EXFILTRATION",
+        "HIGH",
+        "Data exfiltration: QR code generation from sensitive files",
+    ),
 ]
 
 OBFUSCATION_PATTERNS = [
@@ -321,6 +445,31 @@ OBFUSCATION_PATTERNS = [
         "OBFUSCATION",
         "MEDIUM",
         "Obfuscation: JS char code construction",
+    ),
+    # Slice-11: expanded obfuscation patterns
+    (
+        re.compile(r"[\u202a-\u202e\u200e\u200f]"),
+        "OBFUSCATION",
+        "CRITICAL",
+        "Obfuscation: Unicode bidirectional attack characters",
+    ),
+    (
+        re.compile(r"[\u200b-\u200d]{2,}"),
+        "OBFUSCATION",
+        "HIGH",
+        "Obfuscation: zero-width character steganography",
+    ),
+    (
+        re.compile(r"\bbase32\b.*\|\s*base64\b.*\|\s*(ba)?sh\b", re.IGNORECASE),
+        "OBFUSCATION",
+        "HIGH",
+        "Obfuscation: base32/base64 chain encoding to shell",
+    ),
+    (
+        re.compile(r"[\u0430\u0435\u043e\u0440\u0441\u0443\u0445\u0456\u0458]"),
+        "OBFUSCATION",
+        "MEDIUM",
+        "Obfuscation: homoglyph substitution via Cyrillic lookalikes",
     ),
 ]
 
@@ -356,6 +505,31 @@ PRIVILEGE_ESCALATION_PATTERNS = [
         "PRIV_ESCALATION",
         "CRITICAL",
         "Privilege escalation: container escape via /proc",
+    ),
+    # Slice-11: expanded privilege escalation patterns
+    (
+        re.compile(r"\bchmod\s+[04][0-7]{3}\b"),
+        "PRIV_ESCALATION",
+        "CRITICAL",
+        "Privilege escalation: SETUID binary creation via chmod",
+    ),
+    (
+        re.compile(r"\bNOPASSWD\b"),
+        "PRIV_ESCALATION",
+        "CRITICAL",
+        "Privilege escalation: sudo NOPASSWD configuration",
+    ),
+    (
+        re.compile(r"--unix-socket\s+/var/run/docker\.sock", re.IGNORECASE),
+        "PRIV_ESCALATION",
+        "CRITICAL",
+        "Privilege escalation: Docker socket privilege escalation",
+    ),
+    (
+        re.compile(r"\bPATH\s*=\s*/\S+.*:\s*\$PATH\b"),
+        "PRIV_ESCALATION",
+        "HIGH",
+        "Privilege escalation: PATH injection for command hijacking",
     ),
 ]
 

@@ -103,9 +103,7 @@ class TriggerAccuracyEval:
     def __init__(self, threshold: float = L1_THRESHOLD):
         self.threshold = threshold
 
-    def evaluate(
-        self, graded_results: list[dict[str, Any]]
-    ) -> TriggerAccuracyResult:
+    def evaluate(self, graded_results: list[dict[str, Any]]) -> TriggerAccuracyResult:
         """Evaluate L1 trigger accuracy from graded eval results.
 
         Args:

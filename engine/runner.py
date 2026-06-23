@@ -192,7 +192,7 @@ class EvalRunner:
 
                 response, token_usage = self._execute_llm_call(model_adapter, messages)
                 perf_elapsed = (time.perf_counter() - perf_start) * 1000
-                cost = self._calc_cost(token_usage) if self.model_name else 0.0
+                cost = self._calc_cost(token_usage, model_name=model_name)
 
                 trace.record_llm_call(
                     model=model_name,
@@ -348,13 +348,14 @@ class EvalRunner:
             )
         return result_list
 
-    def _calc_cost(self, token_usage: dict) -> float:
-        if not self.model_name or not token_usage:
+    def _calc_cost(self, token_usage: dict, model_name: str | None = None) -> float:
+        effective_model = model_name or self.model_name
+        if not effective_model or not token_usage:
             return 0.0
         return self._pricing.calculate_cost(
             token_usage.get("prompt_tokens", 0),
             token_usage.get("completion_tokens", 0),
-            self.model_name,
+            effective_model,
         )
 
     def _check_security(self, output: str) -> dict:

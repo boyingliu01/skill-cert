@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 class JudgeResult(BaseModel):
@@ -58,9 +58,10 @@ class AssertionResult:
 class Grader:
     """Evaluates model outputs against eval assertions."""
 
-    def __init__(self, llm_client: Any = None):
+    def __init__(self, llm_client: Any = None, debias_position: bool = True):
         """Initialize grader with optional LLM client for judge mode."""
         self.llm_client = llm_client
+        self.debias_position = debias_position
 
     def grade_output(self, eval_case: EvalCase, model_output: str) -> dict[str, Any]:
         """Evaluate a single model output against eval case assertions."""
@@ -217,6 +218,11 @@ class Grader:
         """Convert weight to multiplier: 1=Normal=1, 2=Important=2, 3=Critical=3."""
         return max(1, min(3, weight))  # Clamp between 1 and 3
 
+    @staticmethod
+    def _clamp_confidence(value: Any) -> float:
+        """Clamp confidence to [0.0, 1.0]."""
+        return max(0.0, min(1.0, float(value)))
+
     def _llm_judge(
         self, eval_case: EvalCase, model_output: str, assertion_results: list[AssertionResult]
     ) -> JudgeResult | None:
@@ -269,13 +275,80 @@ class Grader:
         """Execute LLM judge with API call."""
         try:
             result = self._execute_llm_judge(eval_case, model_output, assertion_results)
-            # Position debias: for borderline cases (confidence < 0.8), run swap
-            if result.confidence < 0.8 and self.llm_client:
+            if self.debias_position and self.llm_client:
                 result = self._debias_position(eval_case, model_output, assertion_results, result)
             return result
+        except json.JSONDecodeError:
+            try:
+                result = self._retry_llm_judge_strict(eval_case, model_output, assertion_results)
+                if self.debias_position and self.llm_client:
+                    result = self._debias_position(
+                        eval_case, model_output, assertion_results, result
+                    )
+                return result
+            except Exception as retry_err:
+                return self._llm_judge_error_fallback(assertion_results, retry_err)
+        except ValidationError as e:
+            return self._handle_validation_error(e, assertion_results)
         except Exception as e:
-            # Fallback to simplified logic on any error (network, parse, etc.)
             return self._llm_judge_error_fallback(assertion_results, e)
+
+    def _retry_llm_judge_strict(
+        self,
+        eval_case: EvalCase,
+        model_output: str,
+        assertion_results: list[AssertionResult],
+    ) -> JudgeResult:
+        """Retry LLM judge with stricter JSON-only prompt."""
+        expected_behavior = eval_case.expected_output or eval_case.prompt
+        prompt = self._build_judge_prompt(
+            eval_case, model_output, assertion_results, expected_behavior
+        )
+        prompt += "\n\nIMPORTANT: Respond ONLY with valid JSON. No markdown, no explanation."
+        response_text = self.llm_client.chat(
+            messages=[{"role": "user", "content": prompt}],
+            timeout=30,
+        )
+        response_text = self._parse_judge_response(response_text)
+        judge_data = json.loads(response_text)
+        if isinstance(judge_data, str):
+            judge_data = json.loads(judge_data)
+        if not isinstance(judge_data, dict):
+            raise ValueError(f"Expected dict from judge response, got {type(judge_data).__name__}")
+        failure_reasons = judge_data.get("failure_reasons", [])
+        if not isinstance(failure_reasons, list):
+            failure_reasons = []
+        return JudgeResult(
+            passed=bool(judge_data.get("passed", False)),
+            confidence=self._clamp_confidence(judge_data.get("confidence", 0.5)),
+            reasoning=str(judge_data.get("reasoning", "")),
+            failure_reasons=failure_reasons,
+            judge_version="2.0",
+            judge_model="llm",
+        )
+
+    def _handle_validation_error(
+        self,
+        error: ValidationError,
+        assertion_results: list[AssertionResult],
+    ) -> JudgeResult:
+        """Handle Pydantic ValidationError — clamp confidence and reconstruct."""
+        raw_confidence = 0.5
+        for err in error.errors():
+            if err.get("loc") == ("confidence",):
+                raw_input = err.get("input")
+                if raw_input is not None:
+                    try:
+                        raw_confidence = float(raw_input)
+                    except (TypeError, ValueError):
+                        raw_confidence = 0.5
+        return JudgeResult(
+            passed=False,
+            confidence=self._clamp_confidence(raw_confidence),
+            reasoning=f"Validation error recovered: {error}",
+            judge_version="2.0",
+            judge_model="llm",
+        )
 
     def _execute_llm_judge(
         self,
@@ -314,7 +387,7 @@ class Grader:
 
         return JudgeResult(
             passed=bool(judge_data.get("passed", False)),
-            confidence=float(judge_data.get("confidence", 0.5)),
+            confidence=self._clamp_confidence(judge_data.get("confidence", 0.5)),
             reasoning=str(judge_data.get("reasoning", "")),
             failure_reasons=failure_reasons,
             judge_version="2.0",
@@ -329,6 +402,8 @@ class Grader:
         expected_behavior: str,
     ) -> str:
         """Build the LLM judge prompt."""
+        # Escape triple-backtick sequences in model output to avoid breaking the prompt
+        sanitized_output = model_output.replace("```", "'''")
         return f"""# LLM-as-Judge Prompt
 
 你是一个严格的评测裁判。评估以下模型输出是否满足指定的行为要求。
@@ -349,7 +424,7 @@ class Grader:
 
 **Skill 输出**:
 ```
-{model_output}
+{sanitized_output}
 ```
 
 **行为要求**:
@@ -381,7 +456,65 @@ class Grader:
             end = response_text.find("```", start)
             if end > start:
                 response_text = response_text[start:end].strip()
+
+        if self._is_valid_json(response_text):
+            return response_text
+
+        extracted = self._extract_json_by_braces(response_text)
+        if extracted is not None:
+            return extracted
+
+        try:
+            parsed = json.loads(response_text, strict=False)
+            return json.dumps(parsed)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
         return response_text
+
+    @staticmethod
+    def _is_valid_json(text: str) -> bool:
+        """Check if text is valid JSON."""
+        try:
+            json.loads(text)
+            return True
+        except (json.JSONDecodeError, ValueError):
+            return False
+
+    @staticmethod
+    def _extract_json_by_braces(text: str) -> str | None:
+        """Find outermost {..} via brace counting."""
+        start = text.find("{")
+        if start == -1:
+            return None
+        depth = 0
+        in_string = False
+        escape_next = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == "\\" and in_string:
+                escape_next = True
+                continue
+            if ch == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start : i + 1]
+                    try:
+                        json.loads(candidate)
+                        return candidate
+                    except (json.JSONDecodeError, ValueError):
+                        return None
+        return None
 
     def _llm_judge_error_fallback(
         self,
@@ -445,12 +578,7 @@ class Grader:
             swap_text = self.llm_client.chat(
                 messages=[{"role": "user", "content": swap_prompt}], timeout=30
             )
-            swap_text = swap_text.strip()
-            if "```json" in swap_text:
-                start = swap_text.find("```json") + 7
-                end = swap_text.find("```", start)
-                if end > start:
-                    swap_text = swap_text[start:end].strip()
+            swap_text = self._parse_judge_response(swap_text)
             swap_data = json.loads(swap_text)
             # Handle double-encoded JSON
             if isinstance(swap_data, str):

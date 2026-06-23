@@ -1,9 +1,19 @@
 """SKILL.md maintainability scorer — readability, completeness, freshness."""
 
 import re
+import subprocess
+import time
 from dataclasses import dataclass
 
 import yaml
+
+
+@dataclass(frozen=True)
+class FreshnessFinding:
+    line_number: int
+    pattern_type: str
+    severity: str
+    description: str
 
 
 @dataclass(frozen=True)
@@ -141,6 +151,7 @@ def freshness_score(content: str) -> dict:
             "outdated_refs": 0,
             "has_version": False,
             "score": 1.0,
+            "patterns": [],
         }
 
     outdated_refs = 0
@@ -156,11 +167,14 @@ def freshness_score(content: str) -> dict:
     penalty = outdated_refs * 0.1 + (0.5 if is_beta else 0)
     score = max(0.0, 1.0 - penalty)
 
+    patterns = detect_freshness_patterns(content)
+
     return {
         "outdated_refs": outdated_refs,
         "has_version": has_version,
         "is_beta": is_beta,
         "score": round(score, 3),
+        "patterns": patterns,
     }
 
 
@@ -275,3 +289,293 @@ def _has_section(content: str, pattern: str) -> bool:
     return bool(
         re.search(rf"^##\s+[^#\n]*{pattern}[^#\n]*$", content, re.MULTILINE | re.IGNORECASE)
     )
+
+
+# ─── Freshness Pattern Detectors ──────────────────────────────────────────
+
+SHADOWED_BUILTINS = frozenset({
+    "list", "dict", "set", "str", "int", "float", "bool", "tuple", "frozenset",
+    "complex", "bytes", "bytearray", "id", "input", "format", "map", "filter",
+    "range", "hash", "len", "object", "type", "print", "exec", "eval", "compile",
+    "open", "iter", "next", "super", "property", "classmethod", "staticmethod",
+    "repr", "ascii", "bin", "hex", "oct", "ord", "chr", "abs", "round", "min",
+    "max", "sum", "any", "all", "zip", "sorted", "reversed", "enumerate", "isinstance",
+    "issubclass", "callable", "vars", "locals", "globals", "dir", "getattr",
+    "setattr", "hasattr", "delattr", "breakpoint", "copyright", "credits",
+    "exit", "help", "license", "quit", "__import__",
+})
+
+_DEPRECATED_DECORATOR = re.compile(r"^\s*@deprecated\b", re.MULTILINE | re.IGNORECASE)
+_STALE_TODO = re.compile(r"\b(TODO|FIXME|HACK|XXX|TBD)\b", re.IGNORECASE)
+_IMPORT_SHADOW = re.compile(r"^\s*import\s+(\w+)", re.MULTILINE)
+_FROM_IMPORT_SHADOW = re.compile(r"^\s*from\s+\S+\s+import\s+(.+)", re.MULTILINE)
+_ASSIGNMENT_SHADOW = re.compile(r"^\s*([a-z_]\w*)\s*=\s*(?!=)", re.MULTILINE)
+_ALIAS_SHADOW = re.compile(r"\bas\s+(\w+)", re.MULTILINE)
+_CATCH_ALL = re.compile(r"^\s*except\s*(Exception)?\s*:", re.MULTILINE)
+_CREDENTIAL_PATTERNS = [
+    re.compile(r"""["']sk[_-][^"']*["']""", re.IGNORECASE),
+    re.compile(r"""\bapi[_-]?key\s*=\s*["'][^"']+["']""", re.IGNORECASE),
+    re.compile(r"""\bsecret\s*=\s*["'][^"']+["']""", re.IGNORECASE),
+]
+
+
+def detect_deprecated_api(content: str) -> list[FreshnessFinding]:
+    """Detect @deprecated decorators."""
+    if not content:
+        return []
+    findings = []
+    for i, line in enumerate(content.split("\n"), 1):
+        if _DEPRECATED_DECORATOR.match(line):
+            findings.append(FreshnessFinding(
+                line_number=i,
+                pattern_type="deprecated_api",
+                severity="high",
+                description="Deprecated API usage detected",
+            ))
+    return findings
+
+
+def detect_stale_todo(
+    content: str, file_path: str | None = None
+) -> list[FreshnessFinding]:
+    """Detect TODO/FIXME/HACK comments older than 90 days via git blame."""
+    if not content:
+        return []
+    lines = content.split("\n")
+    todo_lines = [
+        (i + 1, line) for i, line in enumerate(lines) if _STALE_TODO.search(line)
+    ]
+    if not todo_lines:
+        return []
+
+    if file_path is None:
+        findings = []
+        for ln, line in todo_lines:
+            m = _STALE_TODO.search(line)
+            if m:
+                findings.append(FreshnessFinding(
+                    line_number=ln,
+                    pattern_type="stale_todo",
+                    severity="low",
+                    description=f"Stale {m.group(1)} comment (no git info)",
+                ))
+        return findings
+
+    try:
+        result = subprocess.run(
+            ["git", "blame", "--porcelain", file_path],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            findings = []
+            for ln, line in todo_lines:
+                m = _STALE_TODO.search(line)
+                if m:
+                    findings.append(FreshnessFinding(
+                        line_number=ln,
+                        pattern_type="stale_todo",
+                        severity="low",
+                        description=f"Stale {m.group(1)} comment (git blame failed)",
+                    ))
+            return findings
+    except (subprocess.SubprocessError, OSError):
+        findings = []
+        for ln, line in todo_lines:
+            m = _STALE_TODO.search(line)
+            if m:
+                findings.append(FreshnessFinding(
+                    line_number=ln,
+                    pattern_type="stale_todo",
+                    severity="low",
+                    description=f"Stale {m.group(1)} comment (git unavailable)",
+                ))
+        return findings
+
+    now = time.time()
+    cutoff = now - 90 * 86400
+    line_dates: dict[int, int] = {}
+    current_time = None
+    current_line_num = None
+    for blame_line in result.stdout.split("\n"):
+        parts = blame_line.split()
+        if len(parts) >= 3 and len(parts[0]) == 40:
+            try:
+                current_line_num = int(parts[2])
+            except (ValueError, IndexError):
+                pass
+        elif blame_line.startswith("author-time "):
+            try:
+                current_time = int(blame_line.split()[1])
+            except (ValueError, IndexError):
+                pass
+        elif (
+            blame_line.startswith("\t")
+            and current_time is not None
+            and current_line_num is not None
+        ):
+            line_dates[current_line_num] = current_time
+            current_time = None
+            current_line_num = None
+
+    findings = []
+    for ln, line in todo_lines:
+        m = _STALE_TODO.search(line)
+        if not m:
+            continue
+        author_time = line_dates.get(ln)
+        if author_time is None or author_time < cutoff:
+            days = (
+                int((now - author_time) / 86400) if author_time else "unknown"
+            )
+            findings.append(FreshnessFinding(
+                line_number=ln,
+                pattern_type="stale_todo",
+                severity="low",
+                description=f"Stale {m.group(1)} comment ({days} days old)",
+            ))
+    return findings
+
+
+def detect_shadowed_builtins(content: str) -> list[FreshnessFinding]:
+    """Detect imports or variable names that shadow Python builtins."""
+    if not content:
+        return []
+    findings = []
+    for i, line in enumerate(content.split("\n"), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        m = _IMPORT_SHADOW.match(line)
+        if m and m.group(1) in SHADOWED_BUILTINS:
+            findings.append(FreshnessFinding(
+                line_number=i,
+                pattern_type="shadowed_builtin",
+                severity="high",
+                description=f"Import shadows builtin '{m.group(1)}'",
+            ))
+            continue
+
+        m = _FROM_IMPORT_SHADOW.match(line)
+        if m:
+            imports_str = m.group(1)
+            alias_m = _ALIAS_SHADOW.search(imports_str)
+            if alias_m and alias_m.group(1) in SHADOWED_BUILTINS:
+                findings.append(FreshnessFinding(
+                    line_number=i,
+                    pattern_type="shadowed_builtin",
+                    severity="high",
+                    description=f"Import alias shadows builtin '{alias_m.group(1)}'",
+                ))
+                continue
+            for name in imports_str.split(","):
+                name = name.strip()
+                alias_m2 = _ALIAS_SHADOW.search(name)
+                if alias_m2:
+                    check = alias_m2.group(1)
+                else:
+                    check = name.split()[0] if name.split() else name
+                if check in SHADOWED_BUILTINS:
+                    findings.append(FreshnessFinding(
+                        line_number=i,
+                        pattern_type="shadowed_builtin",
+                        severity="high",
+                        description=f"Import shadows builtin '{check}'",
+                    ))
+                    break
+            continue
+
+        m = _ASSIGNMENT_SHADOW.match(line)
+        if m and m.group(1) in SHADOWED_BUILTINS:
+            findings.append(FreshnessFinding(
+                line_number=i,
+                pattern_type="shadowed_builtin",
+                severity="medium",
+                description=f"Variable shadows builtin '{m.group(1)}'",
+            ))
+    return findings
+
+
+def detect_catch_all_except(content: str) -> list[FreshnessFinding]:
+    """Detect except:/except Exception: without re-raise or logging."""
+    if not content:
+        return []
+    lines = content.split("\n")
+    findings = []
+    i = 0
+    while i < len(lines):
+        m = _CATCH_ALL.match(lines[i])
+        if m:
+            except_line = i + 1
+            is_bare = m.group(1) is None
+            except_indent = len(lines[i]) - len(lines[i].lstrip())
+            has_handling = False
+            j = i + 1
+            while j < len(lines):
+                next_line = lines[j]
+                if not next_line.strip():
+                    j += 1
+                    continue
+                next_indent = len(next_line) - len(next_line.lstrip())
+                if next_indent <= except_indent:
+                    break
+                if re.search(r"\braise\b", next_line):
+                    has_handling = True
+                    break
+                if re.search(r"\b(?:logger|logging)\b", next_line):
+                    has_handling = True
+                    break
+                j += 1
+            if not has_handling:
+                findings.append(FreshnessFinding(
+                    line_number=except_line,
+                    pattern_type="catch_all_except",
+                    severity="high" if is_bare else "medium",
+                    description=(
+                        "Bare except without re-raise or logging"
+                        if is_bare
+                        else "catch-all except Exception without re-raise or logging"
+                    ),
+                ))
+            i = j
+        else:
+            i += 1
+    return findings
+
+
+def detect_hardcoded_credentials(
+    content: str, is_test_file: bool = False
+) -> list[FreshnessFinding]:
+    """Detect string literals matching API key patterns."""
+    if not content or is_test_file:
+        return []
+    findings = []
+    for i, line in enumerate(content.split("\n"), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        for pattern in _CREDENTIAL_PATTERNS:
+            if pattern.search(line):
+                findings.append(FreshnessFinding(
+                    line_number=i,
+                    pattern_type="hardcoded_credential",
+                    severity="critical",
+                    description="Potential hardcoded credential detected",
+                ))
+                break
+    return findings
+
+
+def detect_freshness_patterns(
+    content: str, file_path: str | None = None, is_test_file: bool = False
+) -> list[FreshnessFinding]:
+    """Run all freshness pattern detectors and return combined findings."""
+    if not content:
+        return []
+    findings: list[FreshnessFinding] = []
+    findings.extend(detect_deprecated_api(content))
+    findings.extend(detect_stale_todo(content, file_path=file_path))
+    findings.extend(detect_shadowed_builtins(content))
+    findings.extend(detect_catch_all_except(content))
+    findings.extend(detect_hardcoded_credentials(content, is_test_file=is_test_file))
+    return findings

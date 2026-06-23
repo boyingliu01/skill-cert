@@ -125,7 +125,9 @@ def _generate_fail_fast_report(
         "metrics_breakdown": {
             "l1_details": {"trigger_accuracy": 0.0, "precision": 0.0, "recall": 0.0, "f1": 0.0},
             "l2_details": {
-                "with_skill_pass_rate": 0.0, "without_skill_pass_rate": 0.0, "delta": 0.0
+                "with_skill_pass_rate": 0.0,
+                "without_skill_pass_rate": 0.0,
+                "delta": 0.0,
             },
             "l3_details": {"method": "coverage", "covered_steps": [], "total_steps": 0},
             "l4_details": {"mean_pass_rate": 0.0, "stdev": 0.0},

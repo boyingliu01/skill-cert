@@ -1176,3 +1176,237 @@ class TestReporter:
         md, json_r = reporter.generate_report_with_multi_skill(metrics, drift, config, multi)
         assert "token_overflow" in md
         assert json_r["multi_skill_analysis"]["conflicts"][0]["severity"] == "high"
+
+
+class TestBuildEvalDetails:
+    """Test eval_details population in build_structured_report."""
+
+    def _make_eval_results(self):
+        """Build sample eval results matching runner+grader output format."""
+        return [
+            {
+                "eval_id": 1,
+                "eval_name": "trigger test",
+                "eval_category": "trigger",
+                "model": "gpt-4",
+                "run": "with-skill",
+                "input": "review this PR",
+                "output": "Looking at the changes...",
+                "execution_time": 1.23,
+                "error": None,
+                "tokens_used": 150,
+                "cost": 0.003,
+                "grade": {
+                    "assertion_results": [
+                        {
+                            "assertion": {
+                                "name": "has_review",
+                                "type": "contains",
+                                "value": "changes",
+                                "weight": 1,
+                            },
+                            "passed": True,
+                            "confidence": 1.0,
+                            "reason": "'changes' found in output",
+                        }
+                    ],
+                    "pass_rate": 1.0,
+                    "final_passed": True,
+                },
+                "mode": "with_skill",
+                "final_passed": True,
+                "pass_rate": 1.0,
+            },
+            {
+                "eval_id": 2,
+                "eval_name": "boundary test",
+                "eval_category": "boundary",
+                "model": "gpt-4",
+                "run": "without-skill",
+                "input": "do something else",
+                "output": "I cannot help with that",
+                "execution_time": 0.5,
+                "error": None,
+                "tokens_used": 80,
+                "cost": 0.001,
+                "grade": {
+                    "assertion_results": [
+                        {
+                            "assertion": {
+                                "name": "no_trigger",
+                                "type": "not_contains",
+                                "value": "review",
+                                "weight": 2,
+                            },
+                            "passed": True,
+                            "confidence": 1.0,
+                            "reason": "'review' not found in output",
+                        }
+                    ],
+                    "pass_rate": 1.0,
+                    "final_passed": True,
+                },
+                "mode": "without_skill",
+                "final_passed": True,
+                "pass_rate": 1.0,
+            },
+        ]
+
+    def test_eval_details_empty_when_no_eval_results(self):
+        """Backward compat: eval_details=[] when eval_results not passed."""
+        reporter = Reporter()
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.85},
+            drift=None,
+            config={"models": ["m1"]},
+        )
+        assert report.eval_details == []
+
+    def test_eval_details_populated_when_eval_results_passed(self):
+        """RED: eval_details must contain EvalDetail items when eval_results provided."""
+        reporter = Reporter()
+        eval_results = self._make_eval_results()
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.85},
+            drift=None,
+            config={"models": ["gpt-4"]},
+            eval_results=eval_results,
+        )
+        assert len(report.eval_details) == 2
+
+    def test_eval_details_field_mapping(self):
+        """Verify raw dict fields are correctly mapped to EvalDetail model."""
+        reporter = Reporter()
+        eval_results = self._make_eval_results()
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.85},
+            drift=None,
+            config={"models": ["gpt-4"]},
+            eval_results=eval_results,
+        )
+        detail = report.eval_details[0]
+        assert detail.eval_id == 1
+        assert detail.eval_name == "trigger test"
+        assert detail.eval_category == "trigger"
+        assert detail.model == "gpt-4"
+        assert detail.phase == "with_skill"
+        assert detail.input == "review this PR"
+        assert detail.output == "Looking at the changes..."
+        assert detail.passed is True
+        assert detail.score == 1.0
+        assert detail.execution_time == 1.23
+        assert detail.tokens_used == 150
+        assert detail.cost == 0.003
+        assert detail.error is None
+
+    def test_eval_details_assertions_mapped(self):
+        """Verify assertion_results are mapped to AssertionResult models."""
+        reporter = Reporter()
+        eval_results = self._make_eval_results()
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.85},
+            drift=None,
+            config={"models": ["gpt-4"]},
+            eval_results=eval_results,
+        )
+        assertions = report.eval_details[0].assertions
+        assert len(assertions) == 1
+        assert assertions[0].type == "contains"
+        assert assertions[0].expected == "changes"
+        assert assertions[0].passed is True
+        assert assertions[0].weight == 1.0
+
+    def test_eval_details_error_result(self):
+        """Verify error results are mapped correctly."""
+        reporter = Reporter()
+        eval_results = [
+            {
+                "eval_id": 3,
+                "eval_name": "error test",
+                "eval_category": "failure",
+                "model": "gpt-4",
+                "run": "with-skill",
+                "input": "do something",
+                "output": None,
+                "execution_time": 0,
+                "error": "timeout",
+                "tokens_used": 0,
+                "cost": 0.0,
+                "mode": "with_skill",
+                "final_passed": False,
+                "pass_rate": 0.0,
+            }
+        ]
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.5},
+            drift=None,
+            config={"models": ["gpt-4"]},
+            eval_results=eval_results,
+        )
+        detail = report.eval_details[0]
+        assert detail.error == "timeout"
+        assert detail.passed is False
+        assert detail.score == 0.0
+
+    def test_eval_details_empty_list_when_none_passed(self):
+        """Explicit None for eval_results → empty list."""
+        reporter = Reporter()
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.85},
+            drift=None,
+            config={"models": ["m1"]},
+            eval_results=None,
+        )
+        assert report.eval_details == []
+
+    def test_build_eval_details_method_exists(self):
+        """_build_eval_details is a callable method on Reporter."""
+        reporter = Reporter()
+        assert hasattr(reporter, "_build_eval_details")
+        assert callable(reporter._build_eval_details)
+
+
+# ── build_structured_report with calibration_data (slice-7) ──────────
+
+
+class TestBuildStructuredReportCalibration:
+    def test_calibration_data_included_in_extras(self):
+        """When calibration_data is provided, it appears in StructuredReport.extras."""
+        reporter = Reporter()
+        calibration_data = {
+            "agreement_rate": 0.95,
+            "false_positive_rate": 0.02,
+            "false_negative_rate": 0.03,
+            "cohens_kappa": 0.90,
+            "total_cases": 100,
+        }
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.85},
+            drift=None,
+            config={"models": ["m1"]},
+            calibration_data=calibration_data,
+        )
+        assert "calibration" in report.extras
+        assert report.extras["calibration"]["agreement_rate"] == 0.95
+        assert report.extras["calibration"]["cohens_kappa"] == 0.90
+
+    def test_calibration_data_none_not_in_extras(self):
+        """When calibration_data is None, no 'calibration' key in extras."""
+        reporter = Reporter()
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.85},
+            drift=None,
+            config={"models": ["m1"]},
+        )
+        assert "calibration" not in report.extras
+
+    def test_calibration_data_empty_dict_not_in_extras(self):
+        """When calibration_data is empty dict, no 'calibration' key in extras."""
+        reporter = Reporter()
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.85},
+            drift=None,
+            config={"models": ["m1"]},
+            calibration_data={},
+        )
+        assert "calibration" not in report.extras

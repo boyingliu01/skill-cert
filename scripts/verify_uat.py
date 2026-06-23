@@ -34,8 +34,10 @@ def main():
     skills_to_test = [
         ("delphi-review", str(project_root / "skills" / "delphi-review" / "SKILL.md")),
         ("sprint-flow", str(project_root / "skills" / "sprint-flow" / "SKILL.md")),
-        ("test-specification-alignment",
-         str(project_root / "skills" / "test-specification-alignment" / "SKILL.md")),
+        (
+            "test-specification-alignment",
+            str(project_root / "skills" / "test-specification-alignment" / "SKILL.md"),
+        ),
     ]
 
     # 检查 plan-eng-review

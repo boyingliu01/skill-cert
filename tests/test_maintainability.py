@@ -1,13 +1,22 @@
 """Tests for engine/maintainability.py — SKILL.md maintainability scorer."""
 
+import subprocess
 import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from engine.maintainability import (
+    FreshnessFinding,
     MaintainabilityResult,
     MaintainabilityScorer,
     completeness_score,
+    detect_catch_all_except,
+    detect_deprecated_api,
+    detect_freshness_patterns,
+    detect_hardcoded_credentials,
+    detect_shadowed_builtins,
+    detect_stale_todo,
     freshness_score,
     readability_score,
     score_skill_md,
@@ -519,3 +528,397 @@ class TestMaintainabilityScorer:
     def test_failing_grade(self):
         result = score_skill_md(BAD_SKILL)
         assert result.grade == "F"
+
+
+# ─── Test: FreshnessFinding dataclass ─────────────────────────────────────
+
+
+class TestFreshnessFinding:
+    def test_finding_fields(self):
+        f = FreshnessFinding(
+            line_number=5, pattern_type="deprecated_api", severity="medium", description="test"
+        )
+        assert f.line_number == 5
+        assert f.pattern_type == "deprecated_api"
+        assert f.severity == "medium"
+        assert f.description == "test"
+
+    def test_finding_frozen(self):
+        f = FreshnessFinding(
+            line_number=1, pattern_type="test", severity="low", description="d"
+        )
+        with pytest.raises(AttributeError):
+            f.line_number = 2
+
+
+# ─── Test: detect_deprecated_api ──────────────────────────────────────────
+
+
+class TestDetectDeprecatedApi:
+    def test_deprecated_decorator(self):
+        content = 'line1\n@deprecated\ndef old_func():\n    pass'
+        findings = detect_deprecated_api(content)
+        assert len(findings) == 1
+        assert findings[0].line_number == 2
+        assert findings[0].pattern_type == "deprecated_api"
+        assert findings[0].severity == "high"
+
+    def test_deprecated_with_reason(self):
+        content = '@deprecated("use new_func instead")\ndef old_func():\n    pass'
+        findings = detect_deprecated_api(content)
+        assert len(findings) == 1
+        assert findings[0].line_number == 1
+
+    def test_no_deprecated(self):
+        content = 'def new_func():\n    """This is current."""\n    pass'
+        findings = detect_deprecated_api(content)
+        assert findings == []
+
+    def test_empty_content(self):
+        assert detect_deprecated_api("") == []
+
+    def test_multiple_deprecated(self):
+        content = '@deprecated\ndef a():\n    pass\n\n@deprecated("old")\ndef b():\n    pass'
+        findings = detect_deprecated_api(content)
+        assert len(findings) == 2
+        assert findings[0].line_number == 1
+        assert findings[1].line_number == 5
+
+    def test_deprecated_in_comment_not_detected(self):
+        """The word 'deprecated' in a regular comment shouldn't trigger the decorator pattern."""
+        content = '# This old deprecated function\nfunc():\n    pass'
+        findings = detect_deprecated_api(content)
+        assert findings == []
+
+
+# ─── Test: detect_stale_todo ──────────────────────────────────────────────
+
+
+class TestDetectStaleTodo:
+    def test_no_git_marks_all_stale(self):
+        content = "# Test\nTODO: fix this\nSome content\nFIXME: broken"
+        findings = detect_stale_todo(content)
+        assert len(findings) == 2
+        assert findings[0].line_number == 2
+        assert findings[0].pattern_type == "stale_todo"
+        assert findings[1].line_number == 4
+
+    def test_no_todos(self):
+        content = "# Clean\nNo todos here.\nJust content."
+        findings = detect_stale_todo(content)
+        assert findings == []
+
+    def test_empty_content(self):
+        assert detect_stale_todo("") == []
+
+    def test_hack_detected(self):
+        content = "# Test\nHACK: temporary workaround"
+        findings = detect_stale_todo(content)
+        assert len(findings) == 1
+        assert findings[0].line_number == 2
+
+    @patch("engine.maintainability.time.time", return_value=1700000000)
+    @patch("engine.maintainability.subprocess.run")
+    def test_with_git_blame_stale(self, mock_run, mock_time):
+        now = 1700000000
+        old_time = now - 200 * 86400  # 200 days ago
+
+        blame_output = (
+            "a" * 40 + " 1 1 1\n"
+            "author John\n"
+            f"author-time {old_time}\n"
+            "author-tz +0000\n"
+            "\tTODO: fix this old thing\n"
+        )
+        mock_run.return_value = MagicMock(stdout=blame_output, returncode=0)
+
+        content = "TODO: fix this old thing"
+        findings = detect_stale_todo(content, file_path="/tmp/test.py")
+        assert len(findings) == 1
+        assert "200 days" in findings[0].description
+
+    @patch("engine.maintainability.time.time", return_value=1700000000)
+    @patch("engine.maintainability.subprocess.run")
+    def test_with_git_blame_recent(self, mock_run, mock_time):
+        now = 1700000000
+        recent_time = now - 30 * 86400  # 30 days ago
+
+        blame_output = (
+            "b" * 40 + " 1 1 1\n"
+            "author John\n"
+            f"author-time {recent_time}\n"
+            "author-tz +0000\n"
+            "\tTODO: recently added\n"
+        )
+        mock_run.return_value = MagicMock(stdout=blame_output, returncode=0)
+
+        content = "TODO: recently added"
+        findings = detect_stale_todo(content, file_path="/tmp/test.py")
+        assert findings == []
+
+    @patch("engine.maintainability.subprocess.run", side_effect=subprocess.SubprocessError)
+    def test_git_failure_fallback(self, mock_run):
+        content = "# Test\nTODO: fix this"
+        findings = detect_stale_todo(content, file_path="/tmp/test.py")
+        assert len(findings) == 1
+
+
+# ─── Test: detect_shadowed_builtins ───────────────────────────────────────
+
+
+class TestDetectShadowedBuiltins:
+    def test_import_shadow(self):
+        content = "import os\nfrom mymodule import list\nx = 5"
+        findings = detect_shadowed_builtins(content)
+        assert len(findings) == 1
+        assert findings[0].line_number == 2
+        assert findings[0].pattern_type == "shadowed_builtin"
+        assert findings[0].severity == "high"
+        assert "list" in findings[0].description
+
+    def test_assignment_shadow(self):
+        content = 'list = [1, 2, 3]\nstr = "hello"'
+        findings = detect_shadowed_builtins(content)
+        assert len(findings) == 2
+        assert findings[0].line_number == 1
+        assert findings[1].line_number == 2
+
+    def test_no_shadow(self):
+        content = "my_list = [1, 2, 3]\nname = 'test'"
+        findings = detect_shadowed_builtins(content)
+        assert findings == []
+
+    def test_empty_content(self):
+        assert detect_shadowed_builtins("") == []
+
+    def test_alias_shadow(self):
+        content = "from module import foo as dict"
+        findings = detect_shadowed_builtins(content)
+        assert len(findings) == 1
+        assert findings[0].line_number == 1
+        assert "dict" in findings[0].description
+
+    def test_non_builtin_import_no_shadow(self):
+        content = "from module import foo, bar\nimport os"
+        findings = detect_shadowed_builtins(content)
+        assert findings == []
+
+    def test_indented_assignment(self):
+        content = "    list = [1, 2, 3]"
+        findings = detect_shadowed_builtins(content)
+        assert len(findings) == 1
+
+    def test_double_equals_not_matched(self):
+        content = "x == list"
+        findings = detect_shadowed_builtins(content)
+        assert findings == []
+
+    def test_multiple_imports_one_shadow(self):
+        content = "from module import foo, list, bar"
+        findings = detect_shadowed_builtins(content)
+        assert len(findings) == 1
+        assert "list" in findings[0].description
+
+
+# ─── Test: detect_catch_all_except ────────────────────────────────────────
+
+
+class TestDetectCatchAllExcept:
+    def test_bare_except(self):
+        content = "try:\n    foo()\nexcept:\n    pass"
+        findings = detect_catch_all_except(content)
+        assert len(findings) == 1
+        assert findings[0].line_number == 3
+        assert findings[0].pattern_type == "catch_all_except"
+        assert findings[0].severity == "high"
+
+    def test_except_exception_without_handling(self):
+        content = "try:\n    foo()\nexcept Exception:\n    x = 1"
+        findings = detect_catch_all_except(content)
+        assert len(findings) == 1
+        assert findings[0].severity == "medium"
+
+    def test_except_with_reraise_not_flagged(self):
+        content = "try:\n    foo()\nexcept Exception:\n    raise"
+        findings = detect_catch_all_except(content)
+        assert findings == []
+
+    def test_except_with_logging_not_flagged(self):
+        content = "try:\n    foo()\nexcept Exception:\n    logger.error('oops')"
+        findings = detect_catch_all_except(content)
+        assert findings == []
+
+    def test_specific_except_not_flagged(self):
+        content = "try:\n    foo()\nexcept ValueError:\n    pass"
+        findings = detect_catch_all_except(content)
+        assert findings == []
+
+    def test_empty_content(self):
+        assert detect_catch_all_except("") == []
+
+    def test_except_exception_with_raise_not_flagged(self):
+        content = "try:\n    foo()\nexcept Exception:\n    raise ValueError('x')"
+        findings = detect_catch_all_except(content)
+        assert findings == []
+
+    def test_bare_except_with_raise_not_flagged(self):
+        content = "try:\n    foo()\nexcept:\n    raise"
+        findings = detect_catch_all_except(content)
+        assert findings == []
+
+    def test_except_with_logging_call_not_flagged(self):
+        content = "try:\n    foo()\nexcept Exception:\n    logging.warning('x')"
+        findings = detect_catch_all_except(content)
+        assert findings == []
+
+    def test_multiple_except_blocks(self):
+        content = (
+            "try:\n    foo()\nexcept:\n    pass\n\n"
+            "try:\n    bar()\nexcept Exception:\n    x = 1"
+        )
+        findings = detect_catch_all_except(content)
+        assert len(findings) == 2
+
+
+# ─── Test: detect_hardcoded_credentials ───────────────────────────────────
+
+
+class TestDetectHardcodedCredentials:
+    def test_sk_prefix(self):
+        content = 'key = "sk-abc123def456"'
+        findings = detect_hardcoded_credentials(content)
+        assert len(findings) == 1
+        assert findings[0].line_number == 1
+        assert findings[0].pattern_type == "hardcoded_credential"
+        assert findings[0].severity == "critical"
+
+    def test_api_key_assignment(self):
+        content = "api_key = 'my-secret-key-123'"
+        findings = detect_hardcoded_credentials(content)
+        assert len(findings) == 1
+
+    def test_secret_assignment(self):
+        content = 'secret = "my_value"'
+        findings = detect_hardcoded_credentials(content)
+        assert len(findings) == 1
+
+    def test_no_credentials(self):
+        content = 'name = "test"\nvalue = 42'
+        findings = detect_hardcoded_credentials(content)
+        assert findings == []
+
+    def test_empty_content(self):
+        assert detect_hardcoded_credentials("") == []
+
+    def test_test_file_skipped(self):
+        content = 'key = "sk-abc123def456"'
+        findings = detect_hardcoded_credentials(content, is_test_file=True)
+        assert findings == []
+
+    def test_sk_underscore_prefix(self):
+        content = 'token = "sk_abc123"'
+        findings = detect_hardcoded_credentials(content)
+        assert len(findings) == 1
+
+    def test_no_false_positive_without_quotes(self):
+        content = "key = sk_abc123"
+        findings = detect_hardcoded_credentials(content)
+        assert findings == []
+
+    def test_multiple_credentials(self):
+        content = 'api_key = "sk-abc"\nsecret = "xyz"'
+        findings = detect_hardcoded_credentials(content)
+        assert len(findings) == 2
+
+
+# ─── Test: detect_freshness_patterns (integration) ────────────────────────
+
+
+class TestDetectFreshnessPatterns:
+    def test_returns_all_findings(self):
+        content = (
+            '@deprecated\ndef old():\n    pass\n'
+            'list = [1, 2, 3]\n'
+            'try:\n    pass\nexcept:\n    pass\n'
+            'key = "sk-abc123"'
+        )
+        findings = detect_freshness_patterns(content)
+        types = {f.pattern_type for f in findings}
+        assert "deprecated_api" in types
+        assert "shadowed_builtin" in types
+        assert "catch_all_except" in types
+        assert "hardcoded_credential" in types
+
+    def test_clean_content_no_findings(self):
+        content = "def clean_function():\n    x = 42\n    return x"
+        findings = detect_freshness_patterns(content)
+        assert findings == []
+
+    def test_empty_content(self):
+        findings = detect_freshness_patterns("")
+        assert findings == []
+
+    def test_freshness_score_includes_patterns(self):
+        content = '---\nname: test\n---\nkey = "sk-abc123"'
+        result = freshness_score(content)
+        assert "patterns" in result
+        assert len(result["patterns"]) > 0
+        assert result["patterns"][0].pattern_type == "hardcoded_credential"
+
+    def test_freshness_score_clean_no_patterns(self):
+        result = freshness_score(GOOD_SKILL)
+        assert "patterns" in result
+        assert result["patterns"] == []
+
+    def test_freshness_score_existing_outdated_refs_unchanged(self):
+        """Ensure existing outdated_refs calculation is not affected by new detectors."""
+        result = freshness_score(OUTDATED_SKILL)
+        assert result["outdated_refs"] >= 2
+
+    def test_freshness_score_existing_fields_unchanged(self):
+        """Ensure existing return fields remain unchanged for backward compat."""
+        result = freshness_score(FRESH_SKILL)
+        assert "outdated_refs" in result
+        assert "has_version" in result
+        assert "score" in result
+
+
+# ─── Test: Existing fixtures not affected by new detectors ────────────────
+
+
+class TestNewDetectorsNoRegression:
+    """Ensure existing test fixtures don't trigger false positives from new detectors."""
+
+    def test_good_skill_no_new_patterns(self):
+        findings = detect_freshness_patterns(GOOD_SKILL)
+        pattern_types = {f.pattern_type for f in findings}
+        assert "deprecated_api" not in pattern_types
+        assert "shadowed_builtin" not in pattern_types
+        assert "catch_all_except" not in pattern_types
+        assert "hardcoded_credential" not in pattern_types
+
+    def test_fresh_skill_no_new_patterns(self):
+        findings = detect_freshness_patterns(FRESH_SKILL)
+        assert findings == []
+
+    def test_bad_skill_no_shadowed_builtins(self):
+        findings = detect_shadowed_builtins(BAD_SKILL)
+        assert findings == []
+
+    def test_bad_skill_no_hardcoded_credentials(self):
+        findings = detect_hardcoded_credentials(BAD_SKILL)
+        assert findings == []
+
+    def test_bad_skill_no_catch_all_except(self):
+        findings = detect_catch_all_except(BAD_SKILL)
+        assert findings == []
+
+    def test_outdated_skill_no_new_code_patterns(self):
+        findings = detect_deprecated_api(OUTDATED_SKILL)
+        assert findings == []
+        findings = detect_shadowed_builtins(OUTDATED_SKILL)
+        assert findings == []
+        findings = detect_catch_all_except(OUTDATED_SKILL)
+        assert findings == []
+        findings = detect_hardcoded_credentials(OUTDATED_SKILL)
+        assert findings == []

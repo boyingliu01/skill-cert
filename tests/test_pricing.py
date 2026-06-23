@@ -1,5 +1,7 @@
 """Tests for adapters/pricing.py — model pricing table and token→$ conversion."""
 
+import logging
+
 import pytest
 
 from adapters.pricing import ModelPricing, get_pricing
@@ -42,6 +44,40 @@ class TestModelPricing:
         price_exact = self.pricing.get_model_price("qwen3.6-plus")
         assert price_exact is not None
 
+    def test_get_model_price_prefix_match(self):
+        """Should fall back to prefix match for versioned model names."""
+        price = self.pricing.get_model_price("qwen3.6-plus-v2")
+        assert price is not None
+        expected = self.pricing.models["qwen3.6-plus"]
+        assert price == expected
+
+    def test_get_model_price_prefix_match_longer_suffix(self):
+        """Should match prefix even with longer version suffixes."""
+        price = self.pricing.get_model_price("claude-sonnet-4-5-20250514-beta")
+        assert price is not None
+        expected = self.pricing.models["claude-sonnet-4-5-20250514"]
+        assert price == expected
+
+    def test_get_model_price_no_prefix_match_for_unrelated(self):
+        """Should NOT prefix-match unrelated model names."""
+        price = self.pricing.get_model_price("totally-unknown-xyz")
+        assert price is None
+
+    def test_get_model_price_prefix_match_logs_warning(self, caplog):
+        """Prefix match fallback should log a warning."""
+        with caplog.at_level(logging.WARNING, logger="adapters.pricing"):
+            self.pricing.get_model_price("qwen3.6-plus-v2")
+        assert any(
+            "prefix" in r.message.lower() or "fallback" in r.message.lower() for r in caplog.records
+        )
+
+    def test_calculate_cost_prefix_match(self):
+        """calculate_cost should use prefix match for versioned models."""
+        cost = self.pricing.calculate_cost(
+            prompt_tokens=1000, completion_tokens=500, model_name="qwen3.6-plus-v2"
+        )
+        assert cost > 0
+
 
 class TestCalculateCost:
     """Test cost calculation from token usage."""
@@ -73,7 +109,7 @@ class TestCalculateCost:
         assert cost >= 0
 
     def test_calculate_cost_formula(self):
-        """Cost formula: prompt_tokens / 1_000_000 * input_rate + """
+        """Cost formula: prompt_tokens / 1_000_000 * input_rate +"""
         """completion_tokens / 1_000_000 * output_rate."""
         # Use a known price: test with override
         pricing = ModelPricing()

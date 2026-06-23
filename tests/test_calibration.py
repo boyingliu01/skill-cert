@@ -231,3 +231,61 @@ class TestCalibrationReport:
             + report.false_negatives
             == 100
         )
+
+
+# ─── Calibration CLI integration (slice-7) ────────────────────────────
+
+
+class TestCalibrationCLIIntegration:
+    def test_load_calibration_set_from_json_file(self, tmp_path):
+        """--calibration-set loads a golden eval set from a JSON file."""
+        import json
+
+        from engine.calibration import GoldenEvalSet
+
+        calibration_data = [
+            {"eval_id": "1", "prompt": "p1", "model_output": "o1", "human_passed": True},
+            {"eval_id": "2", "prompt": "p2", "model_output": "o2", "human_passed": False},
+        ]
+        cal_file = tmp_path / "golden.json"
+        cal_file.write_text(json.dumps(calibration_data))
+
+        raw = json.loads(cal_file.read_text())
+        gs = GoldenEvalSet.from_dicts(raw)
+        assert len(gs) == 2
+        assert gs.get_cases()[0].human_passed is True
+
+    def test_run_calibration_after_grading(self):
+        """CalibrationRunner.calibrate() can be called with auto_results from grading."""
+        gs = GoldenEvalSet(
+            [
+                GoldenEvalCase("1", "p", "o", True),
+                GoldenEvalCase("2", "p", "o", False),
+                GoldenEvalCase("3", "p", "o", True),
+            ]
+        )
+        auto_results = [True, False, True]
+        runner = CalibrationRunner()
+        report = runner.calibrate(gs, auto_results)
+        assert report.agreement_rate == 1.0
+        assert report.cohens_kappa == 1.0
+
+    def test_calibration_report_to_dict_for_structured_report(self):
+        """CalibrationReport can be converted to dict for StructuredReport.extras."""
+        report = CalibrationReport(
+            agreement_rate=0.95,
+            false_positive_rate=0.02,
+            false_negative_rate=0.03,
+            cohens_kappa=0.90,
+            total_cases=100,
+            true_positives=80,
+            true_negatives=15,
+            false_positives=2,
+            false_negatives=3,
+        )
+        from dataclasses import asdict
+
+        data = asdict(report)
+        assert data["agreement_rate"] == 0.95
+        assert data["total_cases"] == 100
+        assert isinstance(data, dict)
