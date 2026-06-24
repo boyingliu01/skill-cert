@@ -83,7 +83,7 @@ class SkillCertConfig(BaseModel):
 
     @classmethod
     def _apply_config_file(cls, config_dict: dict) -> dict:
-        config_file_path = Path.home() / ".skill-cert" / "models.yaml"
+        config_file_path = Path(os.path.expanduser("~")) / ".skill-cert" / "models.yaml"
         if config_file_path.exists():
             try:
                 with open(config_file_path) as f:
