@@ -327,12 +327,16 @@ For TRIGGER evals (category="trigger"):
 - Example: {{"type": "regex", "value": "(verdict|drift|evaluation|coverage)", "weight": 2}}
 
 For WITHOUT_SKILL assertions (without_skill_assertions array):
-- These check that the model's BASELINE (no skill loaded) output is LOWER quality
-- Use assertions that measure skill-specific STRUCTURAL MARKERS are MISSING
-- CRITICAL: not_contains values MUST be multi-word structural markers (>=3 tokens)
-  that are UNIQUE to this skill's output, NOT generic evaluation terms.
-  GOOD: "L1 Trigger Accuracy", "skill-cert evaluation pipeline", "Phase 2: Execution"
-  BAD:  "verdict", "PASS", "metrics", "score" (too generic, any LLM says these)
+- Use the SAME assertion types (regex, contains, starts_with, etc.) as the
+  with_skill assertions array above. Do NOT use not_contains unless the
+  corresponding with_skill assertion also uses not_contains.
+- The without_skill assertions measure the SAME expectations — the skill should
+  improve how many of these assertions pass, not change what is tested.
+- Only add without_skill_assertions when truly different assertions are needed
+  (e.g., a skill that should suppress a harmful pattern in output).
+- IMPORTANT: At runtime, an empty or omitted without_skill_assertions
+  automatically falls back to the regular assertions array. This is built-in
+  behavior — omitting it is safe and preserves symmetric evaluation.
 - For negative_case=True evals, omit without_skill_assertions (falls back to assertions)
 
 For NORMAL evals:

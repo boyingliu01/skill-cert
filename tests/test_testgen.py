@@ -1038,6 +1038,37 @@ class TestPrepareGenerationPromptBranching:
         prompt_lower = prompt.lower()
         assert "exit" in prompt_lower or "return code" in prompt_lower or "non-zero" in prompt_lower
 
+    def test_prompt_does_not_instruct_asymmetric_assertions(self):
+        """The agent_guide prompt must NOT instruct LLM to use not_contains for without_skill."""
+        generator = EvalGenerator()
+        skill_spec = {
+            "name": "review-skill",
+            "description": "A code review skill",
+            "skill_type": "agent_guide",
+            "triggers": ["review"],
+            "workflow_steps": [{"name": "Read code"}],
+            "anti_patterns": [{"pattern": "skip review"}],
+            "output_format": [{"field": "verdict"}],
+            "examples": [],
+        }
+        prompt = generator._prepare_generation_prompt(skill_spec)
+        prompt_lower = prompt.lower()
+        # Old buggy prompt said: "Use assertions that measure skill-specific STRUCTURAL MARKERS are MISSING"
+        # and suggested not_contains for without_skill assertions.
+        # Fixed prompt should NOT contain these asymmetry instructions.
+        assert "markers are missing" not in prompt_lower, (
+            "Prompt should not instruct LLM to use not_contains assertions"
+            " for without_skill (asymmetry bug)"
+        )
+        # The prompt should either omit without_skill guidance entirely
+        # or instruct symmetric assertion types.
+        assert "same assertion" in prompt_lower or (
+            "without_skill" in prompt_lower and "same" in prompt_lower
+        ), (
+            "Prompt should instruct symmetric assertions for without_skill,"
+            " not asymmetric not_contains"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Multi-strategy JSON extraction tests (slice-6)
