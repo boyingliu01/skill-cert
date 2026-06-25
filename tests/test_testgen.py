@@ -922,22 +922,22 @@ def test_calculate_coverage_with_regex_assertions():
     "input_case,expected",
     [
         # Standard: explicit negative_case field
-        ({"negative_case": True, "input": "test", "assertions": []}, True),
-        ({"negative_case": False, "input": "test", "assertions": []}, False),
+        ({"negative_case": True, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
+        ({"negative_case": False, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, False),
         # Variant: is_negative
-        ({"is_negative": True, "input": "test", "assertions": []}, True),
-        ({"is_negative": False, "input": "test", "assertions": []}, False),
+        ({"is_negative": True, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
+        ({"is_negative": False, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, False),
         # Variant: should_not
-        ({"should_not": True, "input": "test", "assertions": []}, True),
+        ({"should_not": True, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
         # Variant: expected_triggers=False → negative_case=True (inversion)
-        ({"expected_triggers": False, "input": "test", "assertions": []}, True),
-        ({"expected_triggers": True, "input": "test", "assertions": []}, False),
+        ({"expected_triggers": False, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
+        ({"expected_triggers": True, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, False),
         # Variant: triggers_on=False → negative_case=True (inversion)
-        ({"triggers_on": False, "input": "test", "assertions": []}, True),
+        ({"triggers_on": False, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
         # Variant: string "true" → coerced to bool
-        ({"negative": "true", "input": "test", "assertions": []}, True),
+        ({"negative": "true", "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
         # No negative info → default False
-        ({"input": "test", "assertions": []}, False),
+        ({"input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, False),
     ],
 )
 def test_normalize_eval_case_negative_case(input_case, expected):

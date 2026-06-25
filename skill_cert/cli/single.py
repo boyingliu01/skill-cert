@@ -123,14 +123,31 @@ def _generate_fail_fast_report(
         "l3_step_adherence": 0.0,
         "l4_execution_stability": 0.0,
         "metrics_breakdown": {
-            "l1_details": {"trigger_accuracy": 0.0, "precision": 0.0, "recall": 0.0, "f1": 0.0},
-            "l2_details": {
-                "with_skill_pass_rate": 0.0,
-                "without_skill_pass_rate": 0.0,
-                "delta": 0.0,
+            "l1_details": {
+                "trigger_accuracy": 0.0,
+                "total_trigger_evals": 0,
+                "passed_trigger_evals": 0,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
             },
-            "l3_details": {"method": "coverage", "covered_steps": [], "total_steps": 0},
-            "l4_details": {"mean_pass_rate": 0.0, "stdev": 0.0},
+            "l2_details": {
+                "with_skill_avg_pass_rate": 0.0,
+                "without_skill_avg_pass_rate": 0.0,
+                "improvement_percentage": 0.0,
+            },
+            "l3_details": {
+                "step_coverage_ratio": 0.0,
+                "method": "coverage",
+                "covered_steps": [],
+                "total_steps": 0,
+            },
+            "l4_details": {
+                "execution_stability": 0.0,
+                "stdev_deterministic_pass_rate": 0.0,
+                "mean_pass_rate": 0.0,
+                "stdev": 0.0,
+            },
         },
     }
     drift_report = {

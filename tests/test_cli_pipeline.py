@@ -1028,7 +1028,7 @@ description: "A test skill"
                 "input": "prompt1",
                 "assertions": [{"name": "a1", "type": "contains", "value": "good", "weight": 1}],
             },
-            {"id": 2, "name": "t2", "category": "boundary", "input": "prompt2", "assertions": []},
+            {"id": 2, "name": "t2", "category": "boundary", "input": "prompt2", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]},
         ]
 
         runner.run_with_skill.return_value = [
@@ -1241,7 +1241,7 @@ description: "A test skill"
         args.ci_history_path = ".skill-cert-ci-history.json"
         adapters = {"m1": MagicMock(), "m2": MagicMock()}
         spec = self.make_mock_parse_result()
-        spec["evals"] = {"eval_cases": [{"id": 1}]}
+        spec["evals"] = {"eval_cases": [{"id": 1, "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}]}
 
         out_dir = Path(tempfile.mkdtemp())
 

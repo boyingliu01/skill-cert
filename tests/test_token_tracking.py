@@ -209,7 +209,7 @@ def test_runner_uses_real_token_counts():
             "name": "test-eval",
             "category": "normal",
             "input": "test input",
-            "assertions": [],
+            "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
         }
     ]
 
@@ -232,8 +232,8 @@ def test_runner_total_tokens_accumulates():
     adapter = MockAdapterWithUsage()
 
     evals = [
-        {"id": 1, "name": "eval-1", "category": "normal", "input": "test 1", "assertions": []},
-        {"id": 2, "name": "eval-2", "category": "normal", "input": "test 2", "assertions": []},
+        {"id": 1, "name": "eval-1", "category": "normal", "input": "test 1", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]},
+        {"id": 2, "name": "eval-2", "category": "normal", "input": "test 2", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]},
     ]
 
     runner.run_with_skill(evals, "/path/to/skill.md", adapter)
@@ -312,7 +312,7 @@ def test_runner_fallback_for_old_adapters():
             "name": "test-eval",
             "category": "normal",
             "input": "test input",
-            "assertions": [],
+            "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
         }
     ]
 

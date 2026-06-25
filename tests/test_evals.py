@@ -3,7 +3,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from engine.grader import EvalCase
+from engine.grader import EvalAssertion, EvalCase
 from engine.observability import TelemetrySummary
 from engine.report_models import StructuredReport
 from engine.token_ledger import TokenLedger
@@ -33,7 +33,7 @@ class TestBuildEvalCaseFromDict:
     """Cover lines 23 and 38."""
 
     def test_line23_passes_through_existing_evalcase(self):
-        case = EvalCase(id=1, name="test", category="trigger", prompt="hello", assertions=[])
+        case = EvalCase(id=1, name="test", category="trigger", prompt="hello", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)])
         result = _build_eval_case_from_dict(case)
         assert result is case
 
@@ -43,7 +43,7 @@ class TestBuildEvalCaseFromDict:
             "name": "test",
             "category": "normal",
             "input": {"key": "val"},
-            "assertions": [],
+            "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
         }
         result = _build_eval_case_from_dict(d)
         assert isinstance(result.prompt, str)
@@ -51,7 +51,7 @@ class TestBuildEvalCaseFromDict:
         assert parsed == {"key": "val"}
 
     def test_line38_json_dumps_list_prompt(self):
-        d = {"id": 2, "name": "list", "category": "normal", "input": [1, 2, 3], "assertions": []}
+        d = {"id": 2, "name": "list", "category": "normal", "input": [1, 2, 3], "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}
         result = _build_eval_case_from_dict(d)
         assert isinstance(result.prompt, str)
         parsed = json.loads(result.prompt)

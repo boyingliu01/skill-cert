@@ -486,7 +486,7 @@ class TestDriftDictEvalCases:
             name="existing",
             category="normal",
             prompt="p",
-            assertions=[],
+            assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
         )
         result = detector._convert_to_eval_case(existing_case, "ignored")
         assert result is existing_case

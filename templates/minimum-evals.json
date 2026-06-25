@@ -4,11 +4,15 @@
       "id": 1,
       "name": "trigger-with-skill-invocation",
       "category": "trigger",
-      "prompt": "Use the skill described in the SKILL.md",
+      "prompt": "Evaluate a skill called skill-cert",
+      "negative_case": false,
       "assertions": [
-        {"name": "structural-verdict-check", "type": "regex", "value": "(PASS|FAIL|PASS_WITH_CAVEATS|CAVEATS)", "weight": 3},
-        {"name": "skill-triggered", "type": "contains", "value": "verdict", "weight": 2},
-        {"name": "has-metrics-block", "type": "regex", "value": "(L1|L2|L3|L4|Overall|Score|Metric)", "weight": 2}
+        {"name": "structural-verdict", "type": "regex", "value": "(PASS|FAIL|PASS_WITH_CAVEATS)", "weight": 3},
+        {"name": "has-metrics", "type": "regex", "value": "(L1|L2|L3|Overall|Score)", "weight": 2},
+        {"name": "has-verdict-keyword", "type": "contains", "value": "verdict", "weight": 2}
+      ],
+      "without_skill_assertions": [
+        {"name": "no-structured-verdict", "type": "not_contains", "value": "L1 Trigger Accuracy", "weight": 3}
       ]
     },
     {
@@ -16,8 +20,9 @@
       "name": "should-not-trigger",
       "category": "trigger",
       "prompt": "Hello world, ignore this",
+      "negative_case": true,
       "assertions": [
-        {"name": "no-skill-struct", "type": "regex", "value": "(PASS|FAIL|verdict|metrics)", "weight": 3},
+        {"name": "no-eval-structure", "type": "not_contains", "value": "verdict", "weight": 3},
         {"name": "general-response", "type": "contains", "value": "skill", "weight": 1}
       ]
     },
@@ -25,10 +30,13 @@
       "id": 3,
       "name": "normal-operation-structured",
       "category": "normal",
-      "prompt": "Perform a full skill evaluation",
+      "prompt": "Perform a full skill evaluation for a skill called skill-cert",
       "assertions": [
-        {"name": "contains-execution-section", "type": "regex", "value": "(Phase|Run|Execute|Eval Pipeline|Pipeline)", "weight": 2},
-        {"name": "has-eval-results", "type": "regex", "value": "(passed|pass rate|pass_rate|results)", "weight": 2}
+        {"name": "has-execution", "type": "regex", "value": "(Phase|Run|Execute|Pipeline)", "weight": 2},
+        {"name": "has-results", "type": "regex", "value": "(passed|pass rate|pass_rate|results)", "weight": 2}
+      ],
+      "without_skill_assertions": [
+        {"name": "no-eval-pipeline", "type": "not_contains", "value": "L1 Trigger Accuracy", "weight": 3}
       ]
     }
   ]

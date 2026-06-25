@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 
 class JudgeResult(BaseModel):
@@ -40,9 +40,18 @@ class EvalCase(BaseModel):
     expected_output: str | None = None
     files: list[str] = Field(default_factory=list)
     assertions: list[EvalAssertion]
+    without_skill_assertions: list[EvalAssertion] = Field(default_factory=list)
     workflow_step: str | None = None  # Name of the workflow step this case targets
     negative_case: bool = False  # If True, expect NOT to trigger (v0.4.0, Issue #44)
     confusion_prompt: str | None = None  # Near-miss prompt for boundary testing (Issue #44)
+
+    @model_validator(mode="after")
+    def _validate_assertions_not_all_empty(self):
+        if not self.assertions and not self.without_skill_assertions:
+            raise ValueError(
+                "At least one of 'assertions' or 'without_skill_assertions' must be non-empty"
+            )
+        return self
 
 
 @dataclass
@@ -63,10 +72,19 @@ class Grader:
         self.llm_client = llm_client
         self.debias_position = debias_position
 
-    def grade_output(self, eval_case: EvalCase, model_output: str) -> dict[str, Any]:
-        """Evaluate a single model output against eval case assertions."""
-        results, total_weighted_score, total_possible_score = self._evaluate_all_assertions(
-            eval_case, model_output
+    def grade_output(self, eval_case: EvalCase, model_output: str, *, mode: str = "with_skill") -> dict[str, Any]:
+        """Evaluate a single model output against eval case assertions.
+
+        :param mode: 'with_skill' or 'without_skill'. Determines which assertions array to use.
+                     Drift/calibration callers pass with-skill data only, so the default is correct.
+        """
+        if mode == "without_skill" and eval_case.without_skill_assertions:
+            assertions = eval_case.without_skill_assertions
+        else:
+            assertions = eval_case.assertions
+
+        results, total_weighted_score, total_possible_score = self._evaluate_assertions(
+            assertions, model_output
         )
 
         # Calculate pass rate
@@ -96,27 +114,34 @@ class Grader:
             judge_result,
         )
 
-    def _evaluate_all_assertions(
+    def _evaluate_assertions(
         self,
-        eval_case: EvalCase,
+        assertions: list[EvalAssertion],
         model_output: str,
     ) -> tuple[list[AssertionResult], int, int]:
-        """Evaluate all assertions and calculate weighted scores."""
+        """Evaluate a list of assertions against model output."""
         results = []
         total_weighted_score = 0
         total_possible_score = 0
 
-        for assertion in eval_case.assertions:
+        for assertion in assertions:
             result = self._evaluate_assertion(assertion, model_output)
             results.append(result)
 
-            # Calculate weighted score
             weight_multiplier = self._get_weight_multiplier(assertion.weight)
             if result.passed:
                 total_weighted_score += weight_multiplier
             total_possible_score += weight_multiplier
 
         return results, total_weighted_score, total_possible_score
+
+    def _evaluate_all_assertions(
+        self,
+        eval_case: EvalCase,
+        model_output: str,
+    ) -> tuple[list[AssertionResult], int, int]:
+        """Backward-compatible wrapper — delegates to _evaluate_assertions."""
+        return self._evaluate_assertions(eval_case.assertions, model_output)
 
     def _build_grade_result(
         self,

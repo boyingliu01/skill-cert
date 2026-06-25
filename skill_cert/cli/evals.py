@@ -36,12 +36,25 @@ def _build_eval_case_from_dict(case_dict) -> EvalCase:
     prompt = case_dict.get("input") or case_dict.get("prompt", "")
     if not isinstance(prompt, str):
         prompt = json.dumps(prompt) if isinstance(prompt, (dict, list)) else str(prompt)
+    ws_assertions = []
+    for a in case_dict.get("without_skill_assertions", []):
+        if isinstance(a, dict):
+            w = a.get("weight", 1)
+            ws_assertions.append(
+                EvalAssertion(
+                    name=a.get("name", ""),
+                    type=a.get("type", "contains"),
+                    value=str(a.get("value", "")),
+                    weight=int(float(w)),
+                )
+            )
     return EvalCase(
         id=case_dict.get("id", 0),
         name=case_dict.get("name", ""),
         category=case_dict.get("category", "normal"),
         prompt=prompt,
         assertions=assertions,
+        without_skill_assertions=ws_assertions,
     )
 
 
@@ -92,7 +105,7 @@ def _grade_single_result(case_map, grader, result, mode) -> dict | None:
     case = case_map.get(result.get("eval_id"))
     if not case:
         return None
-    grade = grader.grade_output(case, result.get("output") or "")
+    grade = grader.grade_output(case, result.get("output") or "", mode=mode)
     return _flatten_grade_result(result, grade, mode)
 
 

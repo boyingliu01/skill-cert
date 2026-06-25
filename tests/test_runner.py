@@ -691,7 +691,7 @@ def test_run_single_uses_per_call_model_for_cost():
         "name": "cost-test",
         "category": "normal",
         "input": "test input",
-        "assertions": [],
+        "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
     }
 
     result = runner._run_single(eval_case, None, adapter, with_skill=False)
@@ -708,7 +708,7 @@ def test_run_with_skill_future_exception():
     """Covers run_with_skill lines 266-267: exception in future.result()."""
     runner = EvalRunner(max_concurrency=1, rate_limit_rpm=300, request_timeout=3)
 
-    evals = [{"id": i, "input": f"input {i}", "assertions": []} for i in range(3)]
+    evals = [{"id": i, "input": f"input {i}", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]} for i in range(3)]
 
     adapter = Mock()
     adapter.chat = Mock()
@@ -733,7 +733,7 @@ def test_run_without_skill_future_exception():
     """Covers run_without_skill lines 329-330: exception in future.result()."""
     runner = EvalRunner(max_concurrency=1, rate_limit_rpm=300, request_timeout=3)
 
-    evals = [{"id": i, "input": f"input {i}", "assertions": []} for i in range(3)]
+    evals = [{"id": i, "input": f"input {i}", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]} for i in range(3)]
 
     adapter = Mock()
     adapter.chat = Mock()

@@ -104,7 +104,7 @@ class TestParseEvalsResponseSchemaValidation:
     def test_missing_input_fallback_to_prompt(self):
         _response = (
             '{"eval_cases": [{"id": 1, "name": "t", "category": "n", '
-            '"prompt": "test prompt", "assertions": []}]}'
+            '"prompt": "test prompt", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}]}'
         )
         result = self.gen._parse_evals_response(_response)
         cases = result.get("eval_cases") or result.get("evals", [])

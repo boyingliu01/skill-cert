@@ -315,6 +315,8 @@ Generate a JSON object with an array of eval_cases containing:
 - assertions: array of objects with type
     ("contains", "not_contains", "regex", "starts_with", "json_valid"),
     value, and weight
+- without_skill_assertions: array of objects (SAME FORMAT as assertions) for
+    grading WITHOUT_SKILL mode. When empty defaults to assertions.
 
 IMPORTANT: Use STRUCTURAL ASSERTIONS, not single keyword checks.
 
@@ -323,6 +325,15 @@ For TRIGGER evals (category="trigger"):
 - Example: {{"type": "regex", "value": "(PASS|FAIL|PASS_WITH_CAVEATS|CAVEATS)", "weight": 3}}
 - Example: {{"type": "regex", "value": "(L1|L2|L3|Overall|Score|Metric)", "weight": 2}}
 - Example: {{"type": "regex", "value": "(verdict|drift|evaluation|coverage)", "weight": 2}}
+
+For WITHOUT_SKILL assertions (without_skill_assertions array):
+- These check that the model's BASELINE (no skill loaded) output is LOWER quality
+- Use assertions that measure skill-specific STRUCTURAL MARKERS are MISSING
+- CRITICAL: not_contains values MUST be multi-word structural markers (>=3 tokens)
+  that are UNIQUE to this skill's output, NOT generic evaluation terms.
+  GOOD: "L1 Trigger Accuracy", "skill-cert evaluation pipeline", "Phase 2: Execution"
+  BAD:  "verdict", "PASS", "metrics", "score" (too generic, any LLM says these)
+- For negative_case=True evals, omit without_skill_assertions (falls back to assertions)
 
 For NORMAL evals:
 - Check that specific workflow steps appear in output
@@ -653,10 +664,32 @@ Minimum requirements:
                 )
         normalized["assertions"] = clean_asserts
 
+        # Normalize without_skill_assertions with same structure as assertions
+        if "without_skill_assertions" in normalized and isinstance(normalized["without_skill_assertions"], list):
+            clean_ws_asserts = []
+            for a in normalized["without_skill_assertions"]:
+                if isinstance(a, dict):
+                    clean_ws_asserts.append(
+                        {
+                            "type": a.get("type", "contains"),
+                            "value": str(a.get("value", "")),
+                            "weight": int(float(a.get("weight", 1))),
+                        }
+                    )
+            normalized["without_skill_assertions"] = clean_ws_asserts
+
         # Ensure required fields
         normalized.setdefault("id", idx + 1)
         normalized.setdefault("name", f"eval-{idx + 1}")
         normalized.setdefault("category", "normal")
+
+        # Fallback: if both assertions and without_skill_assertions are empty, add a
+        # minimal assertion to satisfy the model_validator on EvalCase.
+        ws_asserts = normalized.get("without_skill_assertions", [])
+        if not normalized["assertions"] and not ws_asserts:
+            normalized["assertions"] = [
+                {"type": "contains", "value": "skill", "weight": 1}
+            ]
 
         # Normalize negative_case from ALL plausible LLM variants
         # String-to-bool coercion before isinstance check

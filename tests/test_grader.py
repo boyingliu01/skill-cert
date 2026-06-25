@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from engine.grader import AssertionResult, EvalAssertion, EvalCase, Grader, JudgeResult
 
@@ -207,25 +208,16 @@ class TestGrader:
         assert result["final_passed"] is True  # More than 50% pass rate
 
     def test_grade_output_empty_assertions(self):
-        """Test grading with no assertions."""
-        grader = Grader()
-
-        eval_case = EvalCase(
-            id=9,
-            name="empty_test",
-            category="normal",
-            prompt="Empty test",
-            expected_output="",
-            assertions=[],
-        )
-
-        model_output = "Any output"
-        result = grader.grade_output(eval_case, model_output)
-
-        assert result["total_weighted_score"] == 0
-        assert result["total_possible_score"] == 0
-        assert result["pass_rate"] == 0.0  # Division by zero handled
-        assert result["final_passed"] is False  # No assertions to pass
+        """Empty assertions are rejected by model validator."""
+        with pytest.raises(ValidationError):
+            EvalCase(
+                id=9,
+                name="empty_test",
+                category="normal",
+                prompt="Empty test",
+                expected_output="",
+                assertions=[],
+            )
 
     def test_get_weight_multiplier(self):
         """Test weight multiplier calculation."""
@@ -329,7 +321,7 @@ def test_llm_judge_method():
         category="normal",
         prompt="Test judge method",
         expected_output="Expected output",
-        assertions=[],
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
 
     # Test with no assertions
@@ -498,7 +490,7 @@ def test_debias_position_disagreement():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -516,7 +508,7 @@ def test_debias_position_swap_call_fails():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -537,7 +529,7 @@ def test_debias_position_swap_parsing_code_block():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -556,7 +548,7 @@ def test_debias_position_swap_double_encoded():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -576,7 +568,7 @@ def test_debias_position_swap_response_is_string():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -592,7 +584,7 @@ def test_debias_position_swap_non_dict_response():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     # Should fall back to first result when parsing fails
@@ -659,7 +651,7 @@ def test_llm_judge_invalid_failure_reasons_type():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     result = grader._llm_judge(eval_case, "output", [])
     assert result.failure_reasons == []
@@ -674,7 +666,7 @@ def test_llm_judge_with_call_triggers_debias():
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     assertion_results = []
     result = grader._llm_judge_with_call(eval_case, "output", assertion_results)
@@ -770,7 +762,7 @@ def test_execute_llm_judge_double_encoded_main_response():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     result = grader._execute_llm_judge(eval_case, "output", [])
     assert result.passed is True
@@ -784,7 +776,7 @@ def test_execute_llm_judge_non_dict_response():
     mock_llm.chat.return_value = '["not", "a", "dict"]'
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     with pytest.raises(ValueError, match="Expected dict from judge response"):
         grader._execute_llm_judge(eval_case, "output", [])
@@ -865,7 +857,7 @@ def test_negative_case_judge_high_confidence():
         category="normal",
         prompt="p",
         expected_output="e",
-        assertions=[],
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
         negative_case=True,
     )
     judge_result = JudgeResult(passed=True, confidence=0.9, reasoning="high conf")
@@ -882,7 +874,7 @@ def test_negative_case_judge_low_confidence():
         category="normal",
         prompt="p",
         expected_output="e",
-        assertions=[],
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
         negative_case=True,
     )
     judge_result = JudgeResult(passed=True, confidence=0.5, reasoning="low conf")
@@ -901,7 +893,7 @@ def test_execute_llm_judge_clamps_confidence_above_1():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     result = grader._execute_llm_judge(eval_case, "output", [])
     assert result.confidence == 1.0
@@ -916,7 +908,7 @@ def test_execute_llm_judge_clamps_confidence_below_0():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     result = grader._execute_llm_judge(eval_case, "output", [])
     assert result.confidence == 0.0
@@ -931,7 +923,7 @@ def test_execute_llm_judge_clamps_confidence_string_value():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     result = grader._execute_llm_judge(eval_case, "output", [])
     assert result.confidence == 1.0
@@ -1130,7 +1122,7 @@ def test_llm_judge_with_call_runs_debias_by_default_high_confidence():
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     result = grader._llm_judge_with_call(eval_case, "output", [])
     # Should have made 2 LLM calls (original + swap)
@@ -1146,7 +1138,7 @@ def test_llm_judge_with_call_skips_debias_when_disabled():
     )
     grader = Grader(llm_client=mock_llm, debias_position=False)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     result = grader._llm_judge_with_call(eval_case, "output", [])
     # Should have made only 1 LLM call (no swap)
@@ -1164,7 +1156,7 @@ def test_llm_judge_with_call_disagreement_reduces_confidence_30_percent():
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     result = grader._llm_judge_with_call(eval_case, "output", [])
     assert result.position_sensitive is True
@@ -1183,12 +1175,199 @@ def test_llm_judge_with_call_debias_agreement_high_confidence():
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[]
+        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
     )
     result = grader._llm_judge_with_call(eval_case, "output", [])
     assert result.debias_runs == 2
     assert result.position_sensitive is False
     assert result.confidence == 0.92  # max(0.92, 0.88)
+
+
+class TestEvalCaseWithoutSkillAssertions:
+    """Tests for without_skill_assertions field on EvalCase."""
+
+    def test_eval_case_without_skill_assertions_defaults_to_empty(self):
+        """EvalCase constructs without without_skill_assertions → defaults to []."""
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="normal",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="a", type="contains", value="x")],
+        )
+        assert case.without_skill_assertions == []
+
+    def test_eval_case_without_skill_assertions_explicit(self):
+        """EvalCase accepts explicit without_skill_assertions."""
+        ws_assertions = [
+            EvalAssertion(name="no-struct", type="not_contains", value="L1 Trigger Accuracy", weight=3),
+        ]
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="normal",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="a", type="contains", value="x")],
+            without_skill_assertions=ws_assertions,
+        )
+        assert len(case.without_skill_assertions) == 1
+        assert case.without_skill_assertions[0].name == "no-struct"
+        assert case.without_skill_assertions[0].type == "not_contains"
+        assert case.without_skill_assertions[0].value == "L1 Trigger Accuracy"
+        assert case.without_skill_assertions[0].weight == 3
+
+    def test_eval_case_both_assertions_empty_raises(self):
+        """EvalCase with both assertions and without_skill_assertions empty raises ValidationError."""
+        with pytest.raises(ValidationError):
+            EvalCase(id=1, name="test", category="normal", prompt="prompt", assertions=[])
+
+    def test_eval_case_only_without_skill_assertions_valid(self):
+        """EvalCase with only without_skill_assertions (and empty assertions) is allowed."""
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="normal",
+            prompt="prompt",
+            assertions=[],
+            without_skill_assertions=[
+                EvalAssertion(name="check", type="not_contains", value="struct", weight=1)
+            ],
+        )
+        assert case.without_skill_assertions[0].name == "check"
+
+
+class TestGraderModeAssertionSelection:
+    """Tests for mode-based assertion selection in Grader.grade_output."""
+
+    def test_grade_output_without_skill_uses_assertions_when_ws_empty(self):
+        """When without_skill_assertions is empty, without_skill mode falls back to assertions."""
+        grader = Grader()
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="normal",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1)],
+        )
+        result = grader.grade_output(case, "hello world", mode="without_skill")
+        assert result["pass_rate"] == 1.0
+        assert result["final_passed"] is True
+
+    def test_grade_output_without_skill_uses_ws_assertions_when_populated(self):
+        """When without_skill_assertions is populated, without_skill mode uses it."""
+        grader = Grader()
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="normal",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="contains_skill", type="contains", value="skill", weight=1)],
+            without_skill_assertions=[
+                EvalAssertion(name="no-skill-term", type="not_contains", value="skill", weight=1)
+            ],
+        )
+        # Output contains "skill" → without_skill_assertions check not_contains: FAILS
+        # because not_contains("skill") fails when output has "skill"
+        result = grader.grade_output(case, "this has skill content", mode="without_skill")
+        assert result["pass_rate"] == 0.0
+        assert result["final_passed"] is False
+
+    def test_grade_output_without_skill_passes_when_ws_assertion_satisfied(self):
+        """without_skill_assertions: not_contains passes when term absent."""
+        grader = Grader()
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="normal",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)],
+            without_skill_assertions=[
+                EvalAssertion(name="no-skill-term", type="not_contains", value="L1 Trigger Accuracy", weight=1)
+            ],
+        )
+        result = grader.grade_output(case, "just a normal response", mode="without_skill")
+        assert result["pass_rate"] == 1.0
+        assert result["final_passed"] is True
+
+    def test_grade_output_with_skill_uses_assertions_even_when_ws_populated(self):
+        """with_skill mode always uses assertions, ignoring without_skill_assertions."""
+        grader = Grader()
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="normal",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="contains_skill", type="contains", value="skill", weight=1)],
+            without_skill_assertions=[
+                EvalAssertion(name="no-skill-term", type="not_contains", value="skill", weight=1)
+            ],
+        )
+        result = grader.grade_output(case, "this has skill content", mode="with_skill")
+        # with_skill uses assertions (contains "skill") → passes
+        assert result["pass_rate"] == 1.0
+        assert result["final_passed"] is True
+
+    def test_grade_output_default_mode_is_with_skill(self):
+        """grade_output without mode parameter defaults to with_skill."""
+        grader = Grader()
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="normal",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="a", type="contains", value="hello", weight=1)],
+        )
+        result = grader.grade_output(case, "hello world")
+        assert result["pass_rate"] == 1.0
+
+    def test_grade_output_without_skill_empty_ws_assertions_same_as_with_skill(self):
+        """Without without_skill_assertions, both modes produce same result."""
+        grader = Grader()
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="normal",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="a", type="contains", value="hello", weight=1)],
+        )
+        with_result = grader.grade_output(case, "hello world", mode="with_skill")
+        without_result = grader.grade_output(case, "hello world", mode="without_skill")
+        assert with_result["pass_rate"] == without_result["pass_rate"]
+        assert with_result["total_weighted_score"] == without_result["total_weighted_score"]
+
+    def test_grade_output_with_negative_case_and_ws_assertions(self):
+        grader = Grader()
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="trigger",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="no-struct", type="not_contains", value="verdict", weight=3)],
+            without_skill_assertions=[
+                EvalAssertion(name="no-struct-ws", type="not_contains", value="verdict", weight=3)
+            ],
+            negative_case=True,
+        )
+        result = grader.grade_output(case, "just a normal response", mode="without_skill")
+        assert result["pass_rate"] == 1.0
+        assert result["final_passed"] is False
+
+    def test_grade_output_negative_case_output_contains_trigger_term_final_passed_true(self):
+        grader = Grader()
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="trigger",
+            prompt="prompt",
+            assertions=[EvalAssertion(name="no-struct", type="not_contains", value="verdict", weight=3)],
+            without_skill_assertions=[
+                EvalAssertion(name="no-struct-ws", type="not_contains", value="verdict", weight=3)
+            ],
+            negative_case=True,
+        )
+        result = grader.grade_output(case, "output with verdict", mode="without_skill")
+        assert result["pass_rate"] == 0.0
+        assert result["final_passed"] is True
 
 
 if __name__ == "__main__":
