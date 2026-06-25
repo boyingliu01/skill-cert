@@ -863,7 +863,7 @@ class TestDetectFreshnessPatterns:
         result = freshness_score(content)
         assert "patterns" in result
         assert len(result["patterns"]) > 0
-        assert result["patterns"][0].pattern_type == "hardcoded_credential"
+        assert result["patterns"][0]["pattern_type"] == "hardcoded_credential"
 
     def test_freshness_score_clean_no_patterns(self):
         result = freshness_score(GOOD_SKILL)

@@ -224,8 +224,21 @@ class SkillCertConfig(BaseModel):
         return models
 
     @staticmethod
+    def _looks_like_url(value: str) -> bool:
+        """Check if a string looks like a URL (has http:// or https:// scheme)."""
+        return bool(value.strip()) and value.strip().startswith(("http://", "https://"))
+
+    @staticmethod
     def _parse_models_from_cli(models_cli: str | list[str]) -> list[ModelConfig]:
-        """Parse models from CLI: model1=url,key[,fallback][|model2=url,key[,fallback]]"""
+        """Parse models from CLI.
+
+        Supports two formats:
+          1. name=base_url,api_key[,fallback][,provider_model]
+             (env-var style, original)
+          2. name=provider_model,base_url,api_key[,fallback]
+             (provider_model-first, auto-detected when first field
+              doesn't have http:// / https:// scheme)
+        """
         models = []
 
         if isinstance(models_cli, str):
@@ -237,29 +250,58 @@ class SkillCertConfig(BaseModel):
             model_arg = model_arg.strip()
             if model_arg and "=" in model_arg:
                 name, config_part = model_arg.split("=", 1)
-                config_parts = config_part.split(",")
-                if len(config_parts) >= 2:
+                config_parts = [p.strip() for p in config_part.split(",")]
+
+                if len(config_parts) < 2:
+                    logger.warning(
+                        "Skipping model '%s': need at least base_url and api_key "
+                        "(format: name=base_url,api_key or name=provider_model,base_url,api_key)",
+                        name,
+                    )
+                    continue
+
+                # Auto-detect format: if field[0] looks like a URL -> format 1,
+                # otherwise treat as format 2 (provider_model-first)
+                if SkillCertConfig._looks_like_url(config_parts[0]):
+                    # Format 1: name=base_url,api_key[,fallback][,provider_model]
                     base_url = config_parts[0]
                     api_key = config_parts[1]
-                    fallback_model = (
-                        config_parts[2].strip()
-                        if len(config_parts) > 2 and config_parts[2].strip()
-                        else None
-                    )
-                    provider_model = (
-                        config_parts[3].strip()
-                        if len(config_parts) > 3 and config_parts[3].strip()
-                        else None
-                    )
-
-                    models.append(
-                        ModelConfig(
-                            model_name=name.strip(),
-                            base_url=base_url,
-                            api_key=api_key,
-                            fallback_model=fallback_model,
-                            provider_model=provider_model,
+                    fallback_model = config_parts[2] if len(config_parts) > 2 else None
+                    provider_model = config_parts[3] if len(config_parts) > 3 else None
+                else:
+                    # Format 2: name=provider_model,base_url,api_key[,fallback]
+                    provider_model = config_parts[0]
+                    if not SkillCertConfig._looks_like_url(config_parts[1]):
+                        logger.error(
+                            "Model '%s': second field '%s' doesn't look like a base_url "
+                            "(expected http:// or https://). Skipping.",
+                            name,
+                            config_parts[1],
                         )
+                        continue
+                    base_url = config_parts[1]
+                    api_key = config_parts[2] if len(config_parts) > 2 else ""
+                    fallback_model = config_parts[3] if len(config_parts) > 3 else None
+
+                # Final URL validation
+                if not SkillCertConfig._looks_like_url(base_url):
+                    logger.error(
+                        "Model '%s': base_url '%s' doesn't start with http:// or https://. "
+                        "Check the format: name=base_url,api_key or "
+                        "name=provider_model,base_url,api_key",
+                        name,
+                        base_url,
                     )
+                    continue
+
+                models.append(
+                    ModelConfig(
+                        model_name=name.strip(),
+                        base_url=base_url,
+                        api_key=api_key,
+                        fallback_model=fallback_model,
+                        provider_model=provider_model,
+                    )
+                )
 
         return models

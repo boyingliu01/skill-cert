@@ -16,6 +16,16 @@ class FreshnessFinding:
     description: str
 
 
+def _freshness_finding_to_dict(finding: FreshnessFinding) -> dict:
+    """Convert FreshnessFinding to a JSON-serializable dict."""
+    return {
+        "line_number": finding.line_number,
+        "pattern_type": finding.pattern_type,
+        "severity": finding.severity,
+        "description": finding.description,
+    }
+
+
 @dataclass(frozen=True)
 class MaintainabilityResult:
     total_score: float
@@ -174,7 +184,7 @@ def freshness_score(content: str) -> dict:
         "has_version": has_version,
         "is_beta": is_beta,
         "score": round(score, 3),
-        "patterns": patterns,
+        "patterns": [_freshness_finding_to_dict(f) for f in patterns],
     }
 
 
