@@ -621,3 +621,33 @@ class TestNewPrivilegeEscalationPatterns:
         scanner = SecurityScanner()
         report = scanner.scan("export PATH=/tmp/evil:$PATH")
         assert any(f.category == "PRIV_ESCALATION" and "PATH" in f.pattern for f in report.findings)
+
+
+def test_security_report_coverage_uses_summary_categories_scanned_not_default():
+    """When summary has categories_scanned=4, coverage uses 4 not 6."""
+    import pytest
+
+    from engine.security_probes import SecurityReport, SecurityFinding
+
+    report = SecurityReport(
+        verdict="WARN",
+        score=0.5,
+        findings=[
+            SecurityFinding(
+                id="INJ-001", category="INJECTION", severity="HIGH",
+                pattern="rm -rf", location="line 10", evidence="sudo rm -rf /"
+            ),
+        ],
+        summary={
+            "total_patterns": 80,
+            "lines_scanned": 100,
+            "categories_scanned": 4,
+            "total": 1,
+            "critical": 0,
+            "high": 1,
+            "medium": 0,
+            "low": 0,
+        },
+    )
+    # 1 category with findings / 4 categories scanned = 0.25 (NOT 1/6 = 0.166)
+    assert report.coverage == pytest.approx(0.25, abs=0.01)

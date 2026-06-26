@@ -603,4 +603,5 @@ class SecurityScanner:
             "high": sum(1 for f in findings if f.severity == "HIGH"),
             "medium": sum(1 for f in findings if f.severity == "MEDIUM"),
             "low": sum(1 for f in findings if f.severity == "LOW"),
+            "categories_scanned": 6,
         }
