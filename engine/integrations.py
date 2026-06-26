@@ -144,6 +144,13 @@ class GiskardSecurityIntegration(BaseIntegration):
 
 
 class PromptfooSecurityIntegration(BaseIntegration):
+    """Security scanning via Promptfoo redteam (BACKUP, requires Node.js 20+).
+
+    WARNING: OpenAI acquired Promptfoo in May 2026. API stability not guaranteed.
+    Prefer GiskardSecurityIntegration as the primary security integration.
+    This integration is retained as a fallback option only.
+    """
+
     def check_available(self) -> bool:
         try:
             import subprocess
