@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-06-26
+
+### Added — Phase 1 Integration Hub
+- **Integration Hub** (`engine/integrations.py`): Rewritten as an extensible integration dispatcher with three new providers:
+  - `GiskardSecurityIntegration`: Deep security scanning via Giskard red-teaming (Python-native, primary recommendation).
+  - `PromptfooSecurityIntegration`: Red-team scanning via Promptfoo CLI (backup option, requires Node.js 20+). Includes OpenAI acquisition risk documentation (May 2026).
+  - `IntegrationDispatcher.health_check()`: Reports availability status (available/degraded/unavailable) for all registered providers.
+- **Layered Security Scanner** (`engine/security_probes.py`):
+  - `SecurityScanner` now accepts optional `integration_dispatcher` parameter for deep scan delegation.
+  - `scan(skill_content, skill_name, deep_security=False)`: When `deep_security=True` and dispatcher available, delegates to external security tools.
+  - `SecurityReport.coverage`: New computed property for assertion quality scoring.
+  - `SecurityReport.summary`: Now includes `categories_scanned`, `deep_scan` (bool), and `deep_source` keys.
+- **CLI**: New `--deep-security` flag enables Giskard-based deep security scanning.
+  - Also settable via `SKILL_CERT_DEEP_SECURITY` environment variable.
+- **Adversarial Delegation** (`engine/adversarial.py`):
+  - New `generate_adversarial_cases()` function delegates adversarial case generation to integration dispatcher.
+  - `WeaknessAnalyzer` kept self-built (SKILL.md-specific analysis).
+- **Graceful Degradation**: All external tool integrations gracefully skip when tools are not installed (zero external dependency baseline).
+- **Tests**: +238 new tests (1,372 total), including integration-level graceful degradation tests.
+
+### Changed
+- `SecurityScanner.scan()`: Signature changed from `(self, text)` to `(self, skill_content, skill_name, deep_security=False)` — fully backward compatible via positional args.
+- `_build_summary()`: Now includes `categories_scanned` key for coverage calculation.
+
+### Fixed
+- Security probe count corrected from 52 to 80 across all documentation and `constants.py`.
+- L3 fallback description in documentation updated to match actual code behavior.
+- Circuit breaker analysis now distinguishes Type A (testgen, one-time) vs Type B (grader, per-eval) circularity risks.
+- 3 pre-existing E501 line-length warnings resolved.
+
+### Docs
+- `INDUSTRY_SURVEY.md`: Comprehensive industry survey of 9+ Skill/Agent evaluation tools.
+- `INTEGRATION_ASSESSMENT.md`: Module-by-module keep-vs-integrate assessment with Phase 1-3 roadmap.
+- `docs/superpowers/plans/2026-06-26-phase1-integration-hub.md`: TDD implementation plan.
+
 ## [0.5.9] - 2026-06-26
 
 ### Added
