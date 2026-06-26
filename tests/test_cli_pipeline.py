@@ -727,6 +727,17 @@ class TestCLIIntegration:
 class TestCLIEntryPoint:
     """Direct tests for CLI entry point, dispatch, and core functions — covering uncovered lines."""
 
+    def test_cli_deep_security_flag_exists(self):
+        """CLI help output includes --deep-security flag."""
+        from skill_cert.cli.main import _build_argument_parser
+
+        parser = _build_argument_parser()
+        args = parser.parse_args(["--skill", "/tmp/test.md", "--deep-security"])
+        assert args.deep_security is True, "--deep-security should set deep_security=True"
+
+        args2 = parser.parse_args(["--skill", "/tmp/test.md"])
+        assert args2.deep_security is False, "default for deep_security should be False"
+
     # ── _setup_single_mode tests ──────────────────────────────────────────────
 
     @pytest.fixture

@@ -151,6 +151,12 @@ Examples:
         help="Enable DeepEval integration for additional metrics",
     )
     parser.add_argument(
+        "--deep-security",
+        action="store_true",
+        default=False,
+        help="Enable deep security scan via Giskard (requires giskard installation)",
+    )
+    parser.add_argument(
         "--envelope",
         help="Custom envelope thresholds as JSON (e.g. '{\"max_steps\": 30}')",
     )

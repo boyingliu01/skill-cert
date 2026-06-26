@@ -58,6 +58,7 @@ class SkillCertConfig(BaseModel):
         default=TimingLimits.GLOBAL_TIMEOUT,
         json_schema_extra={"env": "SKILL_CERT_MAX_TOTAL_TIME"},
     )
+    deep_security: bool = False  # Enable Giskard/Promptfoo deep security scan
 
     @classmethod
     def load(cls, cli_args=None) -> "SkillCertConfig":
@@ -78,6 +79,7 @@ class SkillCertConfig(BaseModel):
             "max_testgen_rounds": TestGenLimits.MAX_REVIEW_ROUNDS,
             "max_gapfill_rounds": TestGenLimits.MAX_REVIEW_ROUNDS,
             "max_total_time": TimingLimits.GLOBAL_TIMEOUT,
+            "deep_security": False,
             "models": [],
         }
 
@@ -110,6 +112,7 @@ class SkillCertConfig(BaseModel):
             "max_testgen_rounds": os.getenv("SKILL_CERT_MAX_TESTGEN_ROUNDS"),
             "max_gapfill_rounds": os.getenv("SKILL_CERT_MAX_GAPFILL_ROUNDS"),
             "max_total_time": os.getenv("SKILL_CERT_MAX_TOTAL_TIME"),
+            "deep_security": os.getenv("SKILL_CERT_DEEP_SECURITY"),
         }
 
         for key, value in env_vars.items():
@@ -131,6 +134,8 @@ class SkillCertConfig(BaseModel):
                         config_dict[key] = float(value)
                     except ValueError:
                         pass
+                elif key == "deep_security":
+                    config_dict[key] = value.lower() in ("true", "1", "yes")
         return config_dict
 
     @classmethod
@@ -144,6 +149,7 @@ class SkillCertConfig(BaseModel):
                 "max_testgen_rounds",
                 "max_gapfill_rounds",
                 "max_total_time",
+                "deep_security",
             ]:
                 if hasattr(cli_args, field) and getattr(cli_args, field) is not None:
                     config_dict[field] = getattr(cli_args, field)
