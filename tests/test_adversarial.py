@@ -7,6 +7,7 @@ from engine.adversarial import (
     Weakness,
     WeaknessAnalyzer,
     evaluate_poc,
+    generate_adversarial_cases,
 )
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
@@ -382,3 +383,41 @@ class TestEvaluatePoc:
             assert a.category == b.category
             assert a.prompt == b.prompt
             assert a.assertions == b.assertions
+
+
+# ─── Test: generate_adversarial_cases ──────────────────────────────────────
+
+
+class TestGenerateAdversarialCases:
+    def test_generate_adversarial_cases_delegates_dispatcher(self):
+        """generate_adversarial_cases accepts dispatcher and returns list."""
+        from engine.integrations import IntegrationDispatcher, GiskardSecurityIntegration
+
+        dispatcher = IntegrationDispatcher()
+        dispatcher.register(GiskardSecurityIntegration())
+
+        weak = Weakness(
+            category="ambiguous_trigger",
+            description="Trigger is too generic",
+            severity="medium",
+            location="SKILL.md trigger section",
+        )
+
+        cases = generate_adversarial_cases(
+            weaknesses=[weak],
+            skill_name="test-skill",
+            dispatcher=dispatcher,
+        )
+        assert isinstance(cases, list)
+
+    def test_generate_adversarial_cases_no_dispatcher_returns_empty(self):
+        """When dispatcher is None, returns empty list without error."""
+        weak = Weakness(
+            category="ambiguous_trigger",
+            description="Trigger is too generic",
+            severity="medium",
+            location="SKILL.md trigger section",
+        )
+
+        cases = generate_adversarial_cases(weaknesses=[weak], skill_name="test")
+        assert cases == []

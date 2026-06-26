@@ -226,6 +226,37 @@ class AdversarialGenerator:
         return cases, metrics
 
 
+def generate_adversarial_cases(
+    weaknesses: list[Weakness],
+    skill_name: str = "unknown",
+    dispatcher=None,
+) -> list[AdversarialCase]:
+    """Generate adversarial test cases for detected weaknesses.
+
+    Delegates to Giskard/Promptfoo integration when dispatcher is configured.
+    Falls back to empty list when no external scanner is available.
+    The WeaknessAnalyzer (kept self-built) identifies weaknesses;
+    adversarial case generation is delegated to mature external tools.
+    """
+    if dispatcher is None:
+        return []
+
+    spec = {
+        "skill_name": skill_name,
+        "weaknesses": [w.model_dump() for w in weaknesses],
+        "action": "generate_adversarial_cases",
+    }
+    results = dispatcher.run_all(spec)
+
+    cases = []
+    for result in results:
+        if result.get("status") == "ok" and "cases" in result:
+            for case_data in result["cases"]:
+                cases.append(AdversarialCase(**case_data))
+
+    return cases
+
+
 def evaluate_poc(skill_spec: dict[str, Any]) -> AdversarialReport:
     """Run the full adversarial generation PoC and produce a report.
 
