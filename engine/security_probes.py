@@ -28,6 +28,12 @@ class SecurityReport:
     findings: list
     summary: dict = field(default_factory=dict)
 
+    @property
+    def coverage(self) -> float:
+        cats_with_findings = len(set(f.category for f in self.findings))
+        max_cats = self.summary.get("categories_scanned", 6)
+        return cats_with_findings / max_cats if max_cats > 0 else 0.0
+
 
 INJECTION_PATTERNS = [
     (

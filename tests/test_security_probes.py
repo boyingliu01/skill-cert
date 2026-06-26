@@ -563,6 +563,35 @@ class TestNewObfuscationPatterns:
 # ── NEW: Tests for expanded privilege escalation patterns (4 new) ───────────
 
 
+import pytest
+
+
+class TestSecurityReportCoverage:
+    def test_security_report_coverage_method(self):
+        """SecurityReport.coverage returns ratio of categories with findings vs total categories scanned."""
+        report = SecurityReport(
+            verdict="WARN",
+            score=0.5,
+            findings=[
+                SecurityFinding(
+                    id="INJ-001",
+                    category="INJECTION",
+                    severity="HIGH",
+                    pattern="rm -rf",
+                    location="line 10",
+                    evidence="sudo rm -rf /",
+                ),
+            ],
+            summary={
+                "total_patterns": 80,
+                "lines_scanned": 100,
+                "categories_scanned": 6,
+            },
+        )
+        # Only 1 category (INJECTION) out of 6 has findings → 1/6 ≈ 0.166
+        assert report.coverage == pytest.approx(0.166, abs=0.01)
+
+
 class TestNewPrivilegeEscalationPatterns:
     def test_setuid_binary_creation(self):
         scanner = SecurityScanner()
