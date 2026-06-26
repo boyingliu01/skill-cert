@@ -550,12 +550,17 @@ ALL_PATTERNS = (
 
 
 class SecurityScanner:
-    def __init__(self):
+    CATEGORIES = ("INJECTION", "EXFILTRATION", "DANGEROUS_CMD", "CREDENTIAL", "OBFUSCATION", "PRIV_ESCALATION")
+
+    def __init__(self, integration_dispatcher=None):
+        self._dispatcher = integration_dispatcher
         self._patterns = ALL_PATTERNS
 
-    def scan(self, text: str) -> SecurityReport:
+    def scan(self, skill_content: str, skill_name: str = "unknown",
+             deep_security: bool = False) -> SecurityReport:
         findings = []
         counter = 0
+        text = skill_content
         for pattern, category, severity, label in self._patterns:
             for match in pattern.finditer(text):
                 counter += 1
@@ -576,7 +581,40 @@ class SecurityScanner:
         score = self._calculate_score(findings)
         summary = self._build_summary(findings)
 
-        return SecurityReport(verdict=verdict, score=score, findings=findings, summary=summary)
+        # Phase 2: Optional deep scan via integration dispatcher
+        deep_findings = []
+        deep_source = None
+        if deep_security and self._dispatcher:
+            deep_result = self._run_deep_scan(skill_content, skill_name)
+            deep_findings = deep_result.get("findings", [])
+            deep_source = deep_result.get("source")
+
+        # Merge findings
+        all_findings = findings + deep_findings
+        # Update summary with deep scan info
+        summary["deep_scan"] = bool(deep_security and bool(deep_source) and bool(deep_findings))
+        if deep_source:
+            summary["deep_source"] = deep_source
+
+        return SecurityReport(
+            verdict=verdict,
+            score=score,
+            findings=all_findings,
+            summary=summary,
+        )
+
+    def _run_deep_scan(self, skill_content: str, skill_name: str) -> dict:
+        """Delegate deep security scan to integration dispatcher."""
+        spec = {
+            "skill_name": skill_name,
+            "skill_content": skill_content,
+            "action": "security_scan",
+        }
+        results = self._dispatcher.run_all(spec)
+        for r in results:
+            if r.get("status") not in ("skipped", "error"):
+                return {"findings": r.get("findings", []), "source": r.get("tool", "external")}
+        return {"findings": [], "source": None}
 
     def _determine_verdict(self, findings: list) -> Literal["PASS", "WARN", "BLOCK"]:
         critical_count = sum(1 for f in findings if f.severity == "CRITICAL")

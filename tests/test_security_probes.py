@@ -651,3 +651,42 @@ def test_security_report_coverage_uses_summary_categories_scanned_not_default():
     )
     # 1 category with findings / 4 categories scanned = 0.25 (NOT 1/6 = 0.166)
     assert report.coverage == pytest.approx(0.25, abs=0.01)
+
+
+# ── TASK 4: SecurityScanner layered scanning ─────────────────────────────────
+
+
+class TestSecurityScannerLayeredScanning:
+    def test_security_scanner_accepts_integration_dispatcher(self):
+        """SecurityScanner can accept an IntegrationDispatcher for deep scanning."""
+        from engine.integrations import IntegrationDispatcher, GiskardSecurityIntegration
+        from engine.security_probes import SecurityScanner, SecurityReport
+
+        dispatcher = IntegrationDispatcher()
+        dispatcher.register(GiskardSecurityIntegration())
+
+        scanner = SecurityScanner(integration_dispatcher=dispatcher)
+        report = scanner.scan(skill_content="print('hello')", skill_name="test")
+        assert isinstance(report, SecurityReport)
+        # All findings should be from static scan categories
+        valid_categories = set(scanner.CATEGORIES)
+        for f in report.findings:
+            assert f.category in valid_categories
+
+    def test_security_scanner_deep_scan_flag(self):
+        """With deep_security=True, scanner delegates to integration dispatcher."""
+        from engine.integrations import IntegrationDispatcher, GiskardSecurityIntegration
+        from engine.security_probes import SecurityScanner, SecurityReport
+
+        dispatcher = IntegrationDispatcher()
+        dispatcher.register(GiskardSecurityIntegration())
+
+        scanner = SecurityScanner(integration_dispatcher=dispatcher)
+        report = scanner.scan(
+            skill_content="print('hello')",
+            skill_name="test",
+            deep_security=True,
+        )
+        assert isinstance(report, SecurityReport)
+        # Summary should contain deep_scan source marker when deep scan was attempted
+        assert "deep_scan" in report.summary
