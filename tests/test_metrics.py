@@ -20,7 +20,7 @@ class TestMetricsCalculator:
         assert metrics["overall_score"] == 0.0
         assert metrics["l1_trigger_accuracy"] == 0.0
         assert metrics["l2_with_without_skill_delta"] == 0.0
-        assert metrics["l3_step_adherence"] == 0.0
+        assert metrics["l3_step_adherence"] is None  # None when no trajectory data
         assert metrics["l4_execution_stability"] == 1.0  # Perfect stability with no data
 
         # Check that breakdowns exist
@@ -284,10 +284,8 @@ class TestMetricsCalculator:
         ]
 
         l3_score = calculator._calculate_l3_step_adherence(eval_results)
-
-        # Implementation returns average pass rate of passing evaluations
-        # Passing evals: [0.8, 0.9] -> avg = 0.85
-        assert 0.0 <= l3_score <= 1.0
+        # No workflow_step data, no trajectory → returns None
+        assert l3_score is None
 
     def test_calculate_l3_step_adherence_with_workflow_step(self):
         """Test L3 step adherence with real workflow_step coverage (no spec)."""
@@ -351,7 +349,8 @@ class TestMetricsCalculator:
         workflow_steps = ["Step 1", "Step 2"]
 
         l3_score = calculator._calculate_l3_step_adherence(eval_results, workflow_steps)
-        assert l3_score == 0.0
+        # No passing evals → returns None
+        assert l3_score is None
 
     def test_calculate_l3_step_adherence_empty_workflow_steps(self):
         """Test L3 step adherence when spec has no workflow steps."""
@@ -766,13 +765,14 @@ class TestMetricsCalculator:
         assert l3 == pytest.approx(0.9)
 
     def test_l3_fallback_without_turn_data(self):
-        """L3 falls back to step_coverage when no turn-level data."""
+        """L3 returns None when no turn-level data AND no workflow_step data."""
         calc = MetricsCalculator()
         results = [
             {"final_passed": True, "pass_rate": 0.7},
         ]
         l3 = calc._calculate_l3_step_adherence(results)
-        assert l3 == pytest.approx(0.7)
+        # No workflow_step field, no trajectory → L3 unavailable
+        assert l3 is None
 
     def test_tool_call_accuracy_with_expected_tools(self):
         """Tool call accuracy uses expected_tools for matching."""

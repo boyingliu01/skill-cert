@@ -62,7 +62,15 @@ class MetricsCalculator:
         l6_score = self._calculate_l6_trajectory_quality(eval_results)
 
         active_metrics = 6
-        score_sum = l1_score + l2_score + l3_score + l4_score
+        score_sum = l1_score + l2_score
+        if l3_score is not None:
+            score_sum += l3_score
+        else:
+            active_metrics -= 1
+        if l4_score is not None:
+            score_sum += l4_score
+        else:
+            active_metrics -= 1
         if l5_score is not None:
             score_sum += l5_score
         else:
@@ -208,19 +216,20 @@ class MetricsCalculator:
         self,
         eval_results: list[dict[str, Any]],
         workflow_steps: list[str] | None = None,
-    ) -> float:
+    ) -> float | None:
         """L3: Step adherence.
 
         Weighted combination of step_coverage, tool_call_accuracy, turn_relevance.
         Formula: 0.5 * step_coverage + 0.3 * tool_call_accuracy + 0.2 * turn_relevance
         Falls back to step_coverage only when turn-level data is unavailable.
+        Returns None when no trajectory data is available at all (L3 unavailable).
         """
         if not eval_results:
-            return 0.0
+            return None
 
         passing_evals = [r for r in eval_results if r.get("final_passed", False)]
         if not passing_evals:
-            return 0.0
+            return None
 
         # Calculate base step_coverage
         step_coverage = self._calculate_step_coverage(passing_evals, workflow_steps)
@@ -229,11 +238,17 @@ class MetricsCalculator:
         tool_call_accuracy = self._calculate_tool_call_accuracy(passing_evals)
         turn_relevance = self._calculate_turn_relevance(passing_evals)
 
+        has_workflow_step_data = any(r.get("workflow_step") is not None for r in passing_evals)
+
         if tool_call_accuracy is not None and turn_relevance is not None:
             return 0.5 * step_coverage + 0.3 * tool_call_accuracy + 0.2 * turn_relevance
 
-        # Fallback: step_coverage only (backward compatible)
-        return step_coverage
+        if has_workflow_step_data:
+            # Valid signal: step_coverage from actual workflow step data
+            return step_coverage
+
+        # No trajectory or workflow step data → L3 unavailable
+        return None
 
     @staticmethod
     def _tokenize(text: str) -> set[str]:
