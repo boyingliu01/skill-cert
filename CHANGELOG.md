@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-06-26
+
+### Added — Pipeline Integrity Fixes
+- **Assertion quality scoring**: Coverage metric now penalizes keyword-only assertions (e.g. `contains "skill"`) with a diversity penalty. TestGen prompt includes keyword blacklist and 2+ assertion type requirement. See `engine/testgen.py:_calculate_coverage`.
+- **L3 signal integrity**: `_calculate_l3_step_adherence` returns `None` when trajectory data is unavailable instead of proxying through `avg(pass_rate)`. L3 is excluded from overall score when unavailable.
+- **Circularity risk detection (Type B mitigation)**: `EvalRunner` now detects same-family model conflicts via `_detect_circularity_risk()`. Logs warnings when testgen and judge share a model family (e.g. both Qwen). Exposes `circularity_risk` and `circularity_warnings` on the runner.
+- **Pipeline wiring**: `deep_security` flag and `IntegrationDispatcher` are now connected through `EvalRunner` → `SecurityScanner.scan(deep_security=True)`. CLI `--deep-security` flag is fully wired end-to-end.
+
+### Changed
+- `_calculate_coverage` now applies type-diversity and keyword-penalty factors to coverage score.
+- `EvalRunner.__init__` accepts `model_names`, `integration_dispatcher`, and `deep_security` params.
+- `SecurityScanner` constructed with `integration_dispatcher` from EvalRunner.
+
 ## [0.6.0] - 2026-06-26
 
 ### Added — Phase 1 Integration Hub
