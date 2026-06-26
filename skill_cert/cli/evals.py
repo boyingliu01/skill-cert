@@ -568,6 +568,21 @@ def _generate_and_write_reports(
     return md_report, json_report
 
 
+def _build_integration_dispatcher(args: Any) -> Any:
+    """Build IntegrationDispatcher from CLI args for pipeline connection."""
+    try:
+        from engine.integrations import (  # noqa: F811
+            GiskardSecurityIntegration,
+            IntegrationDispatcher,
+        )
+    except ImportError:
+        return None
+    dispatcher = IntegrationDispatcher()
+    dispatcher.register(GiskardSecurityIntegration())
+    # Promptfoo is the backup option (Node.js dependency), registered lazily
+    return dispatcher
+
+
 def _run_single_phase(
     args, config, spec_path, output_dir, skill_name, spec, adapters, deadline=None
 ) -> int:
@@ -590,6 +605,9 @@ def _run_single_phase(
         request_timeout=config.request_timeout,
         token_ledger=token_ledger,
         telemetry=telemetry,
+        model_names=list(adapters.keys()) if adapters else [],
+        integration_dispatcher=_build_integration_dispatcher(args),
+        deep_security=getattr(args, "deep_security", False),
     )
     primary_adapter = list(adapters.values())[0]
     debias_position = getattr(args, "debias_position", True)

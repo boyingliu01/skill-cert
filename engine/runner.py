@@ -15,6 +15,56 @@ from engine.trace_models import ExecutionTrace, TokenAccounting
 
 logger = logging.getLogger(__name__)
 
+# Known model families for circularity detection (Type B mitigation)
+MODEL_FAMILIES: dict[str, str] = {
+    "gpt": "openai",
+    "o1": "openai",
+    "o3": "openai",
+    "o4": "openai",
+    "claude": "anthropic",
+    "gemini": "google",
+    "qwen": "qwen",
+    "deepseek": "deepseek",
+    "minimax": "minimax",
+    "kimi": "moonshot",
+    "glm": "zhipu",
+    "whalecloud": "whalecloud",
+}
+
+
+def _infer_model_family(model_name: str) -> str:
+    """Infer model family from model name prefix. Returns 'unknown' if not matched."""
+    lower = model_name.lower()
+    for prefix, family in MODEL_FAMILIES.items():
+        if lower.startswith(prefix):
+            return family
+    return "unknown"
+
+
+def _detect_circularity_risk(
+    model_names: list[str],
+) -> tuple[str, list[str]]:
+    """Detect if the same model family is used for both generation and judging.
+
+    Returns (risk_level, warnings_list) where risk_level is one of
+    'none', 'low', 'medium', 'high'.
+    """
+    families = {name: _infer_model_family(name) for name in model_names}
+    unique_families = set(families.values())
+    if len(unique_families) == len(model_names):
+        return "none", []
+    if len(unique_families) == 1 and len(model_names) > 1:
+        return "high", [
+            f"All models share family '{list(unique_families)[0]}': {', '.join(model_names)}. "
+            f"Consider using models from different families for testgen vs judging."
+        ]
+    conflicts = []
+    for i, (name_a, fam_a) in enumerate(families.items()):
+        for name_b, fam_b in list(families.items())[i + 1:]:
+            if fam_a == fam_b and fam_a != "unknown":
+                conflicts.append(f"Models '{name_a}' and '{name_b}' share family '{fam_a}'")
+    return "medium" if conflicts else "low", conflicts
+
 
 class EvalRunner:
     SECURITY_MAX_OUTPUT_LENGTH = SecurityLimits.MAX_OUTPUT_LENGTH
@@ -27,14 +77,18 @@ class EvalRunner:
         enable_security_scan: bool = True,
         enable_envelope: bool = True,
         model_name: str | None = None,
+        model_names: list[str] | None = None,
         cost_budget: float = 0.0,
         token_ledger: Any | None = None,
         telemetry: SessionTelemetry | None = None,
+        integration_dispatcher: Any | None = None,
+        deep_security: bool = False,
     ):
         self.max_concurrency = max_concurrency
         self.rate_limit_rpm = rate_limit_rpm
         self.request_timeout = request_timeout
         self.model_name = model_name
+        self.model_names = model_names or ([model_name] if model_name else [])
         self.cost_budget = cost_budget
         self._semaphore = threading.Semaphore(max_concurrency)
         self._rate_lock = threading.Lock()
@@ -44,7 +98,13 @@ class EvalRunner:
         self.total_tokens = 0
         self.total_cost = 0.0
         self.token_budget = None
-        self.scanner = SecurityScanner() if enable_security_scan else None
+        self.integration_dispatcher = integration_dispatcher
+        self.deep_security = deep_security
+        self.scanner = (
+            SecurityScanner(integration_dispatcher=integration_dispatcher)
+            if enable_security_scan
+            else None
+        )
         self.envelope = (
             EnvelopeChecker(timeout_s=request_timeout, cost_budget=cost_budget)
             if enable_envelope
@@ -55,6 +115,18 @@ class EvalRunner:
         self.telemetry = telemetry
         self._traces: list[ExecutionTrace] = []
         self._traces_lock = threading.Lock()
+
+        # Circularity risk detection (Type B mitigation)
+        self.circularity_risk: str = "none"
+        self.circularity_warnings: list[str] = []
+        if len(self.model_names) > 1:
+            risk, warnings = _detect_circularity_risk(self.model_names)
+            self.circularity_risk = risk
+            self.circularity_warnings = warnings
+            if risk in ("high", "medium"):
+                logger.warning(
+                    "Circularity risk (%s): %s", risk, "; ".join(warnings)
+                )
 
     def _wait_rate_limit(self):
         with self._rate_lock:
@@ -361,7 +433,9 @@ class EvalRunner:
     def _check_security(self, output: str) -> dict:
         if not self.scanner:
             return {"scanned": False}
-        report = self.scanner.scan(output)
+        report = self.scanner.scan(
+            output, deep_security=self.deep_security,
+        )
         return {
             "scanned": True,
             "verdict": report.verdict,
