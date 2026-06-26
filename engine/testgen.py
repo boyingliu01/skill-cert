@@ -319,6 +319,12 @@ Generate a JSON object with an array of eval_cases containing:
     grading WITHOUT_SKILL mode. When empty defaults to assertions.
 
 IMPORTANT: Use STRUCTURAL ASSERTIONS, not single keyword checks.
+Each eval case MUST use at least 2 different assertion types.
+
+KEYWORD BLACKLIST — DO NOT use these patterns as the sole assertion value:
+- DO NOT use contains "skill", contains "SKILL.md", or similar single-word skill-name checks
+- DO NOT use assertions that only check for the word "skill" without context
+- Instead, check for structural output patterns, workflow step names, or domain-specific content
 
 For TRIGGER evals (category="trigger"):
 - Use regex assertions to check for structural output patterns
@@ -894,6 +900,11 @@ Minimum requirements:
                     break
         return eval_cases
 
+    # Keyword-only assertion values to penalize (case-insensitive)
+    _KEYWORD_BLACKLIST: frozenset[str] = frozenset({
+        "skill", "SKILL", "SKILL.md", "skill.md", "skill_cert",
+    })
+
     def _calculate_coverage(self, evals: dict[str, Any], skill_spec: dict[str, Any]) -> float:
         eval_cases = self._get_eval_cases(evals)
         if not eval_cases:
@@ -904,18 +915,45 @@ Minimum requirements:
             for case in eval_cases
             for a in case.get("assertions", [])
         }
+        # Filter out keyword-only assertions from coverage scoring
+        filtered_assertions = {
+            a for a in assertion_set
+            if a.strip().lower() not in self._KEYWORD_BLACKLIST
+        }
+        # Diversity penalty: if filtered out assertions make up >30% of total,
+        # apply a diversity penalty to the coverage score
+        total_assertions = len(assertion_set)
+        filtered_ratio = (total_assertions - len(filtered_assertions)) / max(total_assertions, 1)
+        diversity_penalty = max(0.0, 1.0 - filtered_ratio * 6.0)  # linear penalty ramp
+        # Also count unique assertion types per eval case
+        type_counts = []
+        for case in eval_cases:
+            types_in_case = {a.get("type") for a in case.get("assertions", []) if a.get("type")}
+            type_counts.append(len(types_in_case))
+        avg_types = sum(type_counts) / max(len(type_counts), 1)
+        type_diversity_factor = min(1.0, avg_types / 2.0)  # normalized: 2+ types = 1.0
 
         workflow_coverage = self._compute_section_coverage(
-            skill_spec.get("workflow_steps", []), assertion_set
+            skill_spec.get("workflow_steps", []), filtered_assertions
         )
         anti_pattern_coverage = self._compute_section_coverage(
-            [str(p) for p in skill_spec.get("anti_patterns", [])], assertion_set
+            [str(p) for p in skill_spec.get("anti_patterns", [])], filtered_assertions
         )
         output_coverage = self._compute_section_coverage(
-            skill_spec.get("output_format", []), assertion_set
+            skill_spec.get("output_format", []), filtered_assertions
         )
 
-        return workflow_coverage * 0.5 + anti_pattern_coverage * 0.3 + output_coverage * 0.2
+        base_score = workflow_coverage * 0.5 + anti_pattern_coverage * 0.3 + output_coverage * 0.2
+
+        # Don't penalize when there's nothing to cover (empty spec = automatic 1.0 baseline)
+        has_spec_items = bool(
+            skill_spec.get("workflow_steps")
+            or skill_spec.get("anti_patterns")
+            or skill_spec.get("output_format")
+        )
+        if not has_spec_items:
+            return base_score
+        return base_score * diversity_penalty * type_diversity_factor
 
     def _prepare_review_prompt(
         self, evals: dict[str, Any], skill_spec: dict[str, Any], coverage: float
@@ -932,7 +970,8 @@ Analyze the eval cases and identify:
 2. Which anti-patterns are NOT covered by any eval case assertions
 3. Which output formats are NOT covered by any eval case assertions
 4. Whether the eval cases are diverse enough (normal, boundary, failure, trigger)
-5. Whether the assertions are meaningful and verifiable
+5. Whether the assertions are meaningful and verifiable — flag any that only check for a single keyword (e.g. contains "skill") without structural context
+6. Whether each eval case uses at least 2 different assertion types
 
 Return a JSON object with:
 - coverage: current coverage value

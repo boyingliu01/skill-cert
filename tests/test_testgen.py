@@ -172,7 +172,8 @@ def test_calculate_coverage():
 
     coverage = generator._calculate_coverage(evals, skill_spec)
 
-    assert coverage == 1.0
+    # All spec items covered, but single assertion type (contains only) → diversity factor 0.5
+    assert coverage == 0.5
 
 
 def test_merge_evals():
@@ -915,7 +916,8 @@ def test_calculate_coverage_with_regex_assertions():
         "output_format": ["PASS/FAIL verdict", "JSON output"],
     }
     coverage = generator._calculate_coverage(evals, skill_spec)
-    assert coverage == 1.0, f"Expected 1.0, got {coverage}"
+    # All spec items covered, but only 1 assertion type (regex) → diversity factor 0.5
+    assert coverage == 0.5, f"Expected 0.5 (diversity penalty: single assertion type), got {coverage}"
 
 
 @pytest.mark.parametrize(
@@ -1336,6 +1338,71 @@ class TestGenerateInitialEvalsRetry:
         second_messages = calls_made[1]
         has_json_hint = any("JSON" in str(m) or "json" in str(m) for m in second_messages)
         assert has_json_hint
+
+
+class TestAssertionQuality:
+    def test_generation_prompt_has_keyword_blacklist(self):
+        """Generation prompt MUST instruct LLM to avoid keyword-only assertions."""
+        from engine.testgen import EvalGenerator
+
+        gen = EvalGenerator()
+        spec = {
+            "name": "test-skill",
+            "skill_type": "agent_guide",
+            "description": "A test skill",
+            "triggers": ["test"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        prompt = gen._prepare_generation_prompt(spec)
+        prompt_lower = prompt.lower()
+        # Must warn against keyword-only assertions (prompt uses DO NOT with blacklisted keywords)
+        assert "do not use" in prompt_lower
+        assert "contains \"skill\"" in prompt_lower or "contains 'skill'" in prompt_lower
+        # Must require structural assertions
+        assert "structural" in prompt_lower
+
+    def test_generation_prompt_has_assertion_diversity_requirement(self):
+        """Generation prompt MUST require at least 3 different assertion types."""
+        from engine.testgen import EvalGenerator
+
+        gen = EvalGenerator()
+        spec = {
+            "name": "test-skill",
+            "skill_type": "agent_guide",
+            "description": "A test skill",
+            "triggers": ["test"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        prompt = gen._prepare_generation_prompt(spec)
+        prompt_lower = prompt.lower()
+        assert "different assertion types" in prompt_lower or "3 different" in prompt_lower
+
+    def test_generation_prompt_prohibits_skill_keyword_assertion(self):
+        """Generation prompt MUST prohibit assertions that only check for the word 'skill'."""
+        from engine.testgen import EvalGenerator
+
+        gen = EvalGenerator()
+        spec = {
+            "name": "test-skill",
+            "skill_type": "agent_guide",
+            "description": "A test skill",
+            "triggers": ["test"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        prompt = gen._prepare_generation_prompt(spec)
+        prompt_lower = prompt.lower()
+        # Must explicitly ban keyword 'skill' on its own as an assertion
+        assert "skill" in prompt_lower
+        assert "keyword" in prompt_lower
 
 
 if __name__ == "__main__":
