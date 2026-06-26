@@ -391,7 +391,7 @@ class TestEvaluatePoc:
 class TestGenerateAdversarialCases:
     def test_generate_adversarial_cases_delegates_dispatcher(self):
         """generate_adversarial_cases accepts dispatcher and returns list."""
-        from engine.integrations import IntegrationDispatcher, GiskardSecurityIntegration
+        from engine.integrations import GiskardSecurityIntegration, IntegrationDispatcher
 
         dispatcher = IntegrationDispatcher()
         dispatcher.register(GiskardSecurityIntegration())

@@ -1,3 +1,5 @@
+import pytest
+
 from engine.security_probes import SecurityFinding, SecurityReport, SecurityScanner
 
 
@@ -563,9 +565,6 @@ class TestNewObfuscationPatterns:
 # ── NEW: Tests for expanded privilege escalation patterns (4 new) ───────────
 
 
-import pytest
-
-
 class TestSecurityReportCoverage:
     def test_security_report_coverage_method(self):
         """SecurityReport.coverage returns ratio of categories with findings vs total categories scanned."""
@@ -627,7 +626,7 @@ def test_security_report_coverage_uses_summary_categories_scanned_not_default():
     """When summary has categories_scanned=4, coverage uses 4 not 6."""
     import pytest
 
-    from engine.security_probes import SecurityReport, SecurityFinding
+    from engine.security_probes import SecurityFinding, SecurityReport
 
     report = SecurityReport(
         verdict="WARN",
@@ -659,8 +658,8 @@ def test_security_report_coverage_uses_summary_categories_scanned_not_default():
 class TestSecurityScannerLayeredScanning:
     def test_security_scanner_accepts_integration_dispatcher(self):
         """SecurityScanner can accept an IntegrationDispatcher for deep scanning."""
-        from engine.integrations import IntegrationDispatcher, GiskardSecurityIntegration
-        from engine.security_probes import SecurityScanner, SecurityReport
+        from engine.integrations import GiskardSecurityIntegration, IntegrationDispatcher
+        from engine.security_probes import SecurityReport, SecurityScanner
 
         dispatcher = IntegrationDispatcher()
         dispatcher.register(GiskardSecurityIntegration())
@@ -675,8 +674,8 @@ class TestSecurityScannerLayeredScanning:
 
     def test_security_scanner_deep_scan_flag(self):
         """With deep_security=True, scanner delegates to integration dispatcher."""
-        from engine.integrations import IntegrationDispatcher, GiskardSecurityIntegration
-        from engine.security_probes import SecurityScanner, SecurityReport
+        from engine.integrations import GiskardSecurityIntegration, IntegrationDispatcher
+        from engine.security_probes import SecurityReport, SecurityScanner
 
         dispatcher = IntegrationDispatcher()
         dispatcher.register(GiskardSecurityIntegration())

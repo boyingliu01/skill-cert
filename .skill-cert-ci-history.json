@@ -1,0 +1,26 @@
+{
+  "runs": [
+    {
+      "timestamp": "2026-06-25T09:13:04.903198+00:00",
+      "skill_path": "/home/boyingliu01/.config/opencode/xp-gate/skills/delphi-review/SKILL.md",
+      "l1_trigger_accuracy": 0.5625,
+      "l2_with_without_skill_delta": 0.25468461335444714,
+      "l3_step_adherence": 0.8166666666666667,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.5267702560042228
+    },
+    {
+      "timestamp": "2026-06-25T09:27:39.762148+00:00",
+      "skill_path": "/home/boyingliu01/.config/opencode/xp-gate/skills/delphi-review/SKILL.md",
+      "l1_trigger_accuracy": 0.75,
+      "l2_with_without_skill_delta": 1.0,
+      "l3_step_adherence": 0.8170731707317073,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.7134146341463414
+    }
+  ]
+}

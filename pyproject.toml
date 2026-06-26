@@ -72,3 +72,6 @@ select = ["E", "F", "I", "N", "W", "UP"]
 "tests/test_cli_pipeline.py" = ["N806"]
 # test_maintainability.py contains intentionally long SKILL.md strings for testing readability scoring
 "tests/test_maintainability.py" = ["E501"]
+# Test files often contain long JSON fixtures, inline strings, and BDD comments.
+# Engine and adapter source code remains strictly enforced.
+"tests/*" = ["E501"]

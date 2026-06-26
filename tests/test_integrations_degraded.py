@@ -1,9 +1,8 @@
 """Tests for integration dispatcher graceful degradation."""
-import pytest
 from engine.integrations import (
     BaseIntegration,
-    IntegrationDispatcher,
     GiskardSecurityIntegration,
+    IntegrationDispatcher,
     PromptfooSecurityIntegration,
     ToolAvailability,
 )
