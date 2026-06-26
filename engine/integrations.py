@@ -141,3 +141,39 @@ class GiskardSecurityIntegration(BaseIntegration):
             }
         except Exception as e:
             return {"status": "error", "reason": str(e)}
+
+
+class PromptfooSecurityIntegration(BaseIntegration):
+    def check_available(self) -> bool:
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                ["npx", "promptfoo", "--version"],
+                capture_output=True, text=True, timeout=10,
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def get_version(self) -> str:
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                ["npx", "promptfoo", "--version"],
+                capture_output=True, text=True, timeout=10,
+            )
+            return result.stdout.strip() if result.returncode == 0 else "unavailable"
+        except Exception:
+            return "unavailable"
+
+    def run(self, spec: dict, **kwargs) -> dict:
+        if not self.check_available():
+            return {"status": "skipped", "reason": "promptfoo (Node.js) not available"}
+        return {
+            "status": "pending",
+            "tool": "promptfoo",
+            "message": "redteam integration pending",
+            "skill_name": spec.get("skill_name", "unknown"),
+        }

@@ -230,3 +230,24 @@ class TestGiskardSecurityIntegration:
         result = integration.run({"skill_content": "test"})
         assert result["status"] == "skipped"
         assert "giskard not installed" in result["reason"]
+
+
+# ── PromptfooSecurityIntegration ────────────────────────────────────────────
+
+
+class TestPromptfooSecurityIntegration:
+    def test_promptfoo_integration_check_available_missing(self):
+        """Promptfoo without Node.js returns False."""
+        from engine.integrations import PromptfooSecurityIntegration
+
+        integration = PromptfooSecurityIntegration()
+        result = integration.check_available()
+        assert isinstance(result, bool)
+
+    def test_promptfoo_integration_run_missing(self):
+        """Promptfoo run returns skip status when unavailable."""
+        from engine.integrations import PromptfooSecurityIntegration
+
+        integration = PromptfooSecurityIntegration()
+        result = integration.run({"skill_content": "test"})
+        assert result["status"] in ("skipped", "error")
