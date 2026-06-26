@@ -550,7 +550,10 @@ ALL_PATTERNS = (
 
 
 class SecurityScanner:
-    CATEGORIES = ("INJECTION", "EXFILTRATION", "DANGEROUS_CMD", "CREDENTIAL", "OBFUSCATION", "PRIV_ESCALATION")
+    CATEGORIES = (
+        "INJECTION", "EXFILTRATION", "DANGEROUS_CMD",
+        "CREDENTIAL", "OBFUSCATION", "PRIV_ESCALATION",
+    )
 
     def __init__(self, integration_dispatcher=None):
         self._dispatcher = integration_dispatcher

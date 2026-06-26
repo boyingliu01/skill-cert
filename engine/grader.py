@@ -72,7 +72,9 @@ class Grader:
         self.llm_client = llm_client
         self.debias_position = debias_position
 
-    def grade_output(self, eval_case: EvalCase, model_output: str, *, mode: str = "with_skill") -> dict[str, Any]:
+    def grade_output(
+        self, eval_case: EvalCase, model_output: str, *, mode: str = "with_skill"
+    ) -> dict[str, Any]:
         """Evaluate a single model output against eval case assertions.
 
         :param mode: 'with_skill' or 'without_skill'. Determines which assertions array to use.

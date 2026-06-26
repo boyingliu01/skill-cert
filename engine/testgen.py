@@ -669,7 +669,10 @@ Minimum requirements:
         normalized["assertions"] = clean_asserts
 
         # Normalize without_skill_assertions with same structure as assertions
-        if "without_skill_assertions" in normalized and isinstance(normalized["without_skill_assertions"], list):
+        if (
+            "without_skill_assertions" in normalized
+            and isinstance(normalized["without_skill_assertions"], list)
+        ):
             clean_ws_asserts = []
             for a in normalized["without_skill_assertions"]:
                 if isinstance(a, dict):
