@@ -108,3 +108,36 @@ class DeepEvalIntegration(BaseIntegration):
         if not self.check_available():
             return {"status": "skipped", "reason": "deepeval not installed"}
         return {"status": "not_implemented", "tool": "deepeval", "message": "integration pending"}
+
+
+class GiskardSecurityIntegration(BaseIntegration):
+    def check_available(self) -> bool:
+        try:
+            import importlib
+
+            importlib.import_module("giskard")
+            return True
+        except ImportError:
+            return False
+
+    def get_version(self) -> str:
+        try:
+            import importlib
+
+            mod = importlib.import_module("giskard")
+            return getattr(mod, "__version__", "unknown")
+        except ImportError:
+            return "unavailable"
+
+    def run(self, spec: dict, **kwargs) -> dict:
+        if not self.check_available():
+            return {"status": "skipped", "reason": "giskard not installed"}
+        try:
+            return {
+                "status": "pending",
+                "tool": "giskard",
+                "message": "deep scan integration pending",
+                "skill_name": spec.get("skill_name", "unknown"),
+            }
+        except Exception as e:
+            return {"status": "error", "reason": str(e)}

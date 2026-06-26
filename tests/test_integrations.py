@@ -198,3 +198,35 @@ class TestDeepEvalIntegration:
         integration = DeepEvalIntegration()
         result = integration.run(spec={"name": "test-skill"})
         assert isinstance(result, dict)
+
+
+# ── GiskardSecurityIntegration ──────────────────────────────────────────────
+
+
+class TestGiskardSecurityIntegration:
+    """Tests for GiskardSecurityIntegration — missing-package behavior."""
+
+    def test_giskard_integration_check_available_missing_package(self):
+        """When giskard is not installed, check_available returns False."""
+        from engine.integrations import GiskardSecurityIntegration
+
+        integration = GiskardSecurityIntegration()
+        result = integration.check_available()
+        assert result is False
+
+    def test_giskard_integration_get_version_missing(self):
+        """When giskard is not installed, get_version returns 'unavailable'."""
+        from engine.integrations import GiskardSecurityIntegration
+
+        integration = GiskardSecurityIntegration()
+        version = integration.get_version()
+        assert version == "unavailable"
+
+    def test_giskard_integration_run_missing(self):
+        """When giskard is not installed, run returns skip status."""
+        from engine.integrations import GiskardSecurityIntegration
+
+        integration = GiskardSecurityIntegration()
+        result = integration.run({"skill_content": "test"})
+        assert result["status"] == "skipped"
+        assert "giskard not installed" in result["reason"]
