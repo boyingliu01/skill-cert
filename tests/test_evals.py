@@ -401,3 +401,197 @@ class TestWriteJsonReportSchemaFail:
 
         assert path is not None
         assert json_str is not None
+
+
+class TestEvalDetailsIntegration:
+    """Integration tests: eval_details flows from metrics['_results']
+    through _generate_and_write_reports → build_structured_report → JSON."""
+
+    def _make_graded_result_dicts(self) -> list[dict]:
+        """Build result dicts matching the output of _flatten_grade_result."""
+        return [
+            {
+                "eval_id": 1,
+                "eval_name": "trigger positive test",
+                "eval_category": "trigger",
+                "model": "gpt-4",
+                "run": "with-skill",
+                "mode": "with_skill",
+                "input": "review this PR",
+                "output": "Looking at the code changes...",
+                "execution_time": 1.23,
+                "error": None,
+                "tokens_used": 150,
+                "cost": 0.003,
+                "grade": {
+                    "assertion_results": [
+                        {
+                            "assertion": {
+                                "name": "has_review",
+                                "type": "contains",
+                                "value": "changes",
+                                "weight": 1,
+                            },
+                            "passed": True,
+                            "confidence": 1.0,
+                            "reason": "'changes' found in output",
+                        }
+                    ],
+                    "pass_rate": 1.0,
+                    "final_passed": True,
+                },
+                "final_passed": True,
+                "pass_rate": 1.0,
+            },
+            {
+                "eval_id": 1,
+                "eval_name": "trigger positive test",
+                "eval_category": "trigger",
+                "model": "gpt-4",
+                "run": "without-skill",
+                "mode": "without_skill",
+                "input": "review this PR",
+                "output": "I can help with that",
+                "execution_time": 0.8,
+                "error": None,
+                "tokens_used": 100,
+                "cost": 0.002,
+                "grade": {
+                    "assertion_results": [
+                        {
+                            "assertion": {
+                                "name": "has_review",
+                                "type": "contains",
+                                "value": "changes",
+                                "weight": 1,
+                            },
+                            "passed": False,
+                            "confidence": 0.8,
+                            "reason": "'changes' NOT found in output",
+                        }
+                    ],
+                    "pass_rate": 0.0,
+                    "final_passed": False,
+                },
+                "final_passed": False,
+                "pass_rate": 0.0,
+            },
+        ]
+
+    def test_generate_and_write_reports_threads_eval_results(self, tmp_path):
+        """_generate_and_write_reports calls build_structured_report
+        with eval_results populated from metrics['_results']."""
+        args = MagicMock()
+        args.format = "both"
+        args.trace_export = "none"
+        args.json_schema_validate = False
+
+        config = MagicMock()
+        config.model_dump.return_value = {"max_concurrency": 1}
+
+        graded_results = self._make_graded_result_dicts()
+        metrics = {
+            "overall_score": 0.85,
+            "l1_trigger_accuracy": 0.90,
+            "l2_with_without_skill_delta": 0.75,
+            "l3_step_adherence": 0.80,
+            "l4_execution_stability": 0.95,
+            "_results": graded_results,
+            "metrics_breakdown": {
+                "l1_details": {},
+                "l2_details": {},
+                "l3_details": {},
+                "l4_details": {},
+            },
+        }
+
+        mock_reporter = _mock_reporter_class()
+        with patch("skill_cert.cli.Reporter", return_value=mock_reporter):
+            _generate_and_write_reports(
+                args,
+                tmp_path,
+                "test-skill",
+                {"evals": {}},
+                "/fake/path",
+                {"m1": MagicMock()},
+                metrics,
+                {},
+                config,
+                telemetry=None,
+            )
+
+        call_kwargs = mock_reporter.build_structured_report.call_args[1]
+        eval_results = call_kwargs.get("eval_results")
+        assert eval_results is not None, (
+            "eval_results should be passed to build_structured_report"
+        )
+        assert len(eval_results) == 2, (
+            f"Expected 2 eval results, got {len(eval_results)}"
+        )
+        assert eval_results[0]["eval_id"] == 1
+        assert eval_results[0]["mode"] == "with_skill"
+        assert eval_results[1]["mode"] == "without_skill"
+
+    def test_eval_results_empty_when_no_results_key(self, tmp_path):
+        """When metrics has no '_results', build_structured_report
+        receives eval_results=None and eval_details stays empty."""
+        args = MagicMock()
+        args.format = "both"
+        args.trace_export = "none"
+        args.json_schema_validate = False
+
+        config = MagicMock()
+        config.model_dump.return_value = {"max_concurrency": 1}
+
+        metrics = {"overall_score": 0.85}
+
+        mock_reporter = _mock_reporter_class()
+        with patch("skill_cert.cli.Reporter", return_value=mock_reporter):
+            _generate_and_write_reports(
+                args,
+                tmp_path,
+                "test-skill",
+                {"evals": {}},
+                "/fake/path",
+                {"m1": MagicMock()},
+                metrics,
+                {},
+                config,
+                telemetry=None,
+            )
+
+        call_kwargs = mock_reporter.build_structured_report.call_args[1]
+        eval_results = call_kwargs.get("eval_results")
+        assert eval_results is None, (
+            "eval_results should be None when _results is missing from metrics"
+        )
+
+    def test_structured_report_json_contains_eval_details(self):
+        """build_structured_report with eval_results produces
+        StructuredReport with non-empty eval_details."""
+        from engine.reporter import Reporter
+
+        graded_results = self._make_graded_result_dicts()
+
+        report = Reporter().build_structured_report(
+            metrics={
+                "overall_score": 0.85,
+            },
+            drift=None,
+            config={"models": ["gpt-4"], "skill_name": "test"},
+            eval_results=graded_results,
+        )
+        assert len(report.eval_details) == 2
+        detail = report.eval_details[0]
+        assert detail.eval_id == 1
+        assert detail.model == "gpt-4"
+        assert detail.phase == "with_skill"
+        assert detail.passed is True
+        assert detail.execution_time == 1.23
+        assert detail.tokens_used == 150
+        assert detail.cost == 0.003
+
+        detail2 = report.eval_details[1]
+        assert detail2.phase == "without_skill"
+        assert detail2.passed is False
+        assert detail2.tokens_used == 100

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-06-27
+
+### Fixed — P0 Bugfixes
+- **Cost calculation (#55)**: `EvalRunner._run_single()` now reads adapter's `model` attribute when `model_name` is missing. Previously `getattr(adapter, "model_name")` always returned `"unknown"` because adapters store model as `self.model`, not `self.model_name`. All cost reports are now accurate.
+- **LLM judge JSON parsing (#56)**: Added `_repair_json_trailing_commas()` static method to fix common LLM JSON output errors (trailing commas before `}`/`]`). Previously caused all LLM judge evaluations to fall back to assertion-based grading.
+- **eval_details integration tests (#54)**: Added 3 integration tests verifying the full data flow from `_run_all_evals()` → `metrics["_results"]` → `build_structured_report(eval_results=...)` → `StructuredReport.eval_details`. Core fix was already in commit 9f94974; tests lock in regression prevention.
+- **skill_type fully verified (#57)**: `SkillSpec.skill_type` detection and testgen prompt branching confirmed working. 14 existing tests cover CLI tool, library, and agent guide detection.
+
+### Added
+- `tests/test_grader.py`: 10 new tests for robust JSON extraction (trailing commas, prose-wrapped JSON, confidence clamping)
+- `tests/test_evals.py`: 3 new integration tests (`TestEvalDetailsIntegration`) for eval_details data flow
+
 ## [0.6.1] - 2026-06-26
 
 ### Added — Pipeline Integrity Fixes

@@ -491,11 +491,19 @@ class Grader:
         if extracted is not None:
             return extracted
 
+        cleaned = self._repair_json_trailing_commas(response_text)
+        if cleaned is not None:
+            return cleaned
+
         try:
             parsed = json.loads(response_text, strict=False)
             return json.dumps(parsed)
         except (json.JSONDecodeError, ValueError):
             pass
+
+        cleaned = self._repair_json_trailing_commas(response_text)
+        if cleaned is not None:
+            return cleaned
 
         return response_text
 
@@ -540,8 +548,21 @@ class Grader:
                         json.loads(candidate)
                         return candidate
                     except (json.JSONDecodeError, ValueError):
+                        repaired = Grader._repair_json_trailing_commas(candidate)
+                        if repaired is not None:
+                            return repaired
                         return None
         return None
+
+    @staticmethod
+    def _repair_json_trailing_commas(text: str) -> str | None:
+        """Remove trailing commas before closing braces/brackets (common LLM mistake)."""
+        try:
+            repaired = re.sub(r",(\s*[}\]])", r"\1", text)
+            json.loads(repaired)
+            return repaired
+        except (json.JSONDecodeError, ValueError):
+            return None
 
     def _llm_judge_error_fallback(
         self,

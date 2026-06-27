@@ -245,7 +245,11 @@ class EvalRunner:
         with self._semaphore:
             self._wait_rate_limit()
 
-            model_name = getattr(model_adapter, "model_name", "unknown")
+            model_name = getattr(model_adapter, "model_name", None)
+            if not model_name or not isinstance(model_name, str):
+                model_name = getattr(model_adapter, "model", None)
+            if not model_name or not isinstance(model_name, str):
+                model_name = "unknown"
             trace = ExecutionTrace(
                 eval_id=eval_case.get("id", 0),
                 phase="with_skill" if with_skill else "without_skill",

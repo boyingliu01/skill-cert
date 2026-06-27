@@ -970,7 +970,8 @@ Analyze the eval cases and identify:
 2. Which anti-patterns are NOT covered by any eval case assertions
 3. Which output formats are NOT covered by any eval case assertions
 4. Whether the eval cases are diverse enough (normal, boundary, failure, trigger)
-5. Whether the assertions are meaningful and verifiable — flag any that only check for a single keyword (e.g. contains "skill") without structural context
+5. Whether the assertions are meaningful and verifiable — flag any that only check for
+   a single keyword (e.g. contains "skill") without structural context
 6. Whether each eval case uses at least 2 different assertion types
 
 Return a JSON object with:
