@@ -2,6 +2,7 @@
 
 import logging
 import math
+import random
 import statistics
 from typing import Any
 
@@ -95,6 +96,31 @@ def _compute_confidence_interval(
     return (max(0.0, mean_val - margin), min(1.0, mean_val + margin))
 
 
+def _compute_bootstrap_ci(
+    values: list[float], confidence: float = 0.95, n_resamples: int = 10000
+) -> tuple[float, float]:
+    """Compute bootstrap confidence interval for a list of values.
+
+    Uses percentile method: resample with replacement, compute mean per resample,
+    then take percentiles of the resampled distribution.
+    Falls back to t-distribution CI when n < 3.
+    """
+    n = len(values)
+    if n < 3:
+        return _compute_confidence_interval(values, confidence)
+
+    alpha = 1 - confidence
+    resampled_means: list[float] = []
+    for _ in range(n_resamples):
+        sample = random.choices(values, k=n)
+        resampled_means.append(statistics.mean(sample))
+
+    resampled_means.sort()
+    li = int(len(resampled_means) * alpha / 2)
+    ui = int(len(resampled_means) * (1 - alpha / 2)) - 1
+    return (max(0.0, resampled_means[li]), min(1.0, resampled_means[ui]))
+
+
 class StabilityRunner:
     """Runs evals multiple times and computes stability metrics."""
 
@@ -156,7 +182,7 @@ class StabilityRunner:
         mean_pr = statistics.mean(pass_rates) if pass_rates else 0.0
         std_pr = statistics.stdev(pass_rates) if len(pass_rates) > 1 else 0.0
         cv = std_pr / mean_pr if mean_pr > 0 else 0.0
-        ci_lower, ci_upper = _compute_confidence_interval(pass_rates, self.confidence)
+        ci_lower, ci_upper = _compute_bootstrap_ci(pass_rates, self.confidence)
 
         return {
             "pass_rates": pass_rates,
@@ -179,7 +205,7 @@ class StabilityRunner:
         overall_cv = overall_std / overall_mean_stability if overall_mean_stability > 0 else 0.0
 
         if len(all_means) >= 2:
-            overall_ci = _compute_confidence_interval(all_means, self.confidence)
+            overall_ci = _compute_bootstrap_ci(all_means, self.confidence)
         else:
             overall_ci = (overall_mean_stability, overall_mean_stability)
 
@@ -241,7 +267,21 @@ def _score_from_cv(coefficient_of_variation: float) -> float:
         return 0.0
 
 
-def calculate_l4_stability(stability_data: dict[str, Any]) -> float:
+def calculate_l4_stability(stability_data: dict[str, Any]) -> float | None:
+    """Calculate L4 stability score from stability data.
+
+    Returns None when runs_completed < MIN_SAMPLES_FOR_L4 (insufficient data
+    for reliable Bootstrap CI computation).
+    """
+    runs_completed = stability_data.get("runs_completed", 0)
+    if runs_completed < StabilityThresholds.MIN_SAMPLES_FOR_L4:
+        logger.warning(
+            "L4 requires >= %d runs (%d provided). Returning None/unavailable.",
+            StabilityThresholds.MIN_SAMPLES_FOR_L4,
+            runs_completed,
+        )
+        return None
+
     ci = stability_data.get("confidence_interval")
     overall_mean = stability_data.get("overall_mean_pass_rate", 0.0)
 

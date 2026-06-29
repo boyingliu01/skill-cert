@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-29
+
+### Changed — L4 Statistical Method Upgrade (#62)
+- **Bootstrap CI**: Replaced t-distribution CI with percentile Bootstrap resampling (10k resamples) in `engine/stability.py`. Falls back to t-distribution for n<3. More accurate for small samples and non-normal distributions.
+- **min_samples enforcement**: L4 now requires >=5 runs (`MIN_SAMPLES_FOR_L4=5`). Fewer runs produces `l4_execution_stability=None` with clear warning. `DEFAULT_RUNS` raised from 1 to 5.
+- **Method unification**: `_calculate_l4_execution_stability()` in `metrics.py` now emits deprecation warning when used without multi-run data. CI history path preserved as alternative data source.
+- **CLI integration**: `_calculate_metrics_with_stability()` handles `None` from Bootstrap L4 gracefully.
+
+### Fixed
+- **#57 closed** — skill_type detection (cli_tool/library/agent_guide) fully implemented and tested in v0.6.x.
+
 ## [0.7.0] - 2026-06-29
 
 ### Added — Evaluation Quality Hardening

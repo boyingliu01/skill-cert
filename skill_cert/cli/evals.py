@@ -229,12 +229,24 @@ def _calculate_metrics_with_stability(
             eval_cases, spec_path, primary_adapter, with_skill=True
         )
         l4_score = calculate_l4_stability(stability_data)
-        metrics["l4_execution_stability"] = l4_score
-        metrics["l4_stability_pass"] = l4_score >= StabilityThresholds.L4_PASS_THRESHOLD
-        metrics["stability_data"] = stability_data
-        print(f"  Runs: {num_runs}")
-        print(f"  Mean pass rate: {stability_data['overall_mean_pass_rate']:.2f}")
-        print(f"  Stability std: {stability_data['overall_std_dev']:.4f}, L4: {l4_score:.2f}")
+        if l4_score is None:
+            metrics["l4_execution_stability"] = None
+            metrics["l4_stability_pass"] = False
+            metrics["stability_data"] = stability_data
+            print(
+                f"  WARNING: L4 requires >= {StabilityThresholds.MIN_SAMPLES_FOR_L4} runs "
+                f"({num_runs} provided). L4 set to None/unavailable."
+            )
+            print(f"  Runs: {num_runs}")
+            print(f"  Mean pass rate: {stability_data['overall_mean_pass_rate']:.2f}")
+            print(f"  Stability std: {stability_data['overall_std_dev']:.4f}, L4: unavailable")
+        else:
+            metrics["l4_execution_stability"] = l4_score
+            metrics["l4_stability_pass"] = l4_score >= StabilityThresholds.L4_PASS_THRESHOLD
+            metrics["stability_data"] = stability_data
+            print(f"  Runs: {num_runs}")
+            print(f"  Mean pass rate: {stability_data['overall_mean_pass_rate']:.2f}")
+            print(f"  Stability std: {stability_data['overall_std_dev']:.4f}, L4: {l4_score:.2f}")
 
     l7 = calc.calculate_l7_cost_efficiency(all_results)
     if l7:

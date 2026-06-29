@@ -34,9 +34,10 @@ class StabilityThresholds:
 
     L4_STD_MAX = 0.1
     L4_PASS_THRESHOLD = 0.8
-    DEFAULT_RUNS = 1
+    DEFAULT_RUNS = 5
     DEFAULT_TRIALS = 5
     CONFIDENCE_LEVEL = 0.95
+    MIN_SAMPLES_FOR_L4 = 5
 
 
 class VerdictThresholds:

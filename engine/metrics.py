@@ -1,6 +1,7 @@
 """Metrics module for skill-cert engine — calculates L1-L8 evaluation metrics."""
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,8 @@ from typing import Any
 
 from engine.constants import TimingLimits
 from engine.envelope import EnvelopeChecker
+
+logger = logging.getLogger(__name__)
 
 
 class _DictTrace:
@@ -377,6 +380,10 @@ class MetricsCalculator:
         return variance**0.5
 
     def _calculate_l4_execution_stability(self, eval_results: list[dict[str, Any]]) -> float:
+        logger.warning(
+            "L4 calculated from single-run std_dev is deprecated. "
+            "Use --runs >= 5 for Bootstrap CI-based L4."
+        )
         if not eval_results:
             return 1.0
         deterministic_results = self._extract_deterministic_pass_rates(eval_results)

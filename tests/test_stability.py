@@ -4,6 +4,7 @@ import pytest
 
 from engine.stability import (
     StabilityRunner,
+    _compute_bootstrap_ci,
     _compute_confidence_interval,
     _get_t_value,
     calculate_l4_stability,
@@ -104,28 +105,45 @@ class TestStabilityRunner:
 
 class TestCalculateL4Stability:
     def test_no_variance(self):
-        data = {"overall_std_dev": 0.0, "overall_mean_pass_rate": 0.9}
+        data = {
+            "runs_completed": 5,
+            "overall_std_dev": 0.0,
+            "overall_mean_pass_rate": 0.9,
+        }
         assert calculate_l4_stability(data) == 1.0
 
     def test_low_variance(self):
-        data = {"overall_std_dev": 0.05, "overall_mean_pass_rate": 0.8}
+        data = {
+            "runs_completed": 5,
+            "overall_std_dev": 0.05,
+            "overall_mean_pass_rate": 0.8,
+        }
         result = calculate_l4_stability(data)
         assert result == 0.8 or result == 1.0
 
     def test_high_variance(self):
-        data = {"overall_std_dev": 0.5, "overall_mean_pass_rate": 0.5}
+        data = {
+            "runs_completed": 5,
+            "overall_std_dev": 0.5,
+            "overall_mean_pass_rate": 0.5,
+        }
         assert calculate_l4_stability(data) == 0.0
 
     def test_zero_mean(self):
-        data = {"overall_std_dev": 0.0, "overall_mean_pass_rate": 0.0}
+        data = {
+            "runs_completed": 5,
+            "overall_std_dev": 0.0,
+            "overall_mean_pass_rate": 0.0,
+        }
         assert calculate_l4_stability(data) == 0.0
 
     def test_empty_data(self):
-        assert calculate_l4_stability({}) == 0.0
+        assert calculate_l4_stability({}) is None
 
     def test_ci_based_scoring_narrow(self):
         """CI width/mean < 10% → 1.0."""
         data = {
+            "runs_completed": 5,
             "confidence_interval": (0.88, 0.92),
             "overall_mean_pass_rate": 0.9,
             "overall_std_dev": 0.01,
@@ -135,6 +153,7 @@ class TestCalculateL4Stability:
     def test_ci_based_scoring_moderate(self):
         """CI width/mean between 10% and 20% → 0.8."""
         data = {
+            "runs_completed": 5,
             "confidence_interval": (0.74, 0.86),
             "overall_mean_pass_rate": 0.8,
             "overall_std_dev": 0.05,
@@ -144,6 +163,7 @@ class TestCalculateL4Stability:
     def test_ci_based_scoring_wide(self):
         """CI width/mean > 35% → 0.0."""
         data = {
+            "runs_completed": 5,
             "confidence_interval": (0.3, 0.9),
             "overall_mean_pass_rate": 0.6,
             "overall_std_dev": 0.2,
@@ -153,6 +173,7 @@ class TestCalculateL4Stability:
     def test_ci_zero_mean_fallback(self):
         """CI present but mean=0 → 0.0."""
         data = {
+            "runs_completed": 5,
             "confidence_interval": (0.0, 0.0),
             "overall_mean_pass_rate": 0.0,
         }
@@ -251,3 +272,67 @@ class TestStabilityRunnerNewFields:
         result = runner.run_stability([{"id": 1}, {"id": 2}], "skill", "adapter")
         assert "confidence_interval" in result
         assert "coefficient_of_variation" in result
+
+
+class TestBootstrapCI:
+    def test_bootstrap_ci_known_distribution(self):
+        """Bootstrap CI on samples from a known distribution contains the true mean."""
+        import random as _random
+
+        _random.seed(42)
+        # Generate 20 values from a distribution with true mean 0.5 + noise
+        values = [0.5 + _random.gauss(0, 0.1) for _ in range(20)]
+        true_mean = 0.5
+        lower, upper = _compute_bootstrap_ci(values, confidence=0.95, n_resamples=5000)
+        assert lower <= upper
+        # With 20 samples and 5000 resamples, CI should contain the true mean
+        assert lower <= true_mean <= upper
+
+    def test_bootstrap_ci_small_sample_falls_back_to_t(self):
+        """When n < 3, bootstrap falls back to t-distribution CI."""
+        # n=1: returns point CI
+        lower, upper = _compute_bootstrap_ci([0.8])
+        assert lower == upper == 0.8
+
+        # n=2: uses t-distribution
+        lower, upper = _compute_bootstrap_ci([0.7, 0.9])
+        assert lower <= upper
+        assert 0.0 <= lower <= 1.0
+        assert 0.0 <= upper <= 1.0
+
+    def test_bootstrap_ci_bounds_are_valid(self):
+        """Bootstrap CI bounds are always in [0, 1]."""
+        import random as _random
+
+        _random.seed(123)
+        # Values at extremes should still produce valid bounds
+        values = [0.01, 0.99, 0.01, 0.99, 0.5, 0.5, 0.5]
+        lower, upper = _compute_bootstrap_ci(values, n_resamples=3000)
+        assert lower >= 0.0, f"Lower bound {lower} < 0"
+        assert upper <= 1.0, f"Upper bound {upper} > 1"
+
+
+class TestL4MinSamples:
+    def test_calculate_l4_returns_none_when_runs_below_min(self):
+        """When runs_completed < 5, calculate_l4_stability returns None."""
+        data = {
+            "runs_completed": 3,
+            "overall_mean_pass_rate": 0.9,
+            "overall_std_dev": 0.05,
+            "confidence_interval": (0.80, 0.95),
+        }
+        result = calculate_l4_stability(data)
+        assert result is None
+
+    def test_calculate_l4_returns_score_when_runs_met(self):
+        """When runs_completed >= 5, calculate_l4_stability returns a valid float."""
+        data = {
+            "runs_completed": 5,
+            "overall_mean_pass_rate": 0.9,
+            "overall_std_dev": 0.05,
+            "confidence_interval": (0.85, 0.95),
+        }
+        result = calculate_l4_stability(data)
+        assert result is not None
+        assert isinstance(result, float)
+        assert result in (0.8, 1.0)
