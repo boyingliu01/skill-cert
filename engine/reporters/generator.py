@@ -239,8 +239,22 @@ class Reporter:
 ⚠️ {{ maintainability.freshness_details.outdated_refs }} outdated reference(s) detected
 {% endif %}
 {% endif %}
+	{% if calibration %}
 
-## Benchmark Information
+	## Calibration Analysis
+
+	| Metric | Value |
+	|--------|-------|
+	| Agreement Rate | {{ "%.1f"|format(calibration.agreement_rate * 100) }}% |
+	| Cohen's Kappa | {{ "%.3f"|format(calibration.cohens_kappa) }} |
+	| False Positive Rate | {{ "%.1f"|format(calibration.false_positive_rate * 100) }}% |
+	| False Negative Rate | {{ "%.1f"|format(calibration.false_negative_rate * 100) }}% |
+	| Total Cases | {{ calibration.total_cases }} |
+
+	Interpretation: Kappa > 0.8 = strong agreement, 0.6-0.8 = moderate, < 0.6 = weak calibration.
+	{% endif %}
+
+	## Benchmark Information
 
 - **Generated**: {{ benchmark_info.timestamp }}
 - **Tool Version**: skill-cert v2.0
@@ -274,6 +288,7 @@ For detailed results, see the JSON output.
         drift: dict[str, Any] | None,
         config: dict[str, Any],
         maintainability: dict[str, Any] | None = None,
+        calibration_data: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Generate Markdown and JSON reports from metrics and drift analysis.
 
@@ -338,6 +353,7 @@ For detailed results, see the JSON output.
             latency_analysis=latency_analysis,
             reliability=reliability,
             maintainability=maintainability,
+            calibration=calibration_data,
         )
 
         json_report = {
@@ -581,6 +597,7 @@ For detailed results, see the JSON output.
             observability=obs_section,
             improvements=improvements,
             drift=drift if drift is not None else {},
+            calibration=calibration_data if calibration_data else None,
             extras=extras,
         )
 

@@ -25,7 +25,7 @@ class SecurityLimits:
     """Security scanning limits and counts."""
 
     MAX_PATTERN_CATEGORIES = 6
-    PATTERN_COUNT = 52
+    PATTERN_COUNT = 80
     MAX_OUTPUT_LENGTH = 100000
 
 

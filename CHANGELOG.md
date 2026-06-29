@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-06-29
+
+### Added — Evaluation Quality Hardening
+- **TestGen JSON robustness (#58)**: Multi-retry (up to 3 attempts) with progressive hint escalation in `EvalGenerator.generate_initial_evals()`. Added `_repair_json_trailing_commas()` static method ported from grader.py to fix trailing comma LLM errors before every `json.loads` call. +4 new tests.
+- **Calibration pipeline integration (#60)**: `StructuredReport` now has explicit `calibration` field (not just extras). Markdown report renders calibration section (Agreement Rate, Cohen's Kappa, FPR/FNR). New `templates/golden-evals.json` with 10 sample cases. +2 new tests.
+- **SKILL.md freshness tracking (#63)**: Added `version`, `last_updated`, `engine_version_min` to skill-cert's own SKILL.md frontmatter. Freshness score now detects version.
+
+### Changed
+- **Security probe count documented (#64)**: `constants.py` PATTERN_COUNT updated 52→80. README and AGENTS.md docs synced to 80.
+
+### Fixed
+- **#61, #59 closed** — L2 zero-guard already in v0.6.2; reporter.py already decomposed to 3 modules.
+
 ## [0.6.2] - 2026-06-27
 
 ### Fixed — P0 Bugfixes

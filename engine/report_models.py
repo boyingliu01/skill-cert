@@ -181,6 +181,7 @@ class StructuredReport(BaseModel):
     drift: dict[str, Any] = Field(default_factory=dict)
     envelope: dict[str, Any] = Field(default_factory=dict)
     reliability: dict[str, Any] = Field(default_factory=dict)
+    calibration: dict[str, Any] | None = None
     extras: dict[str, Any] = Field(default_factory=dict)
 
     # Backward compatibility: these mirror verdict fields at top level

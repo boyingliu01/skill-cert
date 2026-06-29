@@ -1232,7 +1232,7 @@ class TestGenerateInitialEvalsRetry:
     """Tests for retry logic in generate_initial_evals()."""
 
     def test_retries_on_parse_failure(self):
-        """generate_initial_evals retries once when first parse fails."""
+        """generate_initial_evals retries when first parse fails, succeeds on retry 1."""
         generator = EvalGenerator()
         adapter = MockModelAdapter(
             responses=[
@@ -1257,12 +1257,14 @@ class TestGenerateInitialEvalsRetry:
         assert len(result["eval_cases"]) >= 1
 
     def test_returns_template_after_retry_failure(self):
-        """Both attempts fail → returns minimum_evals_template."""
+        """All retry attempts fail → returns minimum_evals_template after exhaustion."""
         generator = EvalGenerator()
         adapter = MockModelAdapter(
             responses=[
                 "garbage!!!",
                 "more garbage!!!",
+                "still garbage!!!",
+                "nothing parseable at all!!!",
             ]
         )
         skill_spec = {
@@ -1275,7 +1277,7 @@ class TestGenerateInitialEvalsRetry:
             "examples": [],
         }
         result = generator.generate_initial_evals(skill_spec, adapter)
-        assert adapter.call_count == 2
+        assert adapter.call_count == 4  # 1 initial + 3 retries
         assert result == generator.minimum_evals_template
 
     def test_no_retry_on_success(self):
@@ -1302,7 +1304,7 @@ class TestGenerateInitialEvalsRetry:
         assert "eval_cases" in result
 
     def test_retry_sends_json_only_hint(self):
-        """Retry includes explicit JSON-only system hint."""
+        """Retry includes explicit JSON-only system hint on first retry attempt."""
         generator = EvalGenerator()
         calls_made = []
 
@@ -1334,10 +1336,106 @@ class TestGenerateInitialEvalsRetry:
         }
         generator.generate_initial_evals(skill_spec, adapter)
         assert len(calls_made) == 2
-        # Second call should have a system hint about JSON-only
         second_messages = calls_made[1]
         has_json_hint = any("JSON" in str(m) or "json" in str(m) for m in second_messages)
         assert has_json_hint
+
+    def test_three_retry_exhaustion_falls_back_to_template(self):
+        """After 3 retry attempts all fail, returns minimum_evals_template."""
+        generator = EvalGenerator()
+        adapter = MockModelAdapter(
+            responses=[
+                "garbage 1!!!",
+                "garbage 2!!!",
+                "garbage 3!!!",
+                "garbage 4!!!",
+            ]
+        )
+        skill_spec = {
+            "name": "test-skill",
+            "description": "A test skill",
+            "triggers": ["test"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        result = generator.generate_initial_evals(skill_spec, adapter)
+        assert adapter.call_count == 4  # 1 initial + 3 retries
+        assert result == generator.minimum_evals_template
+
+    def test_retry_escalates_hints_progressively(self):
+        """Each retry sends progressively stronger system hints."""
+        generator = EvalGenerator()
+        calls_made: list[list[dict[str, Any]]] = []
+
+        class HintTrackingAdapter:
+            def __init__(self):
+                self.skill_spec = {}
+                self.call_count = 0
+
+            def chat(self, messages, **kwargs):
+                calls_made.append(list(messages))
+                self.call_count += 1
+                if self.call_count == 4:
+                    return (
+                        '{"eval_cases": [{"id": 1, "name": "test", "category": "normal", '
+                        '"input": "test", "expected_triggers": true, '
+                        '"assertions": [{"type": "contains", "value": "test", "weight": 1}]}]}'
+                    )
+                return "garbage!!!"
+
+        adapter = HintTrackingAdapter()
+        skill_spec = {
+            "name": "test-skill",
+            "description": "A test skill",
+            "triggers": ["test"],
+            "workflow_steps": [],
+            "anti_patterns": [],
+            "output_format": [],
+            "examples": [],
+        }
+        result = generator.generate_initial_evals(skill_spec, adapter)
+        assert result != generator.minimum_evals_template
+        assert adapter.call_count == 4
+
+        # Check each retry call's system hint for the expected escalation keywords
+        retry_contents = [str(calls_made[i]) for i in range(1, 4)]
+        assert "No prose" in retry_contents[0]
+        assert "trailing commas" in retry_contents[1]
+        assert "MINIMAL" in retry_contents[2]
+
+
+class TestTrailingCommaRepair:
+    """Tests for _repair_json_trailing_commas() in EvalGenerator."""
+
+    def test_trailing_comma_repair_succeeds(self):
+        """Trailing comma in JSON object is repaired transparently."""
+        result = EvalGenerator._extract_json(
+            '{\n'
+            '  "eval_cases": [{"id": 1, "name": "test",},\n'
+            '  {"id": 2, "name": "test2",}],\n'
+            '}'
+        )
+        assert result is not None
+        assert result["eval_cases"][0]["id"] == 1
+        assert result["eval_cases"][1]["id"] == 2
+
+    def test_trailing_comma_in_nested_json(self):
+        """Trailing commas in nested JSON objects and arrays are repaired."""
+        result = EvalGenerator._extract_json(
+            '{"eval_cases": ['
+            '{"id": 1, "assertions": [{"type": "contains", "value": "x",},],},'
+            ']}'
+        )
+        assert result is not None
+        assert result["eval_cases"][0]["id"] == 1
+        assert len(result["eval_cases"][0]["assertions"]) == 1
+
+    def test_repair_method_rejects_unrepairable_json(self):
+        """Non-JSON after repair returns None."""
+        result = EvalGenerator._repair_json_trailing_commas("not json at all")
+        assert result is None
 
 
 class TestAssertionQuality:

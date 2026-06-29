@@ -148,7 +148,7 @@ Security scanning runs before test generation. It checks 5 categories:
 | CRD | Credential Access |
 | OBF | Obfuscation |
 
-52 built-in probe patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC). Results: PASS / WARN / BLOCK. A BLOCK verdict causes immediate evaluation failure.
+80 built-in probe patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC). Results: PASS / WARN / BLOCK. A BLOCK verdict causes immediate evaluation failure.
 
 ### Phase 1: Auto-Generate Eval Tests
 
@@ -561,7 +561,7 @@ Multi-turn dialogue evaluation currently over-relies on word overlap rather than
 
 **Security scan coverage is limited**
 
-52 probe patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC). Industry recommendation is 100+ (e.g., SpecWeave). Some attack vectors may still be uncovered.
+80 probe patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC). Industry recommendation is 100+ (e.g., SpecWeave). Some attack vectors may still be uncovered.
 
 **Single-model evaluation is insufficient**
 

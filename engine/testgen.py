@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -97,25 +98,45 @@ class EvalGenerator:
             response = model_adapter.chat([{"role": "user", "content": prompt}])
 
             parsed = self._extract_json(response)
-            if parsed is None:
-                # Retry once with explicit JSON-only hint
-                logger.warning("Failed to parse JSON from model response, retrying once")
+            if parsed is not None:
+                evals = self._parse_evals_response(response)
+                if self._has_sufficient_evals(evals):
+                    return evals
+
+            # Retry up to 3 times with progressively stronger hints
+            retry_hints = [
+                "Respond ONLY with a JSON object. No prose.",
+                (
+                    "Your last response was not valid JSON. "
+                    "Output ONLY valid JSON with correct syntax. No trailing commas."
+                ),
+                "Still invalid. Return the MINIMAL JSON object with only the eval_cases array.",
+            ]
+            for attempt in range(min(3, len(retry_hints))):
+                logger.warning(
+                    "Failed to parse JSON from model response, retrying "
+                    "(attempt %d/%d)",
+                    attempt + 1,
+                    3,
+                )
                 retry_messages = [
-                    {
-                        "role": "system",
-                        "content": "Respond ONLY with a JSON object. No prose, no explanation.",
-                    },
+                    {"role": "system", "content": retry_hints[attempt]},
                     {"role": "user", "content": prompt},
                 ]
                 response = model_adapter.chat(retry_messages)
+                parsed = self._extract_json(response)
+                if parsed is not None:
+                    evals = self._parse_evals_response(response)
+                    if self._has_sufficient_evals(evals):
+                        return evals
 
+            # All retries exhausted — fall back to template
             evals = self._parse_evals_response(response)
+            if self._has_sufficient_evals(evals):
+                return evals
 
-            if not self._has_sufficient_evals(evals):
-                logger.warning("Generated evals below minimum requirement, using template")
-                return self.minimum_evals_template
-
-            return evals
+            logger.warning("Generated evals below minimum requirement, using template")
+            return self.minimum_evals_template
         except Exception as e:
             logger.error(f"Failed to generate initial evals: {e}")
             return self.minimum_evals_template
@@ -482,24 +503,41 @@ Minimum requirements:
         return parsed
 
     @staticmethod
+    @staticmethod
+    def _repair_json_trailing_commas(text: str) -> str | None:
+        """Remove trailing commas before closing braces/brackets (common LLM mistake)."""
+        try:
+            repaired = re.sub(r",(\s*[}\]])", r"\1", text)
+            json.loads(repaired)
+            return repaired
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+    @staticmethod
     def _extract_json(response: str) -> dict[str, Any] | None:
         """Extract JSON object from LLM response using 4-level fallback.
 
-        Strategy 1: Strip markdown fences + json.loads (backward compat)
-        Strategy 2: Balanced brace counting to find outermost {..}
-        Strategy 3: Largest-first — try all {..} blocks largest to smallest
-        Strategy 4: json.loads with strict=False on full response
+        Strategy 1: Strip markdown fences + repair trailing commas + json.loads
+        Strategy 2: Balanced brace counting to find outermost {..} (with repair)
+        Strategy 3: Largest-first — try all {..} blocks largest to smallest (with repair)
+        Strategy 4: json.loads with strict=False on full response (with repair)
         """
         if not response or not response.strip():
             return None
 
-        # Strategy 1: Strip markdown fences + json.loads
+        # Strategy 1: Strip markdown fences + json.loads (with trailing comma repair)
         try:
             cleaned = EvalGenerator._strip_markdown_fences(response)
             start_idx = cleaned.find("{")
             end_idx = cleaned.rfind("}") + 1
             if start_idx != -1 and end_idx > start_idx:
-                parsed = json.loads(cleaned[start_idx:end_idx])
+                candidate = cleaned[start_idx:end_idx]
+                repaired = EvalGenerator._repair_json_trailing_commas(candidate)
+                if repaired is not None:
+                    parsed = json.loads(repaired)
+                    if isinstance(parsed, dict):
+                        return parsed
+                parsed = json.loads(candidate)
                 if isinstance(parsed, dict):
                     return parsed
         except (json.JSONDecodeError, ValueError):
@@ -515,20 +553,31 @@ Minimum requirements:
         if result is not None:
             return result
 
-        # Strategy 4: json.loads with strict=False on full response
+        # Strategy 4: json.loads with strict=False on full response (with repair)
         try:
+            repaired = EvalGenerator._repair_json_trailing_commas(response)
+            if repaired is not None:
+                parsed = json.loads(repaired, strict=False)
+                if isinstance(parsed, dict):
+                    return parsed
             parsed = json.loads(response, strict=False)
             if isinstance(parsed, dict):
                 return parsed
         except (json.JSONDecodeError, ValueError):
             pass
 
-        # Also try strict=False on the first{..}last slice
+        # Also try strict=False on the first{..}last slice (with repair)
         try:
             start_idx = response.find("{")
             end_idx = response.rfind("}") + 1
             if start_idx != -1 and end_idx > start_idx:
-                parsed = json.loads(response[start_idx:end_idx], strict=False)
+                candidate = response[start_idx:end_idx]
+                repaired = EvalGenerator._repair_json_trailing_commas(candidate)
+                if repaired is not None:
+                    parsed = json.loads(repaired, strict=False)
+                    if isinstance(parsed, dict):
+                        return parsed
+                parsed = json.loads(candidate, strict=False)
                 if isinstance(parsed, dict):
                     return parsed
         except (json.JSONDecodeError, ValueError):

@@ -1,0 +1,12 @@
+[
+  {"eval_id": "GE-001", "prompt": "Run a security audit on this codebase", "model_output": "Found 3 vulnerabilities: SQL injection in login, XSS in profile, CSRF in settings. Severity: HIGH, MEDIUM, HIGH.", "human_passed": true},
+  {"eval_id": "GE-002", "prompt": "Explain the architecture", "model_output": "This follows MVC pattern with controllers, models, and views separated. The router dispatches to controllers which use models for data access and render views.", "human_passed": true},
+  {"eval_id": "GE-003", "prompt": "Find all TODO comments", "model_output": "Found 12 TODO comments across 5 files: auth.ts (3), api.ts (4), utils.ts (2), config.ts (1), main.ts (2).", "human_passed": true},
+  {"eval_id": "GE-004", "prompt": "Add dark mode support", "model_output": "I'll add dark mode by creating a theme context, adding CSS variables for colors, and a toggle button in settings.", "human_passed": true},
+  {"eval_id": "GE-005", "prompt": "Review this PR for security issues", "model_output": "No security issues found. The PR only updates documentation and adds a CSS dark mode toggle.", "human_passed": true},
+  {"eval_id": "GE-006", "prompt": "Debug the null pointer exception", "model_output": "The issue is in line 42. The variable 'config' is accessed before initialization because the async init() hasn't completed.", "human_passed": false},
+  {"eval_id": "GE-007", "prompt": "Optimize the database query", "model_output": "Just add an index. That's all you need.", "human_passed": false},
+  {"eval_id": "GE-008", "prompt": "Write unit tests for auth module", "model_output": "Tests look fine. The auth module already has good coverage.", "human_passed": false},
+  {"eval_id": "GE-009", "prompt": "Help me refactor this 2000-line file", "model_output": "This is a large file. Consider splitting into smaller modules. The UserManager class could be its own file, and the helper functions could go into utils/auth_helpers.", "human_passed": true},
+  {"eval_id": "GE-010", "prompt": "What's the best ORM for this project?", "model_output": "Use Prisma. It's the most popular.", "human_passed": false}
+]

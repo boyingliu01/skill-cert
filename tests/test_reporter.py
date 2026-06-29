@@ -1410,3 +1410,49 @@ class TestBuildStructuredReportCalibration:
             calibration_data={},
         )
         assert "calibration" not in report.extras
+
+    def test_structured_report_includes_calibration(self):
+        """Calibration data appears as explicit field on StructuredReport, not just extras."""
+        reporter = Reporter()
+        calibration_data = {
+            "agreement_rate": 0.85,
+            "false_positive_rate": 0.05,
+            "false_negative_rate": 0.10,
+            "cohens_kappa": 0.78,
+            "total_cases": 20,
+            "true_positives": 9,
+            "true_negatives": 8,
+            "false_positives": 1,
+            "false_negatives": 2,
+        }
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.85},
+            drift=None,
+            config={"models": ["m1"]},
+            calibration_data=calibration_data,
+        )
+        assert report.calibration is not None
+        assert report.calibration["cohens_kappa"] == 0.78
+        assert report.calibration["agreement_rate"] == 0.85
+        assert report.calibration["total_cases"] == 20
+
+    def test_structured_report_dumps_calibration(self):
+        """StructuredReport.model_dump() includes calibration at top level."""
+        reporter = Reporter()
+        calibration_data = {
+            "agreement_rate": 0.90,
+            "false_positive_rate": 0.03,
+            "false_negative_rate": 0.07,
+            "cohens_kappa": 0.85,
+            "total_cases": 50,
+        }
+        report = reporter.build_structured_report(
+            metrics={"overall_score": 0.88},
+            drift=None,
+            config={"models": ["m1"]},
+            calibration_data=calibration_data,
+        )
+        report_dict = report.model_dump()
+        assert "calibration" in report_dict
+        assert report_dict["calibration"]["cohens_kappa"] == 0.85
+        assert report_dict["calibration"]["total_cases"] == 50
