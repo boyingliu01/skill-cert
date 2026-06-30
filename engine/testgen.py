@@ -349,19 +349,20 @@ Generate a JSON object with an array of eval_cases containing:
 - without_skill_assertions: array of objects (SAME FORMAT as assertions) for
     grading WITHOUT_SKILL mode. When empty defaults to assertions.
 
-IMPORTANT: Use STRUCTURAL ASSERTIONS, not single keyword checks.
-Each eval case MUST use at least 2 different assertion types.
+DIVERSITY REQUIREMENT — Each eval case MUST use at least 2 DIFFERENT assertion types.
+Mix from: contains, not_contains, regex, json_valid, starts_with. Never use
+only one type in a single case. This is strictly enforced by the scoring system.
 
 KEYWORD BLACKLIST — DO NOT use these patterns as the sole assertion value:
 - DO NOT use contains "skill", contains "SKILL.md", or similar single-word skill-name checks
 - DO NOT use assertions that only check for the word "skill" without context
 - Instead, check for structural output patterns, workflow step names, or domain-specific content
 
-For TRIGGER evals (category="trigger"):
-- Use regex assertions to check for structural output patterns
-- Example: {{"type": "regex", "value": "(PASS|FAIL|PASS_WITH_CAVEATS|CAVEATS)", "weight": 3}}
-- Example: {{"type": "regex", "value": "(L1|L2|L3|Overall|Score|Metric)", "weight": 2}}
-- Example: {{"type": "regex", "value": "(verdict|drift|evaluation|coverage)", "weight": 2}}
+For TRIGGER evals (category="trigger") — USE ALL THREE TYPES in each trigger case:
+- Probe raw output text: {{"type": "contains", "value": "[someMarker]", "weight": 3}}
+- Check structural patterns: {{"type": "regex", "value": "(PASS|FAIL|PASS_WITH_CAVEATS)", "weight": 3}}
+- Validate JSON structure: {{"type": "json_valid", "value": "true", "weight": 2}}
+- Negative trigger check: {{"type": "not_contains", "value": "verdict", "weight": 2}}
 
 For WITHOUT_SKILL assertions (without_skill_assertions array):
 - Use the SAME assertion types (regex, contains, starts_with, etc.) as the
@@ -376,12 +377,12 @@ For WITHOUT_SKILL assertions (without_skill_assertions array):
   behavior — omitting it is safe and preserves symmetric evaluation.
 - For negative_case=True evals, omit without_skill_assertions (falls back to assertions)
 
-For NORMAL evals:
-- Check that specific workflow steps appear in output
-- Example: {{"type": "regex", "value": "(Phase|Step|Execute|Pipeline)", "weight": 2}}
-- Example: {{"type": "regex", "value": "(passed|results|metrics|coverage)", "weight": 2}}
+For NORMAL evals — USE ALL THREE TYPES in each normal case:
+- Check specific workflow step names in output: {{"type": "contains", "value": "Input Validation", "weight": 2}}
+- Check structural patterns: {{"type": "regex", "value": "(Phase|Round|Step|Consensus)", "weight": 2}}
+- Validate JSON output: {{"type": "json_valid", "value": "true", "weight": 3}}
 
-Each eval case MUST have at least 2 assertions. Mix regex and keyword checks for depth.
+Each eval case MUST have at least 2 assertions with at least 2 different types.
 Use weights >= 2 for critical assertions.
 
 Minimum requirements:
@@ -979,18 +980,14 @@ Minimum requirements:
             a for a in assertion_set
             if a.strip().lower() not in self._KEYWORD_BLACKLIST
         }
-        # Diversity penalty: if filtered out assertions make up >30% of total,
-        # apply a diversity penalty to the coverage score
-        total_assertions = len(assertion_set)
-        filtered_ratio = (total_assertions - len(filtered_assertions)) / max(total_assertions, 1)
-        diversity_penalty = max(0.0, 1.0 - filtered_ratio * 6.0)  # linear penalty ramp
-        # Also count unique assertion types per eval case
+        # Count unique assertion types per eval case as a gentle quality signal.
+        # Baseline 0.75 for single-type cases, ramps to 1.0 at 2+ types per case.
         type_counts = []
         for case in eval_cases:
             types_in_case = {a.get("type") for a in case.get("assertions", []) if a.get("type")}
             type_counts.append(len(types_in_case))
         avg_types = sum(type_counts) / max(len(type_counts), 1)
-        type_diversity_factor = min(1.0, avg_types / 2.0)  # normalized: 2+ types = 1.0
+        type_diversity_factor = 0.5 + 0.5 * min(1.0, avg_types / 2.0)
 
         workflow_coverage = self._compute_section_coverage(
             skill_spec.get("workflow_steps", []), filtered_assertions
@@ -1012,7 +1009,7 @@ Minimum requirements:
         )
         if not has_spec_items:
             return base_score
-        return base_score * diversity_penalty * type_diversity_factor
+        return base_score * type_diversity_factor
 
     def _prepare_review_prompt(
         self, evals: dict[str, Any], skill_spec: dict[str, Any], coverage: float

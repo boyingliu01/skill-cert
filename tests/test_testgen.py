@@ -172,8 +172,8 @@ def test_calculate_coverage():
 
     coverage = generator._calculate_coverage(evals, skill_spec)
 
-    # All spec items covered, but single assertion type (contains only) → diversity factor 0.5
-    assert coverage == 0.5
+    # All spec items covered, single assertion type → type_diversity_factor 0.75
+    assert coverage == 0.75
 
 
 def test_merge_evals():
@@ -916,8 +916,8 @@ def test_calculate_coverage_with_regex_assertions():
         "output_format": ["PASS/FAIL verdict", "JSON output"],
     }
     coverage = generator._calculate_coverage(evals, skill_spec)
-    # All spec items covered, but only 1 assertion type (regex) → diversity factor 0.5
-    assert coverage == 0.5, f"Expected 0.5 (diversity penalty: single assertion type), got {coverage}"
+    # All spec items covered, single assertion type → type_diversity_factor 0.75
+    assert coverage == 0.75, f"Expected 0.75 (type diversity factor: single assertion type), got {coverage}"
 
 
 @pytest.mark.parametrize(

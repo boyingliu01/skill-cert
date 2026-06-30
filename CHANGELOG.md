@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-06-30
+
+### Fixed — Coverage Scoring Over-Penalization (#66)
+- **Mixed-type assertion examples**: Generation prompt now includes `contains`, `json_valid`, and `regex` examples in both trigger and normal sections. LLMs previously emitted all-regex assertions because all examples were regex.
+- **Remove diversity penalty**: The keyword-blacklist penalty (`diversity_penalty = 1.0 - filtered_ratio * 6.0`) falsely penalized correctly-filtered anti-slop assertions. Removed entirely — type diversity factor alone is sufficient.
+- **Soften type diversity factor**: Changed from `avg_types / 2.0` (severe: 0.5 at 1 type) to `0.5 + 0.5 * avg_types / 2.0` (gentle: 0.75 baseline). Single-type assertion cases no longer cut coverage in half.
+- **Impact**: delphi-review skill coverage rose from 0.25 → 0.50 with the same eval cache.
+
 ## [0.8.1] - 2026-06-30
 
 ### Fixed — TestGen Timeout Resilience (#65)
