@@ -783,7 +783,30 @@ Minimum requirements:
         else:
             normalized.setdefault("negative_case", False)
 
+        if "assertion_strategy" not in normalized or normalized["assertion_strategy"] is None:
+            category = normalized.get("category", "normal")
+            output_fields = normalized.get("output_format_fields", [])
+            normalized["assertion_strategy"] = EvalGenerator._assign_strategy(
+                category, output_fields
+            )
+
         return normalized
+
+    @staticmethod
+    def _assign_strategy(category: str, output_format_fields: list[str]) -> str:
+        if category == "trigger":
+            return "deterministic"
+        if category == "workflow_step":
+            return "llm_judge"
+        if category in ("anti_pattern", "boundary"):
+            return "mixed"
+        if category == "output_format":
+            fmt_text = " ".join(str(f).lower() for f in output_format_fields)
+            has_structured = any(
+                kw in fmt_text for kw in ("json", "code", "schema", "yaml", "toml")
+            )
+            return "deterministic" if has_structured else "llm_judge"
+        return "deterministic"
 
     @staticmethod
     def _extract_regex_branches(value: str, _depth: int = 0) -> list[str]:

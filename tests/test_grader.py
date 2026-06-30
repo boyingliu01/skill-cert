@@ -1570,5 +1570,212 @@ def test_llm_judge_with_call_no_debias_no_llm_client_skips_debias():
     assert result.judge_model == "llm"
 
 
+# ============================================================
+# REQ-1: EvalCase assertion_strategy model extension tests
+# ============================================================
+
+class TestEvalCaseStrategy:
+    """Tests for EvalCase.assertion_strategy field."""
+
+    def test_assertion_strategy_default(self):
+        """assertion_strategy defaults to 'deterministic'."""
+        ec = EvalCase(
+            id=1,
+            name="test",
+            category="trigger",
+            prompt="...",
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="x", weight=1)
+            ],
+        )
+        assert ec.assertion_strategy == "deterministic"
+
+    def test_assertion_strategy_explicit(self):
+        """Explicit assertion_strategy overrides default."""
+        for strategy in ("deterministic", "llm_judge", "mixed"):
+            ec = EvalCase(
+                id=1,
+                name="test",
+                category="trigger",
+                prompt="...",
+                assertions=[
+                    EvalAssertion(name="a", type="contains", value="x", weight=1)
+                ],
+                assertion_strategy=strategy,
+            )
+            assert ec.assertion_strategy == strategy
+
+    def test_judge_dimensions_default(self):
+        """judge_dimensions defaults to None."""
+        ec = EvalCase(
+            id=1,
+            name="test",
+            category="trigger",
+            prompt="...",
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="x", weight=1)
+            ],
+        )
+        assert ec.judge_dimensions is None
+
+    def test_judge_dimensions_explicit(self):
+        """judge_dimensions can be set explicitly."""
+        dims = ["trigger_accuracy", "workflow_quality", "output_quality"]
+        ec = EvalCase(
+            id=1,
+            name="test",
+            category="workflow_step",
+            prompt="...",
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="x", weight=1)
+            ],
+            assertion_strategy="llm_judge",
+            judge_dimensions=dims,
+        )
+        assert ec.judge_dimensions == dims
+
+    def test_backward_compat_old_cache_load(self):
+        """Old eval cache without assertion_strategy loads with default 'deterministic'."""
+        old_data = {
+            "id": 5,
+            "name": "old eval",
+            "category": "normal",
+            "prompt": "...",
+            "assertions": [
+                {"name": "a1", "type": "contains", "value": "hello", "weight": 2}
+            ],
+        }
+        ec = EvalCase(**old_data)
+        assert ec.assertion_strategy == "deterministic"
+        assert ec.judge_dimensions is None
+        # Behavior: deterministic path, no change from old behavior
+        assert ec.category == "normal"
+
+    def test_model_dump_includes_strategy(self):
+        """model_dump includes assertion_strategy field."""
+        ec = EvalCase(
+            id=1,
+            name="test",
+            category="trigger",
+            prompt="...",
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="x", weight=1)
+            ],
+            assertion_strategy="llm_judge",
+        )
+        data = ec.model_dump()
+        assert data["assertion_strategy"] == "llm_judge"
+        assert data["judge_dimensions"] is None
+
+    def test_unknown_strategy_rejected(self):
+        """assertion_strategy with unknown value should trigger validation error."""
+        import pytest as pt
+        with pt.raises(ValueError):
+            EvalCase(
+                id=1,
+                name="test",
+                category="trigger",
+                prompt="...",
+                assertions=[
+                    EvalAssertion(name="a", type="contains", value="x", weight=1)
+                ],
+                assertion_strategy="invalid_strategy",
+            )
+
+
+# ============================================================
+# REQ-3: Grader routing flip tests
+# ============================================================
+
+class TestGradeOutputStrategyRouting:
+    def test_deterministic_strategy_uses_assertions_only(self):
+        grader = Grader()
+        ec = EvalCase(
+            id=1, name="det", category="trigger", prompt="x",
+            assertion_strategy="deterministic",
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="hello", weight=2)
+            ],
+        )
+        result = grader.grade_output(ec, "hello world")
+        assert result["total_weighted_score"] == 2
+        assert result["pass_rate"] == 1.0
+        assert result.get("judge_result") is None
+
+    def test_llm_judge_strategy_calls_llm(self):
+        mock_llm = MagicMock()
+        mock_llm.chat.return_value = json.dumps({
+            "passed": True, "confidence": 0.9, "reasoning": "good",
+            "failure_reasons": [],
+        })
+        grader = Grader(llm_client=mock_llm)
+        ec = EvalCase(
+            id=1, name="llm", category="workflow_step", prompt="x",
+            assertion_strategy="llm_judge",
+            judge_dimensions=["trigger_accuracy", "output_quality"],
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="hello", weight=1)
+            ],
+        )
+        result = grader.grade_output(ec, "hello world")
+        assert result.get("judge_result") is not None
+        assert mock_llm.chat.called
+
+    def test_llm_judge_strategy_no_llm_client_falls_back(self):
+        grader = Grader(llm_client=None)
+        ec = EvalCase(
+            id=1, name="llm_no_client", category="workflow_step", prompt="x",
+            assertion_strategy="llm_judge",
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="hello", weight=1)
+            ],
+        )
+        result = grader.grade_output(ec, "hello world")
+        assert result is not None
+        assert result.get("judge_result") is None
+
+    def test_mixed_strategy_deterministic_then_llm(self):
+        mock_llm = MagicMock()
+        mock_llm.chat.return_value = json.dumps({
+            "passed": True, "confidence": 0.85, "reasoning": "ok",
+            "failure_reasons": [],
+        })
+        grader = Grader(llm_client=mock_llm)
+        ec = EvalCase(
+            id=1, name="mixed", category="anti_pattern", prompt="x",
+            assertion_strategy="mixed",
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="hello", weight=1)
+            ],
+        )
+        result = grader.grade_output(ec, "hello world")
+        assert result["pass_rate"] == 1.0
+        assert mock_llm.chat.called
+
+    def test_missing_strategy_defaults_to_deterministic(self):
+        grader = Grader()
+        ec = EvalCase(
+            id=1, name="no_strat", category="normal", prompt="x",
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="hello", weight=1)
+            ],
+        )
+        result = grader.grade_output(ec, "hello world")
+        assert result["pass_rate"] == 1.0
+
+    def test_negative_case_with_mixed_strategy(self):
+        grader = Grader()
+        ec = EvalCase(
+            id=1, name="neg", category="anti_pattern", prompt="x",
+            assertion_strategy="mixed",
+            negative_case=True,
+            assertions=[
+                EvalAssertion(name="a", type="contains", value="delphi", weight=1)
+            ],
+        )
+        result = grader.grade_output(ec, "just a normal response")
+        assert result["negative_case"] is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

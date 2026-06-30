@@ -30,6 +30,9 @@ class EvalAssertion(BaseModel):
     weight: int = 1  # 1=Normal, 2=Important, 3=Critical
 
 
+ASSERTION_STRATEGY_VALUES = frozenset({"deterministic", "llm_judge", "mixed"})
+
+
 class EvalCase(BaseModel):
     """Single evaluation test case."""
 
@@ -44,12 +47,24 @@ class EvalCase(BaseModel):
     workflow_step: str | None = None  # Name of the workflow step this case targets
     negative_case: bool = False  # If True, expect NOT to trigger (v0.4.0, Issue #44)
     confusion_prompt: str | None = None  # Near-miss prompt for boundary testing (Issue #44)
+    # REQ-1: assertion evaluation strategy — per-eval-case routing
+    assertion_strategy: str = "deterministic"  # deterministic | llm_judge | mixed
+    judge_dimensions: list[str] | None = None  # trigger_accuracy | workflow_quality | output_quality
 
     @model_validator(mode="after")
     def _validate_assertions_not_all_empty(self):
         if not self.assertions and not self.without_skill_assertions:
             raise ValueError(
                 "At least one of 'assertions' or 'without_skill_assertions' must be non-empty"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_assertion_strategy(self):
+        if self.assertion_strategy not in ASSERTION_STRATEGY_VALUES:
+            raise ValueError(
+                f"assertion_strategy must be one of {sorted(ASSERTION_STRATEGY_VALUES)}, "
+                f"got '{self.assertion_strategy}'"
             )
         return self
 
@@ -75,45 +90,60 @@ class Grader:
     def grade_output(
         self, eval_case: EvalCase, model_output: str, *, mode: str = "with_skill"
     ) -> dict[str, Any]:
-        """Evaluate a single model output against eval case assertions.
-
-        :param mode: 'with_skill' or 'without_skill'. Determines which assertions array to use.
-                     Drift/calibration callers pass with-skill data only, so the default is correct.
-        """
         if mode == "without_skill" and eval_case.without_skill_assertions:
             assertions = eval_case.without_skill_assertions
         else:
             assertions = eval_case.assertions
 
+        strategy = getattr(eval_case, "assertion_strategy", None) or "deterministic"
+
+        if strategy == "deterministic":
+            return self._grade_deterministic(eval_case, model_output, assertions)
+        elif strategy == "llm_judge":
+            return self._grade_llm_judge(eval_case, model_output, assertions)
+        elif strategy == "mixed":
+            det_result = self._grade_deterministic(eval_case, model_output, assertions)
+            if det_result["pass_rate"] >= 0.5 and self.llm_client:
+                det_results = [
+                    AssertionResult(
+                        assertion=a, passed=True, confidence=1.0, reason="pass"
+                    )
+                    for a in assertions
+                ]
+                judge = self._llm_judge(eval_case, model_output, det_results)
+                det_result["judge_result"] = judge.model_dump() if judge else None
+            return det_result
+        else:
+            return self._grade_deterministic(eval_case, model_output, assertions)
+
+    def _grade_deterministic(
+        self, eval_case: EvalCase, model_output: str, assertions: list[EvalAssertion]
+    ) -> dict[str, Any]:
         results, total_weighted_score, total_possible_score = self._evaluate_assertions(
             assertions, model_output
         )
-
-        # Calculate pass rate
         pass_rate = total_weighted_score / total_possible_score if total_possible_score > 0 else 0.0
-
-        # Determine if we need LLM-as-judge for complex behavior
-        deterministic_passed_count = sum(1 for r in results if r.confidence == 1.0 and r.passed)
-        deterministic_total_count = sum(1 for r in results if r.confidence == 1.0)
-
-        # If not all deterministic assertions passed, or if we have complex cases, use LLM judge
-        use_llm_judge = (
-            deterministic_total_count < len(results)  # Some assertions are non-deterministic
-            or deterministic_passed_count < deterministic_total_count  # Some deterministic failed
+        judge_result = None
+        if eval_case.negative_case and pass_rate < 0.5 and self.llm_client:
+            judge_result = self._llm_judge(eval_case, model_output, results)
+        return self._build_grade_result(
+            eval_case, model_output, results,
+            total_weighted_score, total_possible_score, pass_rate, judge_result,
         )
 
+    def _grade_llm_judge(
+        self, eval_case: EvalCase, model_output: str, assertions: list[EvalAssertion]
+    ) -> dict[str, Any]:
+        results, total_weighted_score, total_possible_score = self._evaluate_assertions(
+            assertions, model_output
+        )
+        pass_rate = total_weighted_score / total_possible_score if total_possible_score > 0 else 0.0
         judge_result = None
-        if use_llm_judge and self.llm_client:
+        if self.llm_client:
             judge_result = self._llm_judge(eval_case, model_output, results)
-
         return self._build_grade_result(
-            eval_case,
-            model_output,
-            results,
-            total_weighted_score,
-            total_possible_score,
-            pass_rate,
-            judge_result,
+            eval_case, model_output, results,
+            total_weighted_score, total_possible_score, pass_rate, judge_result,
         )
 
     def _evaluate_assertions(
@@ -421,6 +451,25 @@ class Grader:
             judge_model="llm",
         )
 
+    @staticmethod
+    def _load_judge_template(dimension: str) -> str:
+        try:
+            from pathlib import Path
+
+            prompts_dir = Path(__file__).parent.parent / "prompts"
+            template_map = {
+                "trigger_accuracy": "judge-trigger.md",
+                "workflow_quality": "judge-workflow.md",
+                "output_quality": "judge-output.md",
+            }
+            filename = template_map.get(dimension, "judge.md")
+            template_path = prompts_dir / filename
+            if template_path.exists():
+                return template_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+        return ""
+
     def _build_judge_prompt(
         self,
         eval_case: EvalCase,
@@ -428,20 +477,23 @@ class Grader:
         assertion_results: list[AssertionResult],
         expected_behavior: str,
     ) -> str:
-        """Build the LLM judge prompt."""
-        # Escape triple-backtick sequences in model output to avoid breaking the prompt
         sanitized_output = model_output.replace("```", "'''")
-        return f"""# LLM-as-Judge Prompt
+        dimensions = getattr(eval_case, "judge_dimensions", None) or []
+        primary_dim = dimensions[0] if dimensions else ""
+        template = self._load_judge_template(primary_dim) if primary_dim else ""
+
+        if template:
+            workflow_steps = getattr(eval_case, "workflow_step", "") or ""
+            prompt_text = (
+                template
+                .replace("{input}", str(expected_behavior))
+                .replace("{output}", sanitized_output)
+                .replace("{workflow_steps}", workflow_steps)
+            )
+        else:
+            prompt_text = f"""# LLM-as-Judge Prompt
 
 你是一个严格的评测裁判。评估以下模型输出是否满足指定的行为要求。
-
-## 评测要求
-
-1. 回答 `passed`: true 或 false
-2. 给出 `confidence`（0.0 - 1.0）
-3. 用 `reasoning` 简要说明理由
-4. 对于每个未通过的断言，在 `failure_reasons` 中给出具体失败原因
-5. temperature=0，确保确定性
 
 ## 断言列表
 
@@ -469,6 +521,7 @@ class Grader:
   "failure_reasons": []
 }}
 ```"""
+        return prompt_text
 
     def _parse_judge_response(self, response_text: str) -> str:
         """Parse JSON response — handle possible Markdown code block wrapping."""
