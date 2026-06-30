@@ -211,6 +211,17 @@ Examples:
         default=".skill-cert-ci-history.json",
         help="Path to CI history file (default: .skill-cert-ci-history.json)",
     )
+    parser.add_argument(
+        "--judge-samples",
+        type=int,
+        default=3,
+        help="Number of LLM judge calls per eval for majority voting (default: 3)",
+    )
+    parser.add_argument(
+        "--no-llm-judge",
+        action="store_true",
+        help="Skip all LLM-as-Judge calls, use deterministic assertions only",
+    )
 
     return parser
 
