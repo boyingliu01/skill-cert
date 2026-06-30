@@ -145,7 +145,10 @@ class EvalGenerator:
         try:
             coverage = self._calculate_coverage(evals, review_adapter.skill_spec)
             prompt = self._prepare_review_prompt(evals, review_adapter.skill_spec, coverage)
-            response = review_adapter.chat([{"role": "user", "content": prompt}])
+            response = review_adapter.chat(
+                [{"role": "user", "content": prompt}],
+                timeout=TestGenLimits.GAP_FILL_TIMEOUT,
+            )
             gaps = self._parse_review_response(response, coverage)
             return gaps
         except Exception as e:
@@ -158,19 +161,26 @@ class EvalGenerator:
         skill_spec: dict[str, Any],
         model_adapter,
         timeout: int | None = None,
+        max_retries: int = 1,
     ) -> dict[str, Any]:
-        try:
-            prompt = self._prepare_gap_filling_prompt(gaps, skill_spec)
-            kwargs = [{"role": "user", "content": prompt}]
-            if timeout is not None:
-                response = model_adapter.chat(kwargs, timeout=timeout)
-            else:
-                response = model_adapter.chat(kwargs)
-            supplementary_evals = self._parse_evals_response(response)
-            return supplementary_evals
-        except Exception as e:
-            logger.error(f"Failed to fill gaps: {e}")
-            return {"eval_cases": []}
+        _timeout = timeout or TestGenLimits.GAP_FILL_TIMEOUT
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                prompt = self._prepare_gap_filling_prompt(gaps, skill_spec)
+                kwargs = [{"role": "user", "content": prompt}]
+                response = model_adapter.chat(kwargs, timeout=_timeout)
+                supplementary_evals = self._parse_evals_response(response)
+                return supplementary_evals
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    logger.warning(
+                        f"Gap-fill attempt {attempt + 1}/{max_retries + 1} failed ({e}), retrying..."
+                    )
+                else:
+                    logger.error(f"Failed to fill gaps after {max_retries + 1} attempts: {e}")
+        return {"eval_cases": []}
 
     def generate_evals_with_convergence(
         self,
@@ -248,7 +258,7 @@ class EvalGenerator:
             timeout = (
                 deadline.adapter_timeout(default=TestGenLimits.GAP_FILL_TIMEOUT)
                 if deadline
-                else None
+                else TestGenLimits.GAP_FILL_TIMEOUT
             )
             supplementary_evals = self.fill_gaps(
                 review_result,

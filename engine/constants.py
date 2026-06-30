@@ -18,7 +18,7 @@ class TestGenLimits:
     MAX_NO_IMPROVEMENT = 2
     MIN_EVAL_CASES = 4
     MIN_TRIGGER_CASES = 5
-    GAP_FILL_TIMEOUT = 120
+    GAP_FILL_TIMEOUT = 300
 
 
 class SecurityLimits:

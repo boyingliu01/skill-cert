@@ -12,7 +12,7 @@ class MockModelAdapter:
         self.call_count = 0
         self.skill_spec: dict[str, Any] = {}
 
-    def chat(self, messages):
+    def chat(self, messages, **kwargs):
         if self.call_count < len(self.responses):
             response = self.responses[self.call_count]
             self.call_count += 1

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-06-30
+
+### Fixed — TestGen Timeout Resilience (#65)
+- **gap-fill timeout**: Use `TestGenLimits.GAP_FILL_TIMEOUT` (now 300s) even when no deadline object is present. Previously single mode ran with no explicit timeout, defaulting to adapter-level 120s.
+- **gap-fill retry**: Add 1 automatic retry on gap-fill failure before returning empty. Reduces false-negative coverage results when LLM API is temporarily slow.
+- **review_evals timeout**: Chat call in `review_evals` now passes explicit timeout parameter. Prevents hanging on slow review responses.
+- **MockModelAdapter**: Accept `**kwargs` in `chat()` to match real adapter signature.
+
 ## [0.8.0] - 2026-06-29
 
 ### Changed — L4 Statistical Method Upgrade (#62)
