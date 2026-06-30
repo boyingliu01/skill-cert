@@ -1,23 +1,22 @@
 {
-  "id": "sprint-2026-06-18-01",
-  "phase": 2,
-  "status": "active",
+  "id": "sprint-skill-cert-judge-redesign",
+  "phase": 1,
+  "status": "in_progress",
   "flow": "standard",
-  "isolation": {
-    "worktree_path": ".worktrees/sprint/sprint-2026-06-18-01",
-    "branch": "sprint/2026-06-18-01",
-    "created_from": "main",
-    "created_from_commit": "6657583"
-  },
-  "issues": [
-    {"number": 47, "title": "[BUG] 评测 ffmpeg-video skill 时遇到 3 个阻碍", "type": "bug", "priority": "high"},
-    {"number": 44, "title": "[P1] 实现负向案例评测机制", "type": "enhancement", "priority": "medium"},
-    {"number": 43, "title": "[P0] 实现 L1 触发准确性专项评测", "type": "enhancement", "priority": "high"},
-    {"number": 42, "title": "[P0] 实现 Gotchas Flywheel：追加型经验积累机制", "type": "enhancement", "priority": "high"}
+  "phase_history": [
+    {"phase": -1, "phase_name": "ISOLATE", "status": "completed", "timestamp": "2026-06-30T11:35:00+08:00"},
+    {"phase": -0.5, "phase_name": "AUTO-ESTIMATE", "status": "completed", "timestamp": "2026-06-30T11:40:00+08:00"},
+    {"phase": 0, "phase_name": "THINK", "status": "completed", "timestamp": "2026-06-30T12:00:00+08:00"},
+    {"phase": 1, "phase_name": "PLAN", "status": "in_progress", "timestamp": "2026-06-30T12:15:00+08:00"}
   ],
-  "metrics": {
-    "tests_passed": 825,
-    "tests_failed": 0,
-    "coverage_pct": null
-  }
+  "isolation": {
+    "worktree_path": ".worktrees/sprint/sprint-skill-cert-judge-redesign",
+    "branch": "sprint/skill-cert-judge-redesign",
+    "created_from": "main",
+    "created_from_commit": "64fa9d8bedf1b5acbac7bef7ce556061ff59e910"
+  },
+  "outputs": {
+    "design_doc": "docs/superpowers/specs/2025-06-30-skill-cert-judge-redesign.md"
+  },
+  "metrics": {}
 }
