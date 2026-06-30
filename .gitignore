@@ -41,3 +41,4 @@ Thumbs.db
 .quality-history.jsonl
 .sprint-state/
 MagicMock/
+build/
