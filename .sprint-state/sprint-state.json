@@ -1,22 +1,18 @@
 {
-  "id": "sprint-skill-cert-judge-redesign",
-  "phase": 1,
-  "status": "in_progress",
+  "id": "sprint-skill-cert-v0.10.0",
+  "phase": -1,
+  "status": "completed",
   "flow": "standard",
+  "description": "Resolve remaining 2 open issues (#67, #69) — assertion strategy routing v2 for natural language skills",
   "phase_history": [
-    {"phase": -1, "phase_name": "ISOLATE", "status": "completed", "timestamp": "2026-06-30T11:35:00+08:00"},
-    {"phase": -0.5, "phase_name": "AUTO-ESTIMATE", "status": "completed", "timestamp": "2026-06-30T11:40:00+08:00"},
-    {"phase": 0, "phase_name": "THINK", "status": "completed", "timestamp": "2026-06-30T12:00:00+08:00"},
-    {"phase": 1, "phase_name": "PLAN", "status": "in_progress", "timestamp": "2026-06-30T12:15:00+08:00"}
+    {"phase": -1, "phase_name": "ISOLATE", "status": "completed", "timestamp": "2026-07-01T15:00:00+08:00"}
   ],
   "isolation": {
-    "worktree_path": ".worktrees/sprint/sprint-skill-cert-judge-redesign",
-    "branch": "sprint/skill-cert-judge-redesign",
+    "worktree_path": ".worktrees/sprint/sprint-skill-cert-v0.10.0",
+    "branch": "sprint-skill-cert-v0.10.0",
     "created_from": "main",
-    "created_from_commit": "64fa9d8bedf1b5acbac7bef7ce556061ff59e910"
+    "created_from_commit": "8fe86bc"
   },
-  "outputs": {
-    "design_doc": "docs/superpowers/specs/2025-06-30-skill-cert-judge-redesign.md"
-  },
+  "outputs": {},
   "metrics": {}
 }
