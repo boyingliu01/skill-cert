@@ -5,6 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from engine.classifier import classify_output_type
 from engine.constants import CoverageThresholds, TestGenLimits
 from engine.deadline import PhaseTimer
 
@@ -217,7 +218,41 @@ class EvalGenerator:
             prev_coverage = current_coverage
             round_num += 1
 
-        return self._finalize_evals_result(current_evals, current_coverage)
+        return self._apply_classifier_routing(
+            self._finalize_evals_result(current_evals, current_coverage),
+            skill_spec,
+        )
+
+    def _apply_classifier_routing(
+        self, evals: dict[str, Any], skill_spec: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Apply classifier-based assertion strategy routing to evals.
+
+        For natural_language skills: override assertion_strategy='llm_judge' on all evals.
+        For structured skills: leave assertion_strategy unchanged.
+        """
+        classification = classify_output_type(skill_spec)
+
+        if classification.strategy != "natural_language":
+            logger.info(
+                "Classifier: structured skill (confidence=%.2f), no routing override",
+                classification.confidence,
+            )
+            return evals
+
+        logger.info(
+            "Classifier: natural_language skill (confidence=%.2f, signals=%s), "
+            "setting assertion_strategy=llm_judge on all evals",
+            classification.confidence,
+            classification.signals,
+        )
+
+        eval_cases = self._get_eval_cases(evals)
+        for case in eval_cases:
+            case["assertion_strategy"] = "llm_judge"
+            case["judge_dimensions"] = ["output_quality", "trigger_accuracy", "workflow_quality"]
+
+        return evals
 
     def _run_convergence_round(
         self,
@@ -334,8 +369,7 @@ class EvalGenerator:
             n_steps = len(workflow_steps)
             workflow_step_hint = f"""
 WORKFLOW STEP EVAL CASES (MANDATORY) — Generate exactly {n_steps} eval cases with category="workflow_step",
-one per step listed below. Each case MUST use assertion_strategy=llm_judge.
-Use regex patterns (NOT single exact contains) that match multiple possible phrasings.
+one per step listed below. Use regex patterns (NOT single exact contains) that match multiple possible phrasings.
 Workflow steps to cover:
 {steps_list}
 For each workflow_step case, generate multi-candidate assertions:

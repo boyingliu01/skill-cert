@@ -11,6 +11,10 @@ class CoverageThresholds:
     COVERAGE_BLOCK = float(os.environ.get("SKILL_CERT_COVERAGE_BLOCK", "0.5"))
 
 
+# TestGen logic version - bump when test generation logic changes
+TESTGEN_LOGIC_VERSION = "2.0"
+
+
 class TestGenLimits:
     """Limits for eval generation self-review loop."""
 
