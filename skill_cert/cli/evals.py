@@ -1,12 +1,13 @@
 """Eval orchestration functions for single-mode pipeline."""
 
+import hashlib
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from engine.constants import StabilityThresholds, VerdictThresholds
+from engine.constants import TESTGEN_LOGIC_VERSION, StabilityThresholds, VerdictThresholds
 from engine.deadline import PhaseTimer
 from engine.grader import EvalAssertion, EvalCase
 from engine.observability import SessionTelemetry
@@ -466,12 +467,69 @@ def _write_json_report(
     return json_path, json_str
 
 
-def _write_evals_cache(output_dir: Path, skill_name: str, spec_evals: dict) -> Path:
-    """Write evals cache file."""
+def _compute_skill_content_hash(skill_content: str) -> str:
+    """Compute sha256 hash of raw SKILL.md content."""
+    return hashlib.sha256(skill_content.encode()).hexdigest()
+
+
+def _write_evals_cache(
+    output_dir: Path,
+    skill_name: str,
+    spec_evals: dict,
+    skill_content: str = "",
+) -> Path:
+    """Write evals cache file with version and content hash for invalidation."""
+    content_hash = _compute_skill_content_hash(skill_content) if skill_content else ""
+    cache_data = {
+        "testgen_version": TESTGEN_LOGIC_VERSION,
+        "skill_content_hash": content_hash,
+        **spec_evals,
+    }
     evals_cache = output_dir / f"{skill_name}-evals-cache.json"
-    evals_cache.write_text(json.dumps(spec_evals, indent=2, ensure_ascii=False), encoding="utf-8")
+    evals_cache.write_text(json.dumps(cache_data, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"  Evals cache: {evals_cache}")
     return evals_cache
+
+
+def _read_evals_cache(
+    output_dir: Path,
+    skill_name: str,
+    skill_content: str,
+) -> dict | None:
+    """Read evals cache, returning None if version/hash mismatch or file missing."""
+    evals_cache = output_dir / f"{skill_name}-evals-cache.json"
+    if not evals_cache.exists():
+        return None
+
+    try:
+        cache_data = json.loads(evals_cache.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to read evals cache %s: %s", evals_cache, e)
+        evals_cache.unlink(missing_ok=True)
+        return None
+
+    # Check version
+    cached_version = cache_data.get("testgen_version")
+    if cached_version != TESTGEN_LOGIC_VERSION:
+        logger.warning(
+            "Evals cache version mismatch: cached=%s, current=%s — invalidating",
+            cached_version,
+            TESTGEN_LOGIC_VERSION,
+        )
+        evals_cache.unlink(missing_ok=True)
+        return None
+
+    # Check skill content hash
+    current_hash = _compute_skill_content_hash(skill_content)
+    cached_hash = cache_data.get("skill_content_hash", "")
+    if cached_hash != current_hash:
+        logger.warning(
+            "Evals cache skill content hash mismatch — invalidating"
+        )
+        evals_cache.unlink(missing_ok=True)
+        return None
+
+    return cache_data
 
 
 def _export_traces(args, output_dir: Path, skill_name: str, all_traces: list) -> Path | None:
@@ -592,7 +650,11 @@ def _generate_and_write_reports(
     _write_json_report(args, output_dir, skill_name, structured_report, report_format)
 
     # Write evals cache
-    _write_evals_cache(output_dir, skill_name, spec.get("evals") or {})
+    try:
+        skill_content = Path(spec_path).read_text(encoding="utf-8") if spec_path else ""
+    except (FileNotFoundError, OSError):
+        skill_content = ""
+    _write_evals_cache(output_dir, skill_name, spec.get("evals") or {}, skill_content)
 
     # Export traces as JSONL
     _export_traces(args, output_dir, skill_name, [])  # all_traces would come from runner
