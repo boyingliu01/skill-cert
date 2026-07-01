@@ -2,6 +2,7 @@
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any
 
@@ -186,13 +187,27 @@ class Grader:
         judge_result: JudgeResult | None,
     ) -> dict[str, Any]:
         """Build the final grade result dictionary."""
-        # For negative cases, final_passed means the model correctly did NOT trigger
+        # For negative cases, final_passed means the model correctly did NOT trigger.
+        # The logic depends on assertion types:
+        # - With positive assertions (contains, regex, starts_with, json_valid):
+        #   low pass_rate = correct (skill didn't produce expected patterns)
+        # - With negative assertions (not_contains):
+        #   high pass_rate = correct (skill avoided the patterns it should)
         if eval_case.negative_case:
             if judge_result and judge_result.confidence >= 0.8:
                 final_passed = not judge_result.passed
             else:
-                # Inverted: for negative case, pass means NOT doing the thing
-                final_passed = pass_rate < 0.5
+                # Check if assertions are predominantly not_contains vs positive
+                neg_assertion_types = {"not_contains"}
+                has_any_pos = any(r.assertion.type not in neg_assertion_types for r in results)
+                has_any_neg = any(r.assertion.type in neg_assertion_types for r in results)
+
+                if has_any_neg and not has_any_pos:
+                    # Pure not_contains assertions: high pass_rate = good (avoided patterns)
+                    final_passed = pass_rate >= 0.5
+                else:
+                    # Positive assertions (or mixed): low pass_rate = correct (didn't trigger)
+                    final_passed = pass_rate < 0.5
         else:
             final_passed = (
                 judge_result.passed
@@ -329,26 +344,35 @@ class Grader:
         model_output: str,
         assertion_results: list[AssertionResult],
     ) -> JudgeResult:
-        """Execute LLM judge with API call."""
-        try:
-            result = self._execute_llm_judge(eval_case, model_output, assertion_results)
+        """Execute LLM judge with API call.
+
+        Main judge and debias swap calls are issued in parallel via ThreadPoolExecutor,
+        reducing latency from 2x serial to ~1x for the pair.
+        """
+        expected_behavior = eval_case.expected_output or eval_case.prompt
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            main_future = executor.submit(
+                self._execute_judge_main, eval_case, model_output, assertion_results
+            )
+            swap_future = None
             if self.debias_position and self.llm_client:
-                result = self._debias_position(eval_case, model_output, assertion_results, result)
-            return result
-        except json.JSONDecodeError:
+                swap_future = executor.submit(
+                    self._execute_debias_swap, expected_behavior, model_output
+                )
+
             try:
-                result = self._retry_llm_judge_strict(eval_case, model_output, assertion_results)
-                if self.debias_position and self.llm_client:
-                    result = self._debias_position(
-                        eval_case, model_output, assertion_results, result
-                    )
-                return result
-            except Exception as retry_err:
-                return self._llm_judge_error_fallback(assertion_results, retry_err)
-        except ValidationError as e:
-            return self._handle_validation_error(e, assertion_results)
-        except Exception as e:
-            return self._llm_judge_error_fallback(assertion_results, e)
+                result = main_future.result()
+            except ValidationError as e:
+                return self._handle_validation_error(e, assertion_results)
+            except Exception as e:
+                return self._llm_judge_error_fallback(assertion_results, e)
+
+            if swap_future is not None:
+                swap_result = swap_future.result()
+                result = self._merge_debias_result(result, swap_result)
+
+            return result
 
     def _retry_llm_judge_strict(
         self,
@@ -724,6 +748,92 @@ class Grader:
                 failure_reasons=first_result.failure_reasons,
                 position_sensitive=False,
                 debias_runs=1,
+                judge_version="2.0",
+                judge_model=first_result.judge_model,
+            )
+
+    def _execute_judge_main(
+        self,
+        eval_case: EvalCase,
+        model_output: str,
+        assertion_results: list[AssertionResult],
+    ) -> JudgeResult:
+        try:
+            return self._execute_llm_judge(eval_case, model_output, assertion_results)
+        except ValidationError:
+            raise
+        except json.JSONDecodeError:
+            try:
+                return self._retry_llm_judge_strict(eval_case, model_output, assertion_results)
+            except Exception as retry_err:
+                return self._llm_judge_error_fallback(assertion_results, retry_err)
+
+    def _execute_debias_swap(
+        self, expected_behavior: str, model_output: str
+    ) -> dict[str, Any]:
+        swap_prompt = f"""# LLM-as-Judge (Swap Run)
+
+你是一个严格的评测裁判。评估以下输出是否满足行为要求。
+
+## 评测要求
+1. 回答 passed: true/false, confidence: 0.0-1.0, reasoning: 简要理由
+2. 对于未通过的断言在 failure_reasons 中列出
+
+## 输出（原始行为要求）:
+```
+{expected_behavior}
+```
+
+## 行为要求（原始模型输出）:
+```
+{model_output}
+```
+
+## 输出 JSON:
+```json
+{{"passed": true, "confidence": 0.9, "reasoning": "...", "failure_reasons": []}}
+```"""
+        swap_text = self.llm_client.chat(
+            messages=[{"role": "user", "content": swap_prompt}], timeout=30
+        )
+        swap_text = self._parse_judge_response(swap_text)
+        swap_data = json.loads(swap_text)
+        if isinstance(swap_data, str):
+            swap_data = json.loads(swap_data)
+        if not isinstance(swap_data, dict):
+            raise ValueError(
+                f"Expected dict from swap response, got {type(swap_data).__name__}"
+            )
+        return {
+            "passed": bool(swap_data.get("passed", False)),
+            "confidence": self._clamp_confidence(float(swap_data.get("confidence", 0.5))),
+        }
+
+    def _merge_debias_result(
+        self, first_result: JudgeResult, swap_result: dict[str, Any]
+    ) -> JudgeResult:
+        swap_passed = swap_result["passed"]
+        swap_confidence = float(swap_result["confidence"])
+
+        if swap_passed != first_result.passed:
+            return JudgeResult(
+                passed=first_result.passed,
+                confidence=min(first_result.confidence, swap_confidence) * 0.7,
+                reasoning=f"{first_result.reasoning} [Position debias: disagreement detected]",
+                failure_reasons=first_result.failure_reasons,
+                position_sensitive=True,
+                debias_runs=2,
+                judge_version="2.0",
+                judge_model=first_result.judge_model,
+            )
+        else:
+            return JudgeResult(
+                passed=first_result.passed,
+                confidence=max(first_result.confidence, swap_confidence),
+                reasoning=first_result.reasoning,
+                failure_reasons=first_result.failure_reasons,
+                position_sensitive=False,
+                debias_runs=2,
                 judge_version="2.0",
                 judge_model=first_result.judge_model,
             )

@@ -374,6 +374,8 @@ def build_eval_details(eval_results: list[dict[str, Any]] | None) -> list[EvalDe
                 tokens_used=r.get("tokens_used", 0),
                 cost=r.get("cost", 0.0),
                 error=r.get("error"),
+                workflow_step=r.get("workflow_step"),
+                negative_case=r.get("negative_case", False),
             )
         )
     return details

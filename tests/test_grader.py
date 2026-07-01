@@ -1014,7 +1014,7 @@ def test_llm_judge_with_call_json_decode_error_retry_also_fails():
         "not json",
         "still not json",
     ]
-    grader = Grader(llm_client=mock_llm)
+    grader = Grader(llm_client=mock_llm, debias_position=False)
     eval_case = EvalCase(
         id=1,
         name="t",
@@ -1350,9 +1350,9 @@ class TestGraderModeAssertionSelection:
         )
         result = grader.grade_output(case, "just a normal response", mode="without_skill")
         assert result["pass_rate"] == 1.0
-        assert result["final_passed"] is False
+        assert result["final_passed"] is True
 
-    def test_grade_output_negative_case_output_contains_trigger_term_final_passed_true(self):
+    def test_grade_output_negative_case_output_contains_trigger_term_final_passed_false(self):
         grader = Grader()
         case = EvalCase(
             id=1,
@@ -1367,7 +1367,7 @@ class TestGraderModeAssertionSelection:
         )
         result = grader.grade_output(case, "output with verdict", mode="without_skill")
         assert result["pass_rate"] == 0.0
-        assert result["final_passed"] is True
+        assert result["final_passed"] is False
 
 
 # ── P0: Robust JSON extraction for LLM judge ─────────────────

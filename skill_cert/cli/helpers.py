@@ -48,10 +48,16 @@ def _print_phase_with_deadline(phase: int, name: str, deadline=None) -> None:
         _print_phase(phase, name)
 
 
-def _print_metric(label: str, value: float, threshold: float | None = None) -> None:
-    pct = f"{value * 100:.1f}%"
+def _print_metric(label: str, value: float | None, threshold: float | None = None) -> None:
+    if value is None:
+        pct = "N/A"
+    else:
+        pct = f"{value * 100:.1f}%"
     if threshold is not None:
-        status = "✓" if value >= threshold else "✗"
+        if value is not None:
+            status = "✓" if value >= threshold else "✗"
+        else:
+            status = "?"
         print(f"  {label}: {pct} (threshold: {threshold * 100:.0f}%) {status}")
     else:
         print(f"  {label}: {pct}")

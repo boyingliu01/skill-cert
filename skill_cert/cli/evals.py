@@ -2,6 +2,7 @@
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +56,9 @@ def _build_eval_case_from_dict(case_dict) -> EvalCase:
         prompt=prompt,
         assertions=assertions,
         without_skill_assertions=ws_assertions,
+        workflow_step=case_dict.get("workflow_step"),
+        negative_case=bool(case_dict.get("negative_case", False)),
+        assertion_strategy=case_dict.get("assertion_strategy", "deterministic"),
     )
 
 
@@ -70,6 +74,8 @@ def _flatten_grade_result(result, grade, mode) -> dict:
         "total_weighted_score": grade.get("total_weighted_score", 0),
         "total_possible_score": grade.get("total_possible_score", 0),
         "category": result.get("eval_category", result.get("category", "")),
+        "workflow_step": grade.get("workflow_step"),
+        "negative_case": grade.get("negative_case", False),
     }
 
 
@@ -134,17 +140,21 @@ def _run_eval_for_model(
     eval_cases = [_build_eval_case_from_dict(c) for c in eval_cases_list]
     case_map = {c.id: c for c in eval_cases}
 
-    # Grade results
-    graded = []
-    for r in with_skill:
-        result = _grade_single_result(case_map, grader, r, "with_skill")
-        if result:
-            graded.append(result)
+    # Grade results in parallel for all evals (with + without skill)
+    grade_futures = []
+    with ThreadPoolExecutor(max_workers=runner.max_concurrency * 2) as grade_executor:
+        for r in with_skill:
+            if not r.get("error"):
+                grade_futures.append(
+                    grade_executor.submit(_grade_single_result, case_map, grader, r, "with_skill")
+                )
+        for r in without_skill:
+            if not r.get("error"):
+                grade_futures.append(
+                    grade_executor.submit(_grade_single_result, case_map, grader, r, "without_skill")
+                )
 
-    for r in without_skill:
-        result = _grade_single_result(case_map, grader, r, "without_skill")
-        if result:
-            graded.append(result)
+    graded = [f.result() for f in grade_futures if f.result() is not None]
 
     # Count passes
     ws_passed = _count_passes(graded, "with_skill")
@@ -292,16 +302,26 @@ def _print_metrics_summary(metrics: dict[str, Any], args) -> None:
     num_runs = getattr(args, "runs", 1) or 1
     if num_runs > 1:
         stability_d = metrics.get("stability_data", {})
-        l4_val = metrics.get("l4_execution_stability", 0)
+        l4_val = metrics.get("l4_execution_stability")
         l4_pass = metrics.get("l4_stability_pass", True)
-        print(
-            f"  L4 Stability: {l4_val * 100:.1f}% (std={stability_d.get('overall_std_dev', 0):.4f})"
-        )
+        if l4_val is not None:
+            print(
+                f"  L4 Stability: {l4_val * 100:.1f}% (std={stability_d.get('overall_std_dev', 0):.4f})"
+            )
+        else:
+            print(f"  L4 Stability: N/A (>= 5 runs required)")
     else:
-        l4_val = metrics.get("l4_execution_stability", 0)
+        l4_val = metrics.get("l4_execution_stability")
         l4_pass = True
-    print(f"  L4 Execution Stability: {l4_val * 100:.1f}% (std<=10%) {'OK' if l4_pass else 'FAIL'}")
-    print(f"  Overall: {metrics.get('overall', 0) * 100:.1f}%")
+    if l4_val is not None:
+        print(f"  L4 Execution Stability: {l4_val * 100:.1f}% (std<=10%) {'OK' if l4_pass else 'FAIL'}")
+    else:
+        print(f"  L4 Execution Stability: N/A (>= 5 runs required)")
+    overall_val = metrics.get("overall")
+    if overall_val is not None:
+        print(f"  Overall: {overall_val * 100:.1f}%")
+    else:
+        print(f"  Overall: N/A")
 
 
 def _detect_and_print_drift(spec, adapters, grader) -> dict[str, Any] | None:

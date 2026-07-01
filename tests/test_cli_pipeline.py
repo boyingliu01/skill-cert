@@ -1029,6 +1029,7 @@ description: "A test skill"
 
         adapter = MagicMock()
         runner = MagicMock()
+        runner.max_concurrency = 5
         grader = MagicMock()
 
         evals_list = [
@@ -1073,6 +1074,7 @@ description: "A test skill"
 
         adapter = MagicMock()
         runner = MagicMock()
+        runner.max_concurrency = 5
         grader = MagicMock()
         tracker = MagicMock()
 
@@ -1113,6 +1115,7 @@ description: "A test skill"
 
         adapter = MagicMock()
         runner = MagicMock()
+        runner.max_concurrency = 5
         grader = MagicMock()
 
         runner.run_with_skill.return_value = []
@@ -1189,6 +1192,7 @@ description: "A test skill"
             patch("skill_cert.cli.Reporter") as MockReporter,
         ):
             mock_runner_instance = MagicMock()
+            mock_runner_instance.max_concurrency = 5
             MockRunner.return_value = mock_runner_instance
 
             mock_grader = MagicMock()
@@ -1268,6 +1272,7 @@ description: "A test skill"
             patch("skill_cert.cli.DriftDetector") as MockDrift,
         ):
             mock_runner_instance = MagicMock()
+            mock_runner_instance.max_concurrency = 5
             MockRunner.return_value = mock_runner_instance
 
             mock_grader = MagicMock()
@@ -1350,6 +1355,7 @@ description: "A test skill"
             patch("skill_cert.cli.Reporter") as MockReporter,
         ):
             MockRunner.return_value = MagicMock()
+            MockRunner.return_value.max_concurrency = 5
             MockGrader.return_value = MagicMock()
             mock_tracker = MagicMock()
             mock_tracker.generate_report.return_value = {
@@ -1408,6 +1414,7 @@ description: "A test skill"
             patch("skill_cert.cli.Reporter") as MockReporter,
         ):
             MockRunner.return_value = MagicMock()
+            MockRunner.return_value.max_concurrency = 5
             MockGrader.return_value = MagicMock()
             mock_tracker = MagicMock()
             mock_tracker.generate_report.return_value = {

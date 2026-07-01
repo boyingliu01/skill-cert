@@ -99,6 +99,8 @@ class EvalDetail(BaseModel):
     tokens_used: int = 0
     cost: float = 0.0
     error: str | None = None
+    workflow_step: str | None = None
+    negative_case: bool = False
 
 
 # ── Token Analysis ────────────────────────────────────────────

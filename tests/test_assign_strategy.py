@@ -2,8 +2,12 @@ from engine.testgen import EvalGenerator
 
 
 class TestAssignStrategy:
-    def test_trigger_category_deterministic(self):
+    def test_trigger_category_without_structured_output(self):
         result = EvalGenerator._assign_strategy("trigger", [])
+        assert result == "mixed"
+
+    def test_trigger_category_with_structured_output(self):
+        result = EvalGenerator._assign_strategy("trigger", ["json", "verdict"])
         assert result == "deterministic"
 
     def test_workflow_step_category_llm_judge(self):
