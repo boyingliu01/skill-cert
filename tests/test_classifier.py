@@ -129,5 +129,71 @@ class TestClassifierFalsePositiveResilience:
             "output_format": ["json schema", "typescript code"],
         }
         result = classify_output_type(skill_spec)
-        # Despite flow language in description, structured format dominates
+        assert result.strategy == "structured"
+
+
+class TestClassifierJsonContainmentVsPureJson:
+    """Given: a skill with JSON mentioned in output_format but used for structured data within natural language
+    When: classify_output_type is called
+    Then: classified as natural_language (JSON is contained, not the primary format)"""
+
+    def test_delphi_review_json_containment(self):
+        skill_spec = {
+            "name": "delphi-review",
+            "description": "Multi-round anonymous expert consensus review with structured verdict",
+            "triggers": ["/delphi-review", "review this design", "design review", "多专家评审"],
+            "workflow_steps": [
+                {"name": "Parse requirements", "type": "input"},
+                {"name": "Assign experts", "type": "process"},
+                {"name": "Round 1 review", "type": "review"},
+                {"name": "Consensus check", "type": "process"},
+                {"name": "Round 2 if needed", "type": "review"},
+                {"name": "Final verdict", "type": "output"},
+                {"name": "Generate report", "type": "output"},
+                {"name": "Summary", "type": "output"},
+            ],
+            "output_format": [
+                "verdict + confidence + issues_list（合并 critical/major/minor）+ summary",
+                "完整 JSON 格式保留用于 multi-expert 多轮评审场景",
+                "expert_id",
+                "round",
+                "mode",
+                "verdict",
+                "confidence",
+            ],
+        }
+        result = classify_output_type(skill_spec)
+        assert result.strategy == "natural_language"
+        assert result.confidence >= 0.5
+        assert any("json_containment" in s for s in result.signals)
+
+    def test_json_in_output_but_natural_language_dominates(self):
+        skill_spec = {
+            "name": "Code Review Report",
+            "description": "First analyze the code, then check for issues, finally generate a readable report",
+            "triggers": ["review code", "check code", "analyze code"],
+            "workflow_steps": [
+                {"name": "Read code", "type": "input"},
+                {"name": "Analyze patterns", "type": "process"},
+                {"name": "Check security", "type": "process"},
+                {"name": "Generate report", "type": "output"},
+            ],
+            "output_format": [
+                "Markdown report with sections",
+                "JSON 格式用于 structured findings",
+                "summary statistics",
+            ],
+        }
+        result = classify_output_type(skill_spec)
+        assert result.strategy == "natural_language"
+
+    def test_pure_json_output_still_structured(self):
+        skill_spec = {
+            "name": "JSON Formatter",
+            "description": "Formats data into valid JSON",
+            "triggers": ["format json", "json output"],
+            "workflow_steps": [{"name": "Parse input", "type": "parse"}],
+            "output_format": ["json", "valid json output"],
+        }
+        result = classify_output_type(skill_spec)
         assert result.strategy == "structured"

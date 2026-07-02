@@ -164,6 +164,39 @@
       "l5_step_efficiency": 1.0,
       "l6_trajectory_quality": null,
       "overall_score": 0.7794405594405595
+    },
+    {
+      "timestamp": "2026-07-01T09:25:53.655867+00:00",
+      "skill_path": "/home/boyingliu01/.config/opencode/xp-gate/skills/delphi-review/SKILL.md",
+      "l1_trigger_accuracy": 0.5,
+      "l2_with_without_skill_delta": 0.4705882352941177,
+      "l3_step_adherence": 0.6,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.5941176470588235
+    },
+    {
+      "timestamp": "2026-07-02T01:43:05.318193+00:00",
+      "skill_path": "/home/boyingliu01/projects/xp-gate/.worktrees/sprint/sprint-2026-07-01-01/src/npm-package/skills/delphi-review/SKILL.md",
+      "l1_trigger_accuracy": 0.9,
+      "l2_with_without_skill_delta": 0.9500000000000002,
+      "l3_step_adherence": 0.7727272727272727,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.8045454545454547
+    },
+    {
+      "timestamp": "2026-07-02T04:51:12.497788+00:00",
+      "skill_path": "/home/boyingliu01/.config/opencode/node_modules/@boyingliu01/opencode-plugin/skills/delphi-review/SKILL.md",
+      "l1_trigger_accuracy": 0.6923076923076924,
+      "l2_with_without_skill_delta": 0.7027027027027025,
+      "l3_step_adherence": 0.7277777777777777,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.7045576345576345
     }
   ]
 }
