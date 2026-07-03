@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-07-03
+
+### Fixed — Parallel test race condition in test_config.py (#67)
+- **FS race in file-based config tests**: Three tests (`test_provider_model_in_file_config` file-loading section, `test_config_from_file_with_error`, `test_config_from_file_with_malformed_yaml`) all wrote to the same shared path `{tempdir}/.skill-cert/models.yaml`, causing non-deterministic `FileNotFoundError` failures under `pytest --fast` parallel execution.
+- **Fix**: Each test now creates its own temp dir via `tempfile.mkdtemp()` with unique paths. Cleanup uses `shutil.rmtree` in `finally` blocks.
+- **Rename**: `test_config_from_file_with_error` → `test_config_from_file_with_valid_yaml` (the YAML was valid, not an error case).
+- **Total tests**: 1445 (1 new from splitting inlined file-loading into dedicated test).
+
 ## [0.11.0] - 2026-07-03
 
 ### Changed — Project-level quality gates migrated to global hooksPath
