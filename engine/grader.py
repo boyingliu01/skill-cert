@@ -2,7 +2,7 @@
 
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
@@ -50,7 +50,7 @@ class EvalCase(BaseModel):
     confusion_prompt: str | None = None  # Near-miss prompt for boundary testing (Issue #44)
     # REQ-1: assertion evaluation strategy — per-eval-case routing
     assertion_strategy: str = "deterministic"  # deterministic | llm_judge | mixed
-    judge_dimensions: list[str] | None = None  # trigger_accuracy | workflow_quality | output_quality
+    judge_dimensions: list[str] | None = None  # trigger_accuracy | workflow_quality
 
     @model_validator(mode="after")
     def _validate_assertions_not_all_empty(self):

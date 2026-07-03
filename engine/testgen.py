@@ -165,7 +165,6 @@ class EvalGenerator:
         max_retries: int = 1,
     ) -> dict[str, Any]:
         _timeout = timeout or TestGenLimits.GAP_FILL_TIMEOUT
-        last_error = None
         for attempt in range(max_retries + 1):
             try:
                 prompt = self._prepare_gap_filling_prompt(gaps, skill_spec)
@@ -174,10 +173,10 @@ class EvalGenerator:
                 supplementary_evals = self._parse_evals_response(response)
                 return supplementary_evals
             except Exception as e:
-                last_error = e
                 if attempt < max_retries:
                     logger.warning(
-                        f"Gap-fill attempt {attempt + 1}/{max_retries + 1} failed ({e}), retrying..."
+                        f"Gap-fill attempt {attempt + 1}/{max_retries + 1}"
+                        f" failed ({e}), retrying..."
                     )
                 else:
                     logger.error(f"Failed to fill gaps after {max_retries + 1} attempts: {e}")
@@ -368,8 +367,10 @@ class EvalGenerator:
             steps_list = "\n".join(f"  - {s}" for s in workflow_steps)
             n_steps = len(workflow_steps)
             workflow_step_hint = f"""
-WORKFLOW STEP EVAL CASES (MANDATORY) — Generate exactly {n_steps} eval cases with category="workflow_step",
-one per step listed below. Use regex patterns (NOT single exact contains) that match multiple possible phrasings.
+WORKFLOW STEP EVAL CASES (MANDATORY) — Generate exactly {n_steps}
+eval cases with category="workflow_step", one per step listed below.
+Use regex patterns (NOT single exact contains) that match multiple
+possible phrasings.
 Workflow steps to cover:
 {steps_list}
 For each workflow_step case, generate multi-candidate assertions:
@@ -394,18 +395,24 @@ Use not_contains or regex assertions to verify the anti-pattern is NOT present.
         if output_format:
             of_list = "\n".join(f"  - {of}" for of in output_format)
             fmt_text = " ".join(str(f).lower() for f in output_format)
-            has_structured = any(kw in fmt_text for kw in ("json", "code", "schema", "yaml", "toml"))
+            has_structured = any(
+                kw in fmt_text for kw in ("json", "code", "schema", "yaml", "toml")
+            )
             if has_structured:
-                output_format_hint = f"""OUTPUT FORMAT — The skill produces structured output. Verify format correctness:
-{of_list}
-Use json_valid or regex assertions to validate structure.
-"""
+                output_format_hint = (
+                    "OUTPUT FORMAT — The skill produces structured output."
+                    " Verify format correctness:\n"
+                    f"{of_list}\n"
+                    "Use json_valid or regex assertions to validate structure.\n"
+                )
             else:
-                output_format_hint = f"""OUTPUT FORMAT — The skill produces free-form/natural language output:
-{of_list}
-Use contains, regex, starts_with assertions to verify structural sections, headings, or domain-specific content.
-DO NOT use json_valid for free-form output.
-"""
+                output_format_hint = (
+                    "OUTPUT FORMAT — The skill produces free-form/natural language output:\n"
+                    f"{of_list}\n"
+                    "Use contains, regex, starts_with assertions to verify structural"
+                    " sections, headings, or domain-specific content.\n"
+                    "DO NOT use json_valid for free-form output.\n"
+                )
 
         return f"""
 Generate evaluation test cases for the following skill specification:

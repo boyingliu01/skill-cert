@@ -152,7 +152,9 @@ def _run_eval_for_model(
         for r in without_skill:
             if not r.get("error"):
                 grade_futures.append(
-                    grade_executor.submit(_grade_single_result, case_map, grader, r, "without_skill")
+                    grade_executor.submit(
+        _grade_single_result, case_map, grader, r, "without_skill"
+    )
                 )
 
     graded = [f.result() for f in grade_futures if f.result() is not None]
@@ -306,23 +308,23 @@ def _print_metrics_summary(metrics: dict[str, Any], args) -> None:
         l4_val = metrics.get("l4_execution_stability")
         l4_pass = metrics.get("l4_stability_pass", True)
         if l4_val is not None:
-            print(
-                f"  L4 Stability: {l4_val * 100:.1f}% (std={stability_d.get('overall_std_dev', 0):.4f})"
-            )
+            std_str = f"{stability_d.get('overall_std_dev', 0):.4f}"
+            print(f"  L4 Stability: {l4_val * 100:.1f}% (std={std_str})")
         else:
-            print(f"  L4 Stability: N/A (>= 5 runs required)")
+            print("  L4 Stability: N/A (>= 5 runs required)")
     else:
         l4_val = metrics.get("l4_execution_stability")
         l4_pass = True
     if l4_val is not None:
-        print(f"  L4 Execution Stability: {l4_val * 100:.1f}% (std<=10%) {'OK' if l4_pass else 'FAIL'}")
+        ok_str = "OK" if l4_pass else "FAIL"
+        print(f"  L4 Execution Stability: {l4_val * 100:.1f}% (std<=10%) {ok_str}")
     else:
-        print(f"  L4 Execution Stability: N/A (>= 5 runs required)")
+        print("  L4 Execution Stability: N/A (>= 5 runs required)")
     overall_val = metrics.get("overall")
     if overall_val is not None:
         print(f"  Overall: {overall_val * 100:.1f}%")
     else:
-        print(f"  Overall: N/A")
+        print("  Overall: N/A")
 
 
 def _detect_and_print_drift(spec, adapters, grader) -> dict[str, Any] | None:
