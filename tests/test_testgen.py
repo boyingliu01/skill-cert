@@ -917,29 +917,100 @@ def test_calculate_coverage_with_regex_assertions():
     }
     coverage = generator._calculate_coverage(evals, skill_spec)
     # All spec items covered, single assertion type → type_diversity_factor 0.75
-    assert coverage == 0.75, f"Expected 0.75 (type diversity factor: single assertion type), got {coverage}"
+    assert coverage == 0.75, (
+        f"Expected 0.75 (type diversity factor: single assertion type), got {coverage}"
+    )
 
 
 @pytest.mark.parametrize(
     "input_case,expected",
     [
         # Standard: explicit negative_case field
-        ({"negative_case": True, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
-        ({"negative_case": False, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, False),
+        (
+            {
+                "negative_case": True,
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            True,
+        ),
+        (
+            {
+                "negative_case": False,
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            False,
+        ),
         # Variant: is_negative
-        ({"is_negative": True, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
-        ({"is_negative": False, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, False),
+        (
+            {
+                "is_negative": True,
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            True,
+        ),
+        (
+            {
+                "is_negative": False,
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            False,
+        ),
         # Variant: should_not
-        ({"should_not": True, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
+        (
+            {
+                "should_not": True,
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            True,
+        ),
         # Variant: expected_triggers=False → negative_case=True (inversion)
-        ({"expected_triggers": False, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
-        ({"expected_triggers": True, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, False),
+        (
+            {
+                "expected_triggers": False,
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            True,
+        ),
+        (
+            {
+                "expected_triggers": True,
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            False,
+        ),
         # Variant: triggers_on=False → negative_case=True (inversion)
-        ({"triggers_on": False, "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
+        (
+            {
+                "triggers_on": False,
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            True,
+        ),
         # Variant: string "true" → coerced to bool
-        ({"negative": "true", "input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, True),
+        (
+            {
+                "negative": "true",
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            True,
+        ),
         # No negative info → default False
-        ({"input": "test", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}, False),
+        (
+            {
+                "input": "test",
+                "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+            },
+            False,
+        ),
     ],
 )
 def test_normalize_eval_case_negative_case(input_case, expected):
@@ -1412,10 +1483,7 @@ class TestTrailingCommaRepair:
     def test_trailing_comma_repair_succeeds(self):
         """Trailing comma in JSON object is repaired transparently."""
         result = EvalGenerator._extract_json(
-            '{\n'
-            '  "eval_cases": [{"id": 1, "name": "test",},\n'
-            '  {"id": 2, "name": "test2",}],\n'
-            '}'
+            '{\n  "eval_cases": [{"id": 1, "name": "test",},\n  {"id": 2, "name": "test2",}],\n}'
         )
         assert result is not None
         assert result["eval_cases"][0]["id"] == 1
@@ -1424,9 +1492,7 @@ class TestTrailingCommaRepair:
     def test_trailing_comma_in_nested_json(self):
         """Trailing commas in nested JSON objects and arrays are repaired."""
         result = EvalGenerator._extract_json(
-            '{"eval_cases": ['
-            '{"id": 1, "assertions": [{"type": "contains", "value": "x",},],},'
-            ']}'
+            '{"eval_cases": [{"id": 1, "assertions": [{"type": "contains", "value": "x",},],},]}'
         )
         assert result is not None
         assert result["eval_cases"][0]["id"] == 1
@@ -1458,7 +1524,7 @@ class TestAssertionQuality:
         prompt_lower = prompt.lower()
         # Must warn against keyword-only assertions (prompt uses DO NOT with blacklisted keywords)
         assert "do not use" in prompt_lower
-        assert "contains \"skill\"" in prompt_lower or "contains 'skill'" in prompt_lower
+        assert 'contains "skill"' in prompt_lower or "contains 'skill'" in prompt_lower
         # Must require structural assertions
         assert "structural" in prompt_lower
 

@@ -551,16 +551,21 @@ ALL_PATTERNS = (
 
 class SecurityScanner:
     CATEGORIES = (
-        "INJECTION", "EXFILTRATION", "DANGEROUS_CMD",
-        "CREDENTIAL", "OBFUSCATION", "PRIV_ESCALATION",
+        "INJECTION",
+        "EXFILTRATION",
+        "DANGEROUS_CMD",
+        "CREDENTIAL",
+        "OBFUSCATION",
+        "PRIV_ESCALATION",
     )
 
     def __init__(self, integration_dispatcher=None):
         self._dispatcher = integration_dispatcher
         self._patterns = ALL_PATTERNS
 
-    def scan(self, skill_content: str, skill_name: str = "unknown",
-             deep_security: bool = False) -> SecurityReport:
+    def scan(
+        self, skill_content: str, skill_name: str = "unknown", deep_security: bool = False
+    ) -> SecurityReport:
         findings = []
         counter = 0
         text = skill_content
@@ -613,6 +618,8 @@ class SecurityScanner:
             "skill_content": skill_content,
             "action": "security_scan",
         }
+        if self._dispatcher is None:
+            return {"findings": [], "source": None}
         results = self._dispatcher.run_all(spec)
         for r in results:
             if r.get("status") not in ("skipped", "error"):

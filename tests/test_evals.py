@@ -33,7 +33,13 @@ class TestBuildEvalCaseFromDict:
     """Cover lines 23 and 38."""
 
     def test_line23_passes_through_existing_evalcase(self):
-        case = EvalCase(id=1, name="test", category="trigger", prompt="hello", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)])
+        case = EvalCase(
+            id=1,
+            name="test",
+            category="trigger",
+            prompt="hello",
+            assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
+        )
         result = _build_eval_case_from_dict(case)
         assert result is case
 
@@ -51,7 +57,13 @@ class TestBuildEvalCaseFromDict:
         assert parsed == {"key": "val"}
 
     def test_line38_json_dumps_list_prompt(self):
-        d = {"id": 2, "name": "list", "category": "normal", "input": [1, 2, 3], "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]}
+        d = {
+            "id": 2,
+            "name": "list",
+            "category": "normal",
+            "input": [1, 2, 3],
+            "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+        }
         result = _build_eval_case_from_dict(d)
         assert isinstance(result.prompt, str)
         parsed = json.loads(result.prompt)
@@ -522,12 +534,8 @@ class TestEvalDetailsIntegration:
 
         call_kwargs = mock_reporter.build_structured_report.call_args[1]
         eval_results = call_kwargs.get("eval_results")
-        assert eval_results is not None, (
-            "eval_results should be passed to build_structured_report"
-        )
-        assert len(eval_results) == 2, (
-            f"Expected 2 eval results, got {len(eval_results)}"
-        )
+        assert eval_results is not None, "eval_results should be passed to build_structured_report"
+        assert len(eval_results) == 2, f"Expected 2 eval results, got {len(eval_results)}"
         assert eval_results[0]["eval_id"] == 1
         assert eval_results[0]["mode"] == "with_skill"
         assert eval_results[1]["mode"] == "without_skill"

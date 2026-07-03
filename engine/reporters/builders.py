@@ -196,8 +196,7 @@ def get_metric_suggestions(metrics: dict[str, Any]) -> list[str]:
     l2_score = num(metrics.get("l2_with_without_skill_delta", 0.0))
     if l2_score < 0.5:
         suggestions.append(
-            "Skill may not be providing sufficient value - "
-            "consider enhancing core functionality"
+            "Skill may not be providing sufficient value - consider enhancing core functionality"
         )
 
     l3_score = num(metrics.get("l3_step_adherence", 0.0))
@@ -206,9 +205,7 @@ def get_metric_suggestions(metrics: dict[str, Any]) -> list[str]:
 
     l4_score = num(metrics.get("l4_execution_stability", 0.0))
     if l4_score < 0.8:
-        suggestions.append(
-            "Address execution instability - results vary significantly across runs"
-        )
+        suggestions.append("Address execution instability - results vary significantly across runs")
     return suggestions
 
 
@@ -230,10 +227,7 @@ def get_cost_suggestions(cost_analysis: dict[str, Any]) -> list[str]:
             f"{cost_analysis['cost_delta_pct']:.0%} — "
             "consider optimizing prompt or reducing verbosity"
         )
-    if (
-        cost_analysis.get("cost_efficiency", 0) < 0.1
-        and cost_analysis.get("cost_delta_pct", 0) > 0
-    ):
+    if cost_analysis.get("cost_efficiency", 0) < 0.1 and cost_analysis.get("cost_delta_pct", 0) > 0:
         suggestions.append("Low cost efficiency — quality gains don't justify cost increase")
     return suggestions
 
@@ -250,8 +244,7 @@ def get_latency_suggestions(latency_analysis: dict[str, Any]) -> list[str]:
     slow_count = latency_analysis.get("slow_with_skill", 0)
     if slow_count > 0:
         suggestions.append(
-            f"{slow_count} requests exceeded 30s threshold — "
-            "consider async processing or timeouts"
+            f"{slow_count} requests exceeded 30s threshold — consider async processing or timeouts"
         )
     return suggestions
 
@@ -274,9 +267,7 @@ def get_reliability_suggestions(reliability: dict[str, Any]) -> list[str]:
         if "timeout" in errors_by_category:
             suggestions.append("Timeout errors detected — increase timeout or optimize prompts")
         if "rate_limit" in errors_by_category:
-            suggestions.append(
-                "Rate limit errors detected — reduce concurrency or request rate"
-            )
+            suggestions.append("Rate limit errors detected — reduce concurrency or request rate")
     return suggestions
 
 
@@ -296,8 +287,7 @@ def generate_suggestions(
 
     if drift and drift.get("drift_detected", False):
         suggestions.append(
-            f"Address cross-model drift "
-            f"(highest severity: {drift.get('highest_severity', 'none')})"
+            f"Address cross-model drift (highest severity: {drift.get('highest_severity', 'none')})"
         )
 
     suggestions.extend(get_overall_suggestions(overall_score))
@@ -328,9 +318,7 @@ def create_summary(
     elif overall_score >= 0.6:
         summary_parts.append("The skill shows promise but needs improvements in certain areas.")
     else:
-        summary_parts.append(
-            "The skill requires significant improvements before certification."
-        )
+        summary_parts.append("The skill requires significant improvements before certification.")
 
     summary_parts.append(f"L1:{l1:.0%}, L2:{l2:.0%}, L3:{l3:.0%}, L4:{l4:.0%}")
 
@@ -416,12 +404,8 @@ def build_token_section(token_analysis: dict[str, Any] | None) -> TokenAnalysisS
     return TokenAnalysisSection(
         total_tokens=token_analysis.get("total_tokens", 0),
         total_cost=token_analysis.get("total_cost", 0.0),
-        by_phase={
-            k: TokenBreakdown(**v) for k, v in token_analysis.get("by_phase", {}).items()
-        },
-        by_model={
-            k: TokenBreakdown(**v) for k, v in token_analysis.get("by_model", {}).items()
-        },
+        by_phase={k: TokenBreakdown(**v) for k, v in token_analysis.get("by_phase", {}).items()},
+        by_model={k: TokenBreakdown(**v) for k, v in token_analysis.get("by_model", {}).items()},
         by_eval=token_analysis.get("by_eval", []),
     )
 
@@ -460,9 +444,7 @@ def convert_suggestions(suggestions: list[str]) -> list[ImprovementSuggestion]:
     return improvements
 
 
-def build_verdict_reasons(
-    metrics: dict[str, Any], drift: dict[str, Any] | None
-) -> list[str]:
+def build_verdict_reasons(metrics: dict[str, Any], drift: dict[str, Any] | None) -> list[str]:
     """Build verdict reasons from metrics and drift."""
     reasons = []
     l1 = num(metrics.get("l1_trigger_accuracy", 0.0))

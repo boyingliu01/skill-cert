@@ -23,21 +23,15 @@ class TestAssignStrategy:
         assert result == "mixed"
 
     def test_output_format_json_deterministic(self):
-        result = EvalGenerator._assign_strategy(
-            "output_format", ["json", "structured"]
-        )
+        result = EvalGenerator._assign_strategy("output_format", ["json", "structured"])
         assert result == "deterministic"
 
     def test_output_format_code_deterministic(self):
-        result = EvalGenerator._assign_strategy(
-            "output_format", ["code_block", "json_schema"]
-        )
+        result = EvalGenerator._assign_strategy("output_format", ["code_block", "json_schema"])
         assert result == "deterministic"
 
     def test_output_format_markdown_llm_judge(self):
-        result = EvalGenerator._assign_strategy(
-            "output_format", ["markdown", "text"]
-        )
+        result = EvalGenerator._assign_strategy("output_format", ["markdown", "text"])
         assert result == "llm_judge"
 
     def test_output_format_empty_llm_judge(self):
@@ -69,9 +63,7 @@ class TestNormalizeEvalCaseStrategy:
             "name": "test",
             "category": "workflow_step",
             "input": "...",
-            "assertions": [
-                {"type": "contains", "value": "x", "weight": 1}
-            ],
+            "assertions": [{"type": "contains", "value": "x", "weight": 1}],
         }
         normalized = gen._normalize_eval_case(case, 0)
         assert normalized["assertion_strategy"] == "llm_judge"
@@ -84,9 +76,7 @@ class TestNormalizeEvalCaseStrategy:
             "category": "output_format",
             "input": "...",
             "output_format_fields": ["json", "code"],
-            "assertions": [
-                {"type": "contains", "value": "x", "weight": 1}
-            ],
+            "assertions": [{"type": "contains", "value": "x", "weight": 1}],
         }
         normalized = gen._normalize_eval_case(case, 1)
         assert normalized["assertion_strategy"] == "deterministic"
@@ -99,9 +89,7 @@ class TestNormalizeEvalCaseStrategy:
             "category": "normal",
             "input": "...",
             "assertion_strategy": "mixed",
-            "assertions": [
-                {"type": "contains", "value": "x", "weight": 1}
-            ],
+            "assertions": [{"type": "contains", "value": "x", "weight": 1}],
         }
         normalized = gen._normalize_eval_case(case, 2)
         assert normalized["assertion_strategy"] == "mixed"

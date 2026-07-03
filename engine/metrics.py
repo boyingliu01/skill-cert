@@ -440,9 +440,7 @@ class MetricsCalculator:
         std_dev = self._compute_std_dev(l4_values)
         return max(0.0, 1.0 - std_dev)
 
-    def merge_l4_stability(
-        self, runs_l4: float | None, ci_l4: float | None
-    ) -> float | None:
+    def merge_l4_stability(self, runs_l4: float | None, ci_l4: float | None) -> float | None:
         """Merge L4 from --runs and CI history with 60/40 weighting."""
         if runs_l4 is not None and ci_l4 is not None:
             return 0.6 * runs_l4 + 0.4 * ci_l4

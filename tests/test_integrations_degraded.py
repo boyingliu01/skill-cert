@@ -1,4 +1,5 @@
 """Tests for integration dispatcher graceful degradation."""
+
 from engine.integrations import (
     BaseIntegration,
     GiskardSecurityIntegration,
@@ -10,9 +11,15 @@ from engine.integrations import (
 
 class AlwaysFailingIntegration(BaseIntegration):
     """Mock integration that simulates an unavailable tool."""
-    def check_available(self): return False
-    def get_version(self): return "unavailable"
-    def run(self, spec, **kwargs): return {"status": "skipped"}
+
+    def check_available(self):
+        return False
+
+    def get_version(self):
+        return "unavailable"
+
+    def run(self, spec, **kwargs):
+        return {"status": "skipped"}
 
 
 def test_dispatcher_graceful_degradation():

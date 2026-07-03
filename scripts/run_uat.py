@@ -103,7 +103,7 @@ def run_single_skill(skill_path, output_dir):
                 "assertions": assertions,
             },
         )()
-        grading = grader.grade_output(ec_obj, output)
+        grading = grader.grade_output(ec_obj, output)  # type: ignore[arg-type]
         grading["run"] = "with-skill"
         grading["model"] = primary
         all_gradings.append(grading)

@@ -202,9 +202,7 @@ Examples:
         "--ci-history",
         type=lambda x: x.lower() not in ("false", "0", "no"),
         default=True,
-        help=(
-            "Enable CI history for L4 stability (default: true, set false to disable)"
-        ),
+        help=("Enable CI history for L4 stability (default: true, set false to disable)"),
     )
     parser.add_argument(
         "--ci-history-path",

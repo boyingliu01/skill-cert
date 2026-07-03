@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-07-03
+
+### Fixed — Pre-existing pyright type errors (5 files)
+- **engine/integrations.py**: Added `# type: ignore[import-not-found]` for optional `skill_lab` and `deepeval` imports.
+- **engine/observability.py**: Added `# type: ignore[import-not-found]` for optional `opentelemetry` import.
+- **engine/security_probes.py**: Added `None` guard on `_dispatcher.run_all()` call (type safety).
+- **skill_cert/cli/dialogue.py**: Fixed `judge_callback=primary_adapter` -> `primary_adapter.chat` (type mismatch).
+- **scripts/run_uat.py**: Added `# type: ignore[arg-type]` on `grade_output()` call (EvalCase type collision).
+
+### Changed — Architecture config rewritten for archy Python tool
+- **architecture.yaml**: Switched from old xp-gate/archlinter format to [archy](https://github.com/hslee16/Archy) format. Layers mapping + forbid rules, excluding tests/build/scripts/results. Verified: 0 layer violations.
+
+### Changed — Ruff formatting cleanup (24 files)
+- Bulk `ruff format` applied across `engine/`, `adapters/`, `skill_cert/`, `tests/`.
+
 ## [0.11.1] - 2026-07-03
 
 ### Fixed — Parallel test race condition in test_config.py (#67)

@@ -146,8 +146,8 @@ class OTLPTraceExporter(BaseTraceExporter):
 
         try:
             from opentelemetry import trace
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-                OTLPSpanExporter,  # type: ignore[import-untyped,import-not-found]
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # type: ignore[import-not-found]
+                OTLPSpanExporter,
             )
             from opentelemetry.sdk.resources import (
                 Resource,  # type: ignore[import-untyped,import-not-found]

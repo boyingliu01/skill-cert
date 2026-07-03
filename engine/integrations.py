@@ -74,7 +74,7 @@ class SkillLabIntegration(BaseIntegration):
 
     def get_version(self) -> str:
         try:
-            from skill_lab import __version__
+            from skill_lab import __version__  # type: ignore[import-not-found]
 
             return __version__
         except ImportError:
@@ -98,7 +98,7 @@ class DeepEvalIntegration(BaseIntegration):
 
     def get_version(self) -> str:
         try:
-            from deepeval import __version__
+            from deepeval import __version__  # type: ignore[import-not-found]
 
             return __version__
         except ImportError:
@@ -157,7 +157,9 @@ class PromptfooSecurityIntegration(BaseIntegration):
 
             result = subprocess.run(
                 ["npx", "promptfoo", "--version"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             return result.returncode == 0
         except Exception:
@@ -169,7 +171,9 @@ class PromptfooSecurityIntegration(BaseIntegration):
 
             result = subprocess.run(
                 ["npx", "promptfoo", "--version"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             return result.stdout.strip() if result.returncode == 0 else "unavailable"
         except Exception:

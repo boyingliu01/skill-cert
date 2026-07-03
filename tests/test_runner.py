@@ -708,7 +708,14 @@ def test_run_with_skill_future_exception():
     """Covers run_with_skill lines 266-267: exception in future.result()."""
     runner = EvalRunner(max_concurrency=1, rate_limit_rpm=300, request_timeout=3)
 
-    evals = [{"id": i, "input": f"input {i}", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]} for i in range(3)]
+    evals = [
+        {
+            "id": i,
+            "input": f"input {i}",
+            "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+        }
+        for i in range(3)
+    ]
 
     adapter = Mock()
     adapter.chat = Mock()
@@ -733,7 +740,14 @@ def test_run_without_skill_future_exception():
     """Covers run_without_skill lines 329-330: exception in future.result()."""
     runner = EvalRunner(max_concurrency=1, rate_limit_rpm=300, request_timeout=3)
 
-    evals = [{"id": i, "input": f"input {i}", "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}]} for i in range(3)]
+    evals = [
+        {
+            "id": i,
+            "input": f"input {i}",
+            "assertions": [{"name": "d", "type": "contains", "value": ".", "weight": 1}],
+        }
+        for i in range(3)
+    ]
 
     adapter = Mock()
     adapter.chat = Mock()

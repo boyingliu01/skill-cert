@@ -633,8 +633,12 @@ def test_security_report_coverage_uses_summary_categories_scanned_not_default():
         score=0.5,
         findings=[
             SecurityFinding(
-                id="INJ-001", category="INJECTION", severity="HIGH",
-                pattern="rm -rf", location="line 10", evidence="sudo rm -rf /"
+                id="INJ-001",
+                category="INJECTION",
+                severity="HIGH",
+                pattern="rm -rf",
+                location="line 10",
+                evidence="sudo rm -rf /",
             ),
         ],
         summary={

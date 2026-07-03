@@ -544,9 +544,7 @@ class TestFreshnessFinding:
         assert f.description == "test"
 
     def test_finding_frozen(self):
-        f = FreshnessFinding(
-            line_number=1, pattern_type="test", severity="low", description="d"
-        )
+        f = FreshnessFinding(line_number=1, pattern_type="test", severity="low", description="d")
         with pytest.raises(AttributeError):
             f.line_number = 2
 
@@ -556,7 +554,7 @@ class TestFreshnessFinding:
 
 class TestDetectDeprecatedApi:
     def test_deprecated_decorator(self):
-        content = 'line1\n@deprecated\ndef old_func():\n    pass'
+        content = "line1\n@deprecated\ndef old_func():\n    pass"
         findings = detect_deprecated_api(content)
         assert len(findings) == 1
         assert findings[0].line_number == 2
@@ -586,7 +584,7 @@ class TestDetectDeprecatedApi:
 
     def test_deprecated_in_comment_not_detected(self):
         """The word 'deprecated' in a regular comment shouldn't trigger the decorator pattern."""
-        content = '# This old deprecated function\nfunc():\n    pass'
+        content = "# This old deprecated function\nfunc():\n    pass"
         findings = detect_deprecated_api(content)
         assert findings == []
 
@@ -773,8 +771,7 @@ class TestDetectCatchAllExcept:
 
     def test_multiple_except_blocks(self):
         content = (
-            "try:\n    foo()\nexcept:\n    pass\n\n"
-            "try:\n    bar()\nexcept Exception:\n    x = 1"
+            "try:\n    foo()\nexcept:\n    pass\n\ntry:\n    bar()\nexcept Exception:\n    x = 1"
         )
         findings = detect_catch_all_except(content)
         assert len(findings) == 2
@@ -837,9 +834,9 @@ class TestDetectHardcodedCredentials:
 class TestDetectFreshnessPatterns:
     def test_returns_all_findings(self):
         content = (
-            '@deprecated\ndef old():\n    pass\n'
-            'list = [1, 2, 3]\n'
-            'try:\n    pass\nexcept:\n    pass\n'
+            "@deprecated\ndef old():\n    pass\n"
+            "list = [1, 2, 3]\n"
+            "try:\n    pass\nexcept:\n    pass\n"
             'key = "sk-abc123"'
         )
         findings = detect_freshness_patterns(content)

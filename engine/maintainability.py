@@ -303,17 +303,80 @@ def _has_section(content: str, pattern: str) -> bool:
 
 # ─── Freshness Pattern Detectors ──────────────────────────────────────────
 
-SHADOWED_BUILTINS = frozenset({
-    "list", "dict", "set", "str", "int", "float", "bool", "tuple", "frozenset",
-    "complex", "bytes", "bytearray", "id", "input", "format", "map", "filter",
-    "range", "hash", "len", "object", "type", "print", "exec", "eval", "compile",
-    "open", "iter", "next", "super", "property", "classmethod", "staticmethod",
-    "repr", "ascii", "bin", "hex", "oct", "ord", "chr", "abs", "round", "min",
-    "max", "sum", "any", "all", "zip", "sorted", "reversed", "enumerate", "isinstance",
-    "issubclass", "callable", "vars", "locals", "globals", "dir", "getattr",
-    "setattr", "hasattr", "delattr", "breakpoint", "copyright", "credits",
-    "exit", "help", "license", "quit", "__import__",
-})
+SHADOWED_BUILTINS = frozenset(
+    {
+        "list",
+        "dict",
+        "set",
+        "str",
+        "int",
+        "float",
+        "bool",
+        "tuple",
+        "frozenset",
+        "complex",
+        "bytes",
+        "bytearray",
+        "id",
+        "input",
+        "format",
+        "map",
+        "filter",
+        "range",
+        "hash",
+        "len",
+        "object",
+        "type",
+        "print",
+        "exec",
+        "eval",
+        "compile",
+        "open",
+        "iter",
+        "next",
+        "super",
+        "property",
+        "classmethod",
+        "staticmethod",
+        "repr",
+        "ascii",
+        "bin",
+        "hex",
+        "oct",
+        "ord",
+        "chr",
+        "abs",
+        "round",
+        "min",
+        "max",
+        "sum",
+        "any",
+        "all",
+        "zip",
+        "sorted",
+        "reversed",
+        "enumerate",
+        "isinstance",
+        "issubclass",
+        "callable",
+        "vars",
+        "locals",
+        "globals",
+        "dir",
+        "getattr",
+        "setattr",
+        "hasattr",
+        "delattr",
+        "breakpoint",
+        "copyright",
+        "credits",
+        "exit",
+        "help",
+        "license",
+        "quit",
+        "__import__",
+    }
+)
 
 _DEPRECATED_DECORATOR = re.compile(r"^\s*@deprecated\b", re.MULTILINE | re.IGNORECASE)
 _STALE_TODO = re.compile(r"\b(TODO|FIXME|HACK|XXX|TBD)\b", re.IGNORECASE)
@@ -336,25 +399,23 @@ def detect_deprecated_api(content: str) -> list[FreshnessFinding]:
     findings = []
     for i, line in enumerate(content.split("\n"), 1):
         if _DEPRECATED_DECORATOR.match(line):
-            findings.append(FreshnessFinding(
-                line_number=i,
-                pattern_type="deprecated_api",
-                severity="high",
-                description="Deprecated API usage detected",
-            ))
+            findings.append(
+                FreshnessFinding(
+                    line_number=i,
+                    pattern_type="deprecated_api",
+                    severity="high",
+                    description="Deprecated API usage detected",
+                )
+            )
     return findings
 
 
-def detect_stale_todo(
-    content: str, file_path: str | None = None
-) -> list[FreshnessFinding]:
+def detect_stale_todo(content: str, file_path: str | None = None) -> list[FreshnessFinding]:
     """Detect TODO/FIXME/HACK comments older than 90 days via git blame."""
     if not content:
         return []
     lines = content.split("\n")
-    todo_lines = [
-        (i + 1, line) for i, line in enumerate(lines) if _STALE_TODO.search(line)
-    ]
+    todo_lines = [(i + 1, line) for i, line in enumerate(lines) if _STALE_TODO.search(line)]
     if not todo_lines:
         return []
 
@@ -363,42 +424,50 @@ def detect_stale_todo(
         for ln, line in todo_lines:
             m = _STALE_TODO.search(line)
             if m:
-                findings.append(FreshnessFinding(
-                    line_number=ln,
-                    pattern_type="stale_todo",
-                    severity="low",
-                    description=f"Stale {m.group(1)} comment (no git info)",
-                ))
+                findings.append(
+                    FreshnessFinding(
+                        line_number=ln,
+                        pattern_type="stale_todo",
+                        severity="low",
+                        description=f"Stale {m.group(1)} comment (no git info)",
+                    )
+                )
         return findings
 
     try:
         result = subprocess.run(
             ["git", "blame", "--porcelain", file_path],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode != 0:
             findings = []
             for ln, line in todo_lines:
                 m = _STALE_TODO.search(line)
                 if m:
-                    findings.append(FreshnessFinding(
-                        line_number=ln,
-                        pattern_type="stale_todo",
-                        severity="low",
-                        description=f"Stale {m.group(1)} comment (git blame failed)",
-                    ))
+                    findings.append(
+                        FreshnessFinding(
+                            line_number=ln,
+                            pattern_type="stale_todo",
+                            severity="low",
+                            description=f"Stale {m.group(1)} comment (git blame failed)",
+                        )
+                    )
             return findings
     except (subprocess.SubprocessError, OSError):
         findings = []
         for ln, line in todo_lines:
             m = _STALE_TODO.search(line)
             if m:
-                findings.append(FreshnessFinding(
-                    line_number=ln,
-                    pattern_type="stale_todo",
-                    severity="low",
-                    description=f"Stale {m.group(1)} comment (git unavailable)",
-                ))
+                findings.append(
+                    FreshnessFinding(
+                        line_number=ln,
+                        pattern_type="stale_todo",
+                        severity="low",
+                        description=f"Stale {m.group(1)} comment (git unavailable)",
+                    )
+                )
         return findings
 
     now = time.time()
@@ -434,15 +503,15 @@ def detect_stale_todo(
             continue
         author_time = line_dates.get(ln)
         if author_time is None or author_time < cutoff:
-            days = (
-                int((now - author_time) / 86400) if author_time else "unknown"
+            days = int((now - author_time) / 86400) if author_time else "unknown"
+            findings.append(
+                FreshnessFinding(
+                    line_number=ln,
+                    pattern_type="stale_todo",
+                    severity="low",
+                    description=f"Stale {m.group(1)} comment ({days} days old)",
+                )
             )
-            findings.append(FreshnessFinding(
-                line_number=ln,
-                pattern_type="stale_todo",
-                severity="low",
-                description=f"Stale {m.group(1)} comment ({days} days old)",
-            ))
     return findings
 
 
@@ -458,12 +527,14 @@ def detect_shadowed_builtins(content: str) -> list[FreshnessFinding]:
 
         m = _IMPORT_SHADOW.match(line)
         if m and m.group(1) in SHADOWED_BUILTINS:
-            findings.append(FreshnessFinding(
-                line_number=i,
-                pattern_type="shadowed_builtin",
-                severity="high",
-                description=f"Import shadows builtin '{m.group(1)}'",
-            ))
+            findings.append(
+                FreshnessFinding(
+                    line_number=i,
+                    pattern_type="shadowed_builtin",
+                    severity="high",
+                    description=f"Import shadows builtin '{m.group(1)}'",
+                )
+            )
             continue
 
         m = _FROM_IMPORT_SHADOW.match(line)
@@ -471,12 +542,14 @@ def detect_shadowed_builtins(content: str) -> list[FreshnessFinding]:
             imports_str = m.group(1)
             alias_m = _ALIAS_SHADOW.search(imports_str)
             if alias_m and alias_m.group(1) in SHADOWED_BUILTINS:
-                findings.append(FreshnessFinding(
-                    line_number=i,
-                    pattern_type="shadowed_builtin",
-                    severity="high",
-                    description=f"Import alias shadows builtin '{alias_m.group(1)}'",
-                ))
+                findings.append(
+                    FreshnessFinding(
+                        line_number=i,
+                        pattern_type="shadowed_builtin",
+                        severity="high",
+                        description=f"Import alias shadows builtin '{alias_m.group(1)}'",
+                    )
+                )
                 continue
             for name in imports_str.split(","):
                 name = name.strip()
@@ -486,23 +559,27 @@ def detect_shadowed_builtins(content: str) -> list[FreshnessFinding]:
                 else:
                     check = name.split()[0] if name.split() else name
                 if check in SHADOWED_BUILTINS:
-                    findings.append(FreshnessFinding(
-                        line_number=i,
-                        pattern_type="shadowed_builtin",
-                        severity="high",
-                        description=f"Import shadows builtin '{check}'",
-                    ))
+                    findings.append(
+                        FreshnessFinding(
+                            line_number=i,
+                            pattern_type="shadowed_builtin",
+                            severity="high",
+                            description=f"Import shadows builtin '{check}'",
+                        )
+                    )
                     break
             continue
 
         m = _ASSIGNMENT_SHADOW.match(line)
         if m and m.group(1) in SHADOWED_BUILTINS:
-            findings.append(FreshnessFinding(
-                line_number=i,
-                pattern_type="shadowed_builtin",
-                severity="medium",
-                description=f"Variable shadows builtin '{m.group(1)}'",
-            ))
+            findings.append(
+                FreshnessFinding(
+                    line_number=i,
+                    pattern_type="shadowed_builtin",
+                    severity="medium",
+                    description=f"Variable shadows builtin '{m.group(1)}'",
+                )
+            )
     return findings
 
 
@@ -537,16 +614,18 @@ def detect_catch_all_except(content: str) -> list[FreshnessFinding]:
                     break
                 j += 1
             if not has_handling:
-                findings.append(FreshnessFinding(
-                    line_number=except_line,
-                    pattern_type="catch_all_except",
-                    severity="high" if is_bare else "medium",
-                    description=(
-                        "Bare except without re-raise or logging"
-                        if is_bare
-                        else "catch-all except Exception without re-raise or logging"
-                    ),
-                ))
+                findings.append(
+                    FreshnessFinding(
+                        line_number=except_line,
+                        pattern_type="catch_all_except",
+                        severity="high" if is_bare else "medium",
+                        description=(
+                            "Bare except without re-raise or logging"
+                            if is_bare
+                            else "catch-all except Exception without re-raise or logging"
+                        ),
+                    )
+                )
             i = j
         else:
             i += 1
@@ -566,12 +645,14 @@ def detect_hardcoded_credentials(
             continue
         for pattern in _CREDENTIAL_PATTERNS:
             if pattern.search(line):
-                findings.append(FreshnessFinding(
-                    line_number=i,
-                    pattern_type="hardcoded_credential",
-                    severity="critical",
-                    description="Potential hardcoded credential detected",
-                ))
+                findings.append(
+                    FreshnessFinding(
+                        line_number=i,
+                        pattern_type="hardcoded_credential",
+                        severity="critical",
+                        description="Potential hardcoded credential detected",
+                    )
+                )
                 break
     return findings
 

@@ -7,7 +7,6 @@ Verifies that the refactored package structure maintains backward compatibility:
 """
 
 
-
 class TestFacadeReExports:
     """Verify engine.reporter facade re-exports work correctly."""
 

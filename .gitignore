@@ -42,3 +42,6 @@ Thumbs.db
 .sprint-state/
 MagicMock/
 build/
+.venv/
+.archlint-cache/
+.rustest_cache/

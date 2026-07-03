@@ -60,7 +60,7 @@ def _detect_circularity_risk(
         ]
     conflicts = []
     for i, (name_a, fam_a) in enumerate(families.items()):
-        for name_b, fam_b in list(families.items())[i + 1:]:
+        for name_b, fam_b in list(families.items())[i + 1 :]:
             if fam_a == fam_b and fam_a != "unknown":
                 conflicts.append(f"Models '{name_a}' and '{name_b}' share family '{fam_a}'")
     return "medium" if conflicts else "low", conflicts
@@ -124,9 +124,7 @@ class EvalRunner:
             self.circularity_risk = risk
             self.circularity_warnings = warnings
             if risk in ("high", "medium"):
-                logger.warning(
-                    "Circularity risk (%s): %s", risk, "; ".join(warnings)
-                )
+                logger.warning("Circularity risk (%s): %s", risk, "; ".join(warnings))
 
     def _wait_rate_limit(self):
         with self._rate_lock:
@@ -438,7 +436,8 @@ class EvalRunner:
         if not self.scanner:
             return {"scanned": False}
         report = self.scanner.scan(
-            output, deep_security=self.deep_security,
+            output,
+            deep_security=self.deep_security,
         )
         return {
             "scanned": True,

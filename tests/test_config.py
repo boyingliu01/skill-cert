@@ -227,6 +227,7 @@ def test_provider_model_in_file_config_from_file():
             assert config.models[0].fallback_model == "fallback-model"
     finally:
         import shutil
+
         shutil.rmtree(str(config_dir.parent), ignore_errors=True)
 
 
@@ -246,6 +247,7 @@ def test_config_from_file_with_valid_yaml():
             assert config.models[0].model_name == "test-model"
     finally:
         import shutil
+
         shutil.rmtree(str(config_dir.parent), ignore_errors=True)
 
 

@@ -51,7 +51,7 @@ def run_dialogue_mode(args, config) -> int:
     runner = EvalRunner(
         max_concurrency=config.max_concurrency, rate_limit_rpm=config.rate_limit_rpm
     )
-    evaluator = DialogueEvaluator(judge_callback=primary_adapter)
+    evaluator = DialogueEvaluator(judge_callback=primary_adapter.chat)  # type: ignore[arg-type]
     simulator = UserSimulator()
 
     dialogue_runner = DialogueRunner(

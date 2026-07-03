@@ -25,19 +25,29 @@ class TestTestgenRoutesNaturalLanguageToLlmJudge:
         }
         evals = {
             "eval_cases": [
-                {"id": 1, "name": "test1", "category": "normal",
-                 "assertions": [{"type": "contains", "value": "review"}],
-                 "assertion_strategy": "deterministic"},
-                {"id": 2, "name": "test2", "category": "workflow_step",
-                 "assertions": [{"type": "contains", "value": "diff"}],
-                 "assertion_strategy": "deterministic"},
+                {
+                    "id": 1,
+                    "name": "test1",
+                    "category": "normal",
+                    "assertions": [{"type": "contains", "value": "review"}],
+                    "assertion_strategy": "deterministic",
+                },
+                {
+                    "id": 2,
+                    "name": "test2",
+                    "category": "workflow_step",
+                    "assertions": [{"type": "contains", "value": "diff"}],
+                    "assertion_strategy": "deterministic",
+                },
             ]
         }
         result = gen._apply_classifier_routing(evals, skill_spec)
         for case in result["eval_cases"]:
             assert case["assertion_strategy"] == "llm_judge"
             assert case["judge_dimensions"] == [
-                "output_quality", "trigger_accuracy", "workflow_quality"
+                "output_quality",
+                "trigger_accuracy",
+                "workflow_quality",
             ]
 
 
@@ -57,9 +67,13 @@ class TestTestgenStructuredUnchanged:
         }
         evals = {
             "eval_cases": [
-                {"id": 1, "name": "test1", "category": "normal",
-                 "assertions": [{"type": "json_valid", "value": "{}"}],
-                 "assertion_strategy": "deterministic"},
+                {
+                    "id": 1,
+                    "name": "test1",
+                    "category": "normal",
+                    "assertions": [{"type": "json_valid", "value": "{}"}],
+                    "assertion_strategy": "deterministic",
+                },
             ]
         }
         result = gen._apply_classifier_routing(evals, skill_spec)

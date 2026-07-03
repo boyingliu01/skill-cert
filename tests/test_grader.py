@@ -490,7 +490,12 @@ def test_debias_position_disagreement():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -508,7 +513,12 @@ def test_debias_position_swap_call_fails():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -529,7 +539,12 @@ def test_debias_position_swap_parsing_code_block():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -548,7 +563,12 @@ def test_debias_position_swap_double_encoded():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -568,7 +588,12 @@ def test_debias_position_swap_response_is_string():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     result = grader._debias_position(eval_case, "output", [], first)
@@ -584,7 +609,12 @@ def test_debias_position_swap_non_dict_response():
     grader = Grader(llm_client=mock_llm)
 
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     first = JudgeResult(passed=True, confidence=0.7, reasoning="first run", judge_model="llm")
     # Should fall back to first result when parsing fails
@@ -651,7 +681,12 @@ def test_llm_judge_invalid_failure_reasons_type():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._llm_judge(eval_case, "output", [])
     assert result.failure_reasons == []
@@ -666,7 +701,12 @@ def test_llm_judge_with_call_triggers_debias():
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     assertion_results = []
     result = grader._llm_judge_with_call(eval_case, "output", assertion_results)
@@ -762,7 +802,12 @@ def test_execute_llm_judge_double_encoded_main_response():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._execute_llm_judge(eval_case, "output", [])
     assert result.passed is True
@@ -776,7 +821,12 @@ def test_execute_llm_judge_non_dict_response():
     mock_llm.chat.return_value = '["not", "a", "dict"]'
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     with pytest.raises(ValueError, match="Expected dict from judge response"):
         grader._execute_llm_judge(eval_case, "output", [])
@@ -893,7 +943,12 @@ def test_execute_llm_judge_clamps_confidence_above_1():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._execute_llm_judge(eval_case, "output", [])
     assert result.confidence == 1.0
@@ -908,7 +963,12 @@ def test_execute_llm_judge_clamps_confidence_below_0():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._execute_llm_judge(eval_case, "output", [])
     assert result.confidence == 0.0
@@ -923,7 +983,12 @@ def test_execute_llm_judge_clamps_confidence_string_value():
     )
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._execute_llm_judge(eval_case, "output", [])
     assert result.confidence == 1.0
@@ -1122,7 +1187,12 @@ def test_llm_judge_with_call_runs_debias_by_default_high_confidence():
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._llm_judge_with_call(eval_case, "output", [])
     # Should have made 2 LLM calls (original + swap)
@@ -1138,7 +1208,12 @@ def test_llm_judge_with_call_skips_debias_when_disabled():
     )
     grader = Grader(llm_client=mock_llm, debias_position=False)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._llm_judge_with_call(eval_case, "output", [])
     # Should have made only 1 LLM call (no swap)
@@ -1156,7 +1231,12 @@ def test_llm_judge_with_call_disagreement_reduces_confidence_30_percent():
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._llm_judge_with_call(eval_case, "output", [])
     assert result.position_sensitive is True
@@ -1175,7 +1255,12 @@ def test_llm_judge_with_call_debias_agreement_high_confidence():
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e", assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._llm_judge_with_call(eval_case, "output", [])
     assert result.debias_runs == 2
@@ -1200,7 +1285,9 @@ class TestEvalCaseWithoutSkillAssertions:
     def test_eval_case_without_skill_assertions_explicit(self):
         """EvalCase accepts explicit without_skill_assertions."""
         ws_assertions = [
-            EvalAssertion(name="no-struct", type="not_contains", value="L1 Trigger Accuracy", weight=3),
+            EvalAssertion(
+                name="no-struct", type="not_contains", value="L1 Trigger Accuracy", weight=3
+            ),
         ]
         case = EvalCase(
             id=1,
@@ -1247,7 +1334,9 @@ class TestGraderModeAssertionSelection:
             name="test",
             category="normal",
             prompt="prompt",
-            assertions=[EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1)],
+            assertions=[
+                EvalAssertion(name="contains_hello", type="contains", value="hello", weight=1)
+            ],
         )
         result = grader.grade_output(case, "hello world", mode="without_skill")
         assert result["pass_rate"] == 1.0
@@ -1261,7 +1350,9 @@ class TestGraderModeAssertionSelection:
             name="test",
             category="normal",
             prompt="prompt",
-            assertions=[EvalAssertion(name="contains_skill", type="contains", value="skill", weight=1)],
+            assertions=[
+                EvalAssertion(name="contains_skill", type="contains", value="skill", weight=1)
+            ],
             without_skill_assertions=[
                 EvalAssertion(name="no-skill-term", type="not_contains", value="skill", weight=1)
             ],
@@ -1282,7 +1373,9 @@ class TestGraderModeAssertionSelection:
             prompt="prompt",
             assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)],
             without_skill_assertions=[
-                EvalAssertion(name="no-skill-term", type="not_contains", value="L1 Trigger Accuracy", weight=1)
+                EvalAssertion(
+                    name="no-skill-term", type="not_contains", value="L1 Trigger Accuracy", weight=1
+                )
             ],
         )
         result = grader.grade_output(case, "just a normal response", mode="without_skill")
@@ -1297,7 +1390,9 @@ class TestGraderModeAssertionSelection:
             name="test",
             category="normal",
             prompt="prompt",
-            assertions=[EvalAssertion(name="contains_skill", type="contains", value="skill", weight=1)],
+            assertions=[
+                EvalAssertion(name="contains_skill", type="contains", value="skill", weight=1)
+            ],
             without_skill_assertions=[
                 EvalAssertion(name="no-skill-term", type="not_contains", value="skill", weight=1)
             ],
@@ -1342,7 +1437,9 @@ class TestGraderModeAssertionSelection:
             name="test",
             category="trigger",
             prompt="prompt",
-            assertions=[EvalAssertion(name="no-struct", type="not_contains", value="verdict", weight=3)],
+            assertions=[
+                EvalAssertion(name="no-struct", type="not_contains", value="verdict", weight=3)
+            ],
             without_skill_assertions=[
                 EvalAssertion(name="no-struct-ws", type="not_contains", value="verdict", weight=3)
             ],
@@ -1359,7 +1456,9 @@ class TestGraderModeAssertionSelection:
             name="test",
             category="trigger",
             prompt="prompt",
-            assertions=[EvalAssertion(name="no-struct", type="not_contains", value="verdict", weight=3)],
+            assertions=[
+                EvalAssertion(name="no-struct", type="not_contains", value="verdict", weight=3)
+            ],
             without_skill_assertions=[
                 EvalAssertion(name="no-struct-ws", type="not_contains", value="verdict", weight=3)
             ],
@@ -1438,8 +1537,12 @@ def test_llm_judge_with_call_handles_malformed_json_with_trailing_comma():
     mock_llm.chat.return_value = malformed_json
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e",
-        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     result = grader._execute_llm_judge(eval_case, "output", [])
     assert result.passed is True
@@ -1452,8 +1555,12 @@ def test_llm_judge_with_call_confidence_out_of_range_clamped_not_fallback():
     mock_llm = MagicMock()
     # First call succeeds with confidence=1.5 (triggers ValidationError in JudgeResult construction)
     mock_llm.chat.side_effect = [
-        json.dumps({"passed": True, "confidence": 1.5, "reasoning": "overconfident", "failure_reasons": []}),
-        json.dumps({"passed": True, "confidence": 0.9, "reasoning": "swap ok", "failure_reasons": []}),
+        json.dumps(
+            {"passed": True, "confidence": 1.5, "reasoning": "overconfident", "failure_reasons": []}
+        ),
+        json.dumps(
+            {"passed": True, "confidence": 0.9, "reasoning": "swap ok", "failure_reasons": []}
+        ),
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
@@ -1482,8 +1589,12 @@ def test_llm_judge_with_call_negative_confidence_clamped():
     """_llm_judge_with_call: confidence=-0.1 clamped to 0.0 via ValidationError handler."""
     mock_llm = MagicMock()
     mock_llm.chat.side_effect = [
-        json.dumps({"passed": False, "confidence": -0.1, "reasoning": "bad", "failure_reasons": []}),
-        json.dumps({"passed": False, "confidence": 0.4, "reasoning": "swap bad", "failure_reasons": []}),
+        json.dumps(
+            {"passed": False, "confidence": -0.1, "reasoning": "bad", "failure_reasons": []}
+        ),
+        json.dumps(
+            {"passed": False, "confidence": 0.4, "reasoning": "swap bad", "failure_reasons": []}
+        ),
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
@@ -1515,7 +1626,9 @@ def test_llm_judge_with_call_json_prose_wrapped_recovers():
         "Sure! Here is my evaluation:\n"
         '{"passed": true, "confidence": 0.88, "reasoning": "looks good", "failure_reasons": []}\n'
         "Let me know if you need more detail.",
-        json.dumps({"passed": True, "confidence": 0.87, "reasoning": "swap", "failure_reasons": []}),
+        json.dumps(
+            {"passed": True, "confidence": 0.87, "reasoning": "swap", "failure_reasons": []}
+        ),
     ]
     grader = Grader(llm_client=mock_llm)
     eval_case = EvalCase(
@@ -1529,7 +1642,9 @@ def test_llm_judge_with_call_json_prose_wrapped_recovers():
     assertion_results = [
         AssertionResult(
             assertion=EvalAssertion(name="x", type="contains", value="x", weight=1),
-            passed=True, confidence=1.0, reason="found",
+            passed=True,
+            confidence=1.0,
+            reason="found",
         ),
     ]
     result = grader._llm_judge_with_call(eval_case, "output", assertion_results)
@@ -1556,13 +1671,19 @@ def test_llm_judge_with_call_no_debias_no_llm_client_skips_debias():
     )
     grader = Grader(llm_client=mock_llm, debias_position=True)
     eval_case = EvalCase(
-        id=1, name="t", category="normal", prompt="p", expected_output="e",
-        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)]
+        id=1,
+        name="t",
+        category="normal",
+        prompt="p",
+        expected_output="e",
+        assertions=[EvalAssertion(name="d", type="contains", value=".", weight=1)],
     )
     # First call: execute_llm_judge → success. Then debias: second call.
     # Override llm_client.chat side_effect for two calls
     mock_llm.chat.side_effect = [
-        json.dumps({"passed": True, "confidence": 0.95, "reasoning": "good", "failure_reasons": []}),
+        json.dumps(
+            {"passed": True, "confidence": 0.95, "reasoning": "good", "failure_reasons": []}
+        ),
         json.dumps({"passed": True, "confidence": 0.9, "reasoning": "swap", "failure_reasons": []}),
     ]
     result = grader._llm_judge_with_call(eval_case, "output", [])
@@ -1574,6 +1695,7 @@ def test_llm_judge_with_call_no_debias_no_llm_client_skips_debias():
 # REQ-1: EvalCase assertion_strategy model extension tests
 # ============================================================
 
+
 class TestEvalCaseStrategy:
     """Tests for EvalCase.assertion_strategy field."""
 
@@ -1584,9 +1706,7 @@ class TestEvalCaseStrategy:
             name="test",
             category="trigger",
             prompt="...",
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="x", weight=1)
-            ],
+            assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)],
         )
         assert ec.assertion_strategy == "deterministic"
 
@@ -1598,9 +1718,7 @@ class TestEvalCaseStrategy:
                 name="test",
                 category="trigger",
                 prompt="...",
-                assertions=[
-                    EvalAssertion(name="a", type="contains", value="x", weight=1)
-                ],
+                assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)],
                 assertion_strategy=strategy,
             )
             assert ec.assertion_strategy == strategy
@@ -1612,9 +1730,7 @@ class TestEvalCaseStrategy:
             name="test",
             category="trigger",
             prompt="...",
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="x", weight=1)
-            ],
+            assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)],
         )
         assert ec.judge_dimensions is None
 
@@ -1626,9 +1742,7 @@ class TestEvalCaseStrategy:
             name="test",
             category="workflow_step",
             prompt="...",
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="x", weight=1)
-            ],
+            assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)],
             assertion_strategy="llm_judge",
             judge_dimensions=dims,
         )
@@ -1641,9 +1755,7 @@ class TestEvalCaseStrategy:
             "name": "old eval",
             "category": "normal",
             "prompt": "...",
-            "assertions": [
-                {"name": "a1", "type": "contains", "value": "hello", "weight": 2}
-            ],
+            "assertions": [{"name": "a1", "type": "contains", "value": "hello", "weight": 2}],
         }
         ec = EvalCase(**old_data)
         assert ec.assertion_strategy == "deterministic"
@@ -1658,9 +1770,7 @@ class TestEvalCaseStrategy:
             name="test",
             category="trigger",
             prompt="...",
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="x", weight=1)
-            ],
+            assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)],
             assertion_strategy="llm_judge",
         )
         data = ec.model_dump()
@@ -1670,15 +1780,14 @@ class TestEvalCaseStrategy:
     def test_unknown_strategy_rejected(self):
         """assertion_strategy with unknown value should trigger validation error."""
         import pytest as pt
+
         with pt.raises(ValueError):
             EvalCase(
                 id=1,
                 name="test",
                 category="trigger",
                 prompt="...",
-                assertions=[
-                    EvalAssertion(name="a", type="contains", value="x", weight=1)
-                ],
+                assertions=[EvalAssertion(name="a", type="contains", value="x", weight=1)],
                 assertion_strategy="invalid_strategy",
             )
 
@@ -1687,15 +1796,17 @@ class TestEvalCaseStrategy:
 # REQ-3: Grader routing flip tests
 # ============================================================
 
+
 class TestGradeOutputStrategyRouting:
     def test_deterministic_strategy_uses_assertions_only(self):
         grader = Grader()
         ec = EvalCase(
-            id=1, name="det", category="trigger", prompt="x",
+            id=1,
+            name="det",
+            category="trigger",
+            prompt="x",
             assertion_strategy="deterministic",
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="hello", weight=2)
-            ],
+            assertions=[EvalAssertion(name="a", type="contains", value="hello", weight=2)],
         )
         result = grader.grade_output(ec, "hello world")
         assert result["total_weighted_score"] == 2
@@ -1704,18 +1815,23 @@ class TestGradeOutputStrategyRouting:
 
     def test_llm_judge_strategy_calls_llm(self):
         mock_llm = MagicMock()
-        mock_llm.chat.return_value = json.dumps({
-            "passed": True, "confidence": 0.9, "reasoning": "good",
-            "failure_reasons": [],
-        })
+        mock_llm.chat.return_value = json.dumps(
+            {
+                "passed": True,
+                "confidence": 0.9,
+                "reasoning": "good",
+                "failure_reasons": [],
+            }
+        )
         grader = Grader(llm_client=mock_llm)
         ec = EvalCase(
-            id=1, name="llm", category="workflow_step", prompt="x",
+            id=1,
+            name="llm",
+            category="workflow_step",
+            prompt="x",
             assertion_strategy="llm_judge",
             judge_dimensions=["trigger_accuracy", "output_quality"],
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="hello", weight=1)
-            ],
+            assertions=[EvalAssertion(name="a", type="contains", value="hello", weight=1)],
         )
         result = grader.grade_output(ec, "hello world")
         assert result.get("judge_result") is not None
@@ -1724,11 +1840,12 @@ class TestGradeOutputStrategyRouting:
     def test_llm_judge_strategy_no_llm_client_falls_back(self):
         grader = Grader(llm_client=None)
         ec = EvalCase(
-            id=1, name="llm_no_client", category="workflow_step", prompt="x",
+            id=1,
+            name="llm_no_client",
+            category="workflow_step",
+            prompt="x",
             assertion_strategy="llm_judge",
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="hello", weight=1)
-            ],
+            assertions=[EvalAssertion(name="a", type="contains", value="hello", weight=1)],
         )
         result = grader.grade_output(ec, "hello world")
         assert result is not None
@@ -1736,17 +1853,22 @@ class TestGradeOutputStrategyRouting:
 
     def test_mixed_strategy_deterministic_then_llm(self):
         mock_llm = MagicMock()
-        mock_llm.chat.return_value = json.dumps({
-            "passed": True, "confidence": 0.85, "reasoning": "ok",
-            "failure_reasons": [],
-        })
+        mock_llm.chat.return_value = json.dumps(
+            {
+                "passed": True,
+                "confidence": 0.85,
+                "reasoning": "ok",
+                "failure_reasons": [],
+            }
+        )
         grader = Grader(llm_client=mock_llm)
         ec = EvalCase(
-            id=1, name="mixed", category="anti_pattern", prompt="x",
+            id=1,
+            name="mixed",
+            category="anti_pattern",
+            prompt="x",
             assertion_strategy="mixed",
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="hello", weight=1)
-            ],
+            assertions=[EvalAssertion(name="a", type="contains", value="hello", weight=1)],
         )
         result = grader.grade_output(ec, "hello world")
         assert result["pass_rate"] == 1.0
@@ -1755,10 +1877,11 @@ class TestGradeOutputStrategyRouting:
     def test_missing_strategy_defaults_to_deterministic(self):
         grader = Grader()
         ec = EvalCase(
-            id=1, name="no_strat", category="normal", prompt="x",
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="hello", weight=1)
-            ],
+            id=1,
+            name="no_strat",
+            category="normal",
+            prompt="x",
+            assertions=[EvalAssertion(name="a", type="contains", value="hello", weight=1)],
         )
         result = grader.grade_output(ec, "hello world")
         assert result["pass_rate"] == 1.0
@@ -1766,12 +1889,13 @@ class TestGradeOutputStrategyRouting:
     def test_negative_case_with_mixed_strategy(self):
         grader = Grader()
         ec = EvalCase(
-            id=1, name="neg", category="anti_pattern", prompt="x",
+            id=1,
+            name="neg",
+            category="anti_pattern",
+            prompt="x",
             assertion_strategy="mixed",
             negative_case=True,
-            assertions=[
-                EvalAssertion(name="a", type="contains", value="delphi", weight=1)
-            ],
+            assertions=[EvalAssertion(name="a", type="contains", value="delphi", weight=1)],
         )
         result = grader.grade_output(ec, "just a normal response")
         assert result["negative_case"] is True

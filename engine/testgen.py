@@ -115,8 +115,7 @@ class EvalGenerator:
             ]
             for attempt in range(min(3, len(retry_hints))):
                 logger.warning(
-                    "Failed to parse JSON from model response, retrying "
-                    "(attempt %d/%d)",
+                    "Failed to parse JSON from model response, retrying (attempt %d/%d)",
                     attempt + 1,
                     3,
                 )
@@ -874,9 +873,8 @@ Minimum requirements:
         normalized["assertions"] = clean_asserts
 
         # Normalize without_skill_assertions with same structure as assertions
-        if (
-            "without_skill_assertions" in normalized
-            and isinstance(normalized["without_skill_assertions"], list)
+        if "without_skill_assertions" in normalized and isinstance(
+            normalized["without_skill_assertions"], list
         ):
             clean_ws_asserts = []
             for a in normalized["without_skill_assertions"]:
@@ -899,9 +897,7 @@ Minimum requirements:
         # minimal assertion to satisfy the model_validator on EvalCase.
         ws_asserts = normalized.get("without_skill_assertions", [])
         if not normalized["assertions"] and not ws_asserts:
-            normalized["assertions"] = [
-                {"type": "contains", "value": "skill", "weight": 1}
-            ]
+            normalized["assertions"] = [{"type": "contains", "value": "skill", "weight": 1}]
 
         # Normalize negative_case from ALL plausible LLM variants
         # String-to-bool coercion before isinstance check
@@ -1129,9 +1125,15 @@ Minimum requirements:
         return eval_cases
 
     # Keyword-only assertion values to penalize (case-insensitive)
-    _KEYWORD_BLACKLIST: frozenset[str] = frozenset({
-        "skill", "SKILL", "SKILL.md", "skill.md", "skill_cert",
-    })
+    _KEYWORD_BLACKLIST: frozenset[str] = frozenset(
+        {
+            "skill",
+            "SKILL",
+            "SKILL.md",
+            "skill.md",
+            "skill_cert",
+        }
+    )
 
     def _calculate_coverage(self, evals: dict[str, Any], skill_spec: dict[str, Any]) -> float:
         eval_cases = self._get_eval_cases(evals)
@@ -1145,8 +1147,7 @@ Minimum requirements:
         }
         # Filter out keyword-only assertions from coverage scoring
         filtered_assertions = {
-            a for a in assertion_set
-            if a.strip().lower() not in self._KEYWORD_BLACKLIST
+            a for a in assertion_set if a.strip().lower() not in self._KEYWORD_BLACKLIST
         }
         # Count unique assertion types per eval case as a gentle quality signal.
         # Baseline 0.75 for single-type cases, ramps to 1.0 at 2+ types per case.

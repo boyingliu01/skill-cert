@@ -153,8 +153,8 @@ def _run_eval_for_model(
             if not r.get("error"):
                 grade_futures.append(
                     grade_executor.submit(
-        _grade_single_result, case_map, grader, r, "without_skill"
-    )
+                        _grade_single_result, case_map, grader, r, "without_skill"
+                    )
                 )
 
     graded = [f.result() for f in grade_futures if f.result() is not None]
@@ -525,9 +525,7 @@ def _read_evals_cache(
     current_hash = _compute_skill_content_hash(skill_content)
     cached_hash = cache_data.get("skill_content_hash", "")
     if cached_hash != current_hash:
-        logger.warning(
-            "Evals cache skill content hash mismatch — invalidating"
-        )
+        logger.warning("Evals cache skill content hash mismatch — invalidating")
         evals_cache.unlink(missing_ok=True)
         return None
 
@@ -550,9 +548,7 @@ def _export_traces(args, output_dir: Path, skill_name: str, all_traces: list) ->
     return traces_path
 
 
-def _append_to_ci_history(
-    args, spec_path: str, metrics: dict[str, Any]
-) -> None:
+def _append_to_ci_history(args, spec_path: str, metrics: dict[str, Any]) -> None:
     """Append current run metrics to CI history file."""
     ci_history_enabled = getattr(args, "ci_history", True)
     if not ci_history_enabled:

@@ -320,9 +320,7 @@ For detailed results, see the JSON output.
         coverage_data = prepare_coverage_data(metrics, config)
         config_info = prepare_config_info(config)
         benchmark_info = prepare_benchmark_info(metrics, config)
-        summary = create_summary(
-            verdict, overall_score, l1_score, l2_score, l3_score, l4_score
-        )
+        summary = create_summary(verdict, overall_score, l1_score, l2_score, l3_score, l4_score)
 
         cost_analysis = metrics.get("l7_cost_efficiency")
         latency_analysis = metrics.get("l8_latency", {})
@@ -401,9 +399,7 @@ For detailed results, see the JSON output.
         """Prepare evaluation coverage data from results or config fallback."""
         return prepare_coverage_data(metrics, config)
 
-    def _compute_assertion_breakdown(
-        self, results: list[dict]
-    ) -> dict[str, dict[str, int]]:
+    def _compute_assertion_breakdown(self, results: list[dict]) -> dict[str, dict[str, int]]:
         """Compute assertion breakdown by weight category from results."""
         from engine.reporters.builders import compute_assertion_breakdown
 
@@ -611,9 +607,7 @@ For detailed results, see the JSON output.
         """Build MetricsSection from metrics data."""
         return build_metrics_section(metrics, metrics_breakdown)
 
-    def _build_token_section(
-        self, token_analysis: dict[str, Any] | None
-    ) -> TokenAnalysisSection:
+    def _build_token_section(self, token_analysis: dict[str, Any] | None) -> TokenAnalysisSection:
         """Build TokenAnalysisSection from token data."""
         return build_token_section(token_analysis)
 
@@ -623,9 +617,7 @@ For detailed results, see the JSON output.
         """Build ObservabilitySection from observability data."""
         return build_observability_section(observability)
 
-    def _convert_suggestions(
-        self, suggestions: list[str]
-    ) -> list[ImprovementSuggestion]:
+    def _convert_suggestions(self, suggestions: list[str]) -> list[ImprovementSuggestion]:
         """Convert string suggestions to ImprovementSuggestion objects."""
         return convert_suggestions(suggestions)
 
@@ -639,9 +631,7 @@ For detailed results, see the JSON output.
         """Build blocking issues from drift analysis."""
         return build_blocking_issues(drift)
 
-    def _build_caveats(
-        self, metrics: dict[str, Any], drift: dict[str, Any] | None
-    ) -> list[str]:
+    def _build_caveats(self, metrics: dict[str, Any], drift: dict[str, Any] | None) -> list[str]:
         """Build caveats from metrics and drift."""
         return build_caveats(metrics, drift)
 

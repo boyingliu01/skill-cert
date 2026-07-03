@@ -106,9 +106,7 @@ class Grader:
             det_result = self._grade_deterministic(eval_case, model_output, assertions)
             if det_result["pass_rate"] >= 0.5 and self.llm_client:
                 det_results = [
-                    AssertionResult(
-                        assertion=a, passed=True, confidence=1.0, reason="pass"
-                    )
+                    AssertionResult(assertion=a, passed=True, confidence=1.0, reason="pass")
                     for a in assertions
                 ]
                 judge = self._llm_judge(eval_case, model_output, det_results)
@@ -128,8 +126,13 @@ class Grader:
         if eval_case.negative_case and pass_rate < 0.5 and self.llm_client:
             judge_result = self._llm_judge(eval_case, model_output, results)
         return self._build_grade_result(
-            eval_case, model_output, results,
-            total_weighted_score, total_possible_score, pass_rate, judge_result,
+            eval_case,
+            model_output,
+            results,
+            total_weighted_score,
+            total_possible_score,
+            pass_rate,
+            judge_result,
         )
 
     def _grade_llm_judge(
@@ -143,8 +146,13 @@ class Grader:
         if self.llm_client:
             judge_result = self._llm_judge(eval_case, model_output, results)
         return self._build_grade_result(
-            eval_case, model_output, results,
-            total_weighted_score, total_possible_score, pass_rate, judge_result,
+            eval_case,
+            model_output,
+            results,
+            total_weighted_score,
+            total_possible_score,
+            pass_rate,
+            judge_result,
         )
 
     def _evaluate_assertions(
@@ -509,8 +517,7 @@ class Grader:
         if template:
             workflow_steps = getattr(eval_case, "workflow_step", "") or ""
             prompt_text = (
-                template
-                .replace("{input}", str(expected_behavior))
+                template.replace("{input}", str(expected_behavior))
                 .replace("{output}", sanitized_output)
                 .replace("{workflow_steps}", workflow_steps)
             )
@@ -768,9 +775,7 @@ class Grader:
             except Exception as retry_err:
                 return self._llm_judge_error_fallback(assertion_results, retry_err)
 
-    def _execute_debias_swap(
-        self, expected_behavior: str, model_output: str
-    ) -> dict[str, Any]:
+    def _execute_debias_swap(self, expected_behavior: str, model_output: str) -> dict[str, Any]:
         swap_prompt = f"""# LLM-as-Judge (Swap Run)
 
 你是一个严格的评测裁判。评估以下输出是否满足行为要求。
@@ -801,9 +806,7 @@ class Grader:
         if isinstance(swap_data, str):
             swap_data = json.loads(swap_data)
         if not isinstance(swap_data, dict):
-            raise ValueError(
-                f"Expected dict from swap response, got {type(swap_data).__name__}"
-            )
+            raise ValueError(f"Expected dict from swap response, got {type(swap_data).__name__}")
         return {
             "passed": bool(swap_data.get("passed", False)),
             "confidence": self._clamp_confidence(float(swap_data.get("confidence", 0.5))),
