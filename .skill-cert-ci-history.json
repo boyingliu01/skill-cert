@@ -197,6 +197,17 @@
       "l5_step_efficiency": 1.0,
       "l6_trajectory_quality": null,
       "overall_score": 0.7045576345576345
+    },
+    {
+      "timestamp": "2026-07-02T12:24:53.055095+00:00",
+      "skill_path": "/home/boyingliu01/.config/opencode/xp-gate/skills/sprint-flow/SKILL.md",
+      "l1_trigger_accuracy": 0.4,
+      "l2_with_without_skill_delta": 0.2577777777777779,
+      "l3_step_adherence": 0.6055555555555555,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.5326666666666667
     }
   ]
 }
