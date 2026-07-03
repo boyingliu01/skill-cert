@@ -174,7 +174,16 @@ def test_provider_model_in_file_config():
     )
     assert cfg.model_name == "whalecloud-qwen3"
     assert cfg.provider_model == "LOCAL/Qwen3.5-122B-A10B"
-    """Test loading configuration from file."""
+
+
+def _config_file_setup():
+    """Common helper: return (unique_config_dir, models_yaml_path) for an isolated temporary config.
+
+    We use a unique-per-call temp dir so parallel --fast execution does not race on shared paths.
+    """
+    import shutil
+    from pathlib import Path as RealPath
+
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
         f.write("""
 max_concurrency: 7
@@ -187,90 +196,64 @@ models:
 """)
         temp_config_path = f.name
 
-    import shutil
-    from pathlib import Path as RealPath
-
-    config_dir = RealPath(tempfile.gettempdir()) / ".skill-cert"
-    config_dir.mkdir(exist_ok=True)
+    config_dir = RealPath(tempfile.mkdtemp()) / ".skill-cert"
+    config_dir.mkdir(exist_ok=True, parents=True)
     target_path = config_dir / "models.yaml"
-
     shutil.move(temp_config_path, target_path)
 
     original_expanduser = os.path.expanduser
 
     def mock_expanduser(path):
         if path == "~":
-            return tempfile.gettempdir()
+            return str(config_dir.parent)
         return original_expanduser(path)
 
-    with patch("os.path.expanduser", side_effect=mock_expanduser):
-        config = SkillCertConfig.load()
-
-        assert config.max_concurrency == 7
-        assert config.rate_limit_rpm == 80
-        assert len(config.models) == 1
-        assert config.models[0].model_name == "test-model"
-        assert config.models[0].base_url == "https://test.api.com"
-        assert config.models[0].api_key == "test-key"
-        assert config.models[0].fallback_model == "fallback-model"
-
-    os.remove(target_path)
+    return config_dir, target_path, mock_expanduser, original_expanduser
 
 
-def test_config_from_file_with_error():
-    """Test loading configuration from file with errors."""
-    import os
-    import shutil
-    import tempfile
-    from pathlib import Path as RealPath
+def test_provider_model_in_file_config_from_file():
+    """Load config from file with valid YAML — uses isolated temp dir for parallel safety."""
+    config_dir, target_path, mock_expanduser, original_expanduser = _config_file_setup()
+    try:
+        with patch("os.path.expanduser", side_effect=mock_expanduser):
+            config = SkillCertConfig.load()
 
-    # Create a temporary config file with invalid YAML
-    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
-        f.write("""
-max_concurrency: 7
-rate_limit_rpm: 80
-models:
-  - model_name: test-model
-    base_url: https://test.api.com
-    api_key: test-key
-    fallback_model: fallback-model
-""")  # Valid YAML
-        temp_config_path = f.name
+            assert config.max_concurrency == 7
+            assert config.rate_limit_rpm == 80
+            assert len(config.models) == 1
+            assert config.models[0].model_name == "test-model"
+            assert config.models[0].base_url == "https://test.api.com"
+            assert config.models[0].api_key == "test-key"
+            assert config.models[0].fallback_model == "fallback-model"
+    finally:
+        import shutil
+        shutil.rmtree(str(config_dir.parent), ignore_errors=True)
 
-    config_dir = RealPath(tempfile.gettempdir()) / ".skill-cert"
-    config_dir.mkdir(exist_ok=True)
-    target_path = config_dir / "models.yaml"
 
-    shutil.move(temp_config_path, target_path)
+def test_config_from_file_with_valid_yaml():
+    """Load config from file with valid YAML — isolated temp dir for parallel safety.
 
-    original_expanduser = os.path.expanduser
+    Formerly named 'test_config_from_file_with_error' (but the YAML *was* valid).
+    """
+    config_dir, target_path, mock_expanduser, original_expanduser = _config_file_setup()
+    try:
+        with patch("os.path.expanduser", side_effect=mock_expanduser):
+            config = SkillCertConfig.load()
 
-    def mock_expanduser(path):
-        if path == "~":
-            return tempfile.gettempdir()
-        return original_expanduser(path)
-
-    with patch("os.path.expanduser", side_effect=mock_expanduser):
-        config = SkillCertConfig.load()
-
-        assert config.max_concurrency == 7
-        assert config.rate_limit_rpm == 80
-        assert len(config.models) == 1
-        assert config.models[0].model_name == "test-model"
-
-    os.remove(target_path)
+            assert config.max_concurrency == 7
+            assert config.rate_limit_rpm == 80
+            assert len(config.models) == 1
+            assert config.models[0].model_name == "test-model"
+    finally:
+        import shutil
+        shutil.rmtree(str(config_dir.parent), ignore_errors=True)
 
 
 def test_config_from_file_with_malformed_yaml():
-    """Test loading configuration from malformed YAML file."""
-    import os
+    """Test loading configuration from malformed YAML file — isolated temp dir."""
     import shutil
-    import tempfile
-    from pathlib import Path as RealPath
 
-    # Create a temporary config file with invalid YAML
-    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
-        f.write("""
+    _write_fixture = """\
 max_concurrency: 7
 rate_limit_rpm: 80
 models:
@@ -281,31 +264,33 @@ models:
   malformed_yaml:
     - item1
     item2: value2  # This is malformed
-""")  # Invalid YAML
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(_write_fixture)
         temp_config_path = f.name
 
-    config_dir = RealPath(tempfile.gettempdir()) / ".skill-cert"
-    config_dir.mkdir(exist_ok=True)
-    target_path = config_dir / "models.yaml"
+    from pathlib import Path as RealPath
 
+    config_dir = RealPath(tempfile.mkdtemp()) / ".skill-cert"
+    config_dir.mkdir(exist_ok=True, parents=True)
+    target_path = config_dir / "models.yaml"
     shutil.move(temp_config_path, target_path)
 
     original_expanduser = os.path.expanduser
 
     def mock_expanduser(path):
         if path == "~":
-            return tempfile.gettempdir()
+            return str(config_dir.parent)
         return original_expanduser(path)
 
-    with patch("os.path.expanduser", side_effect=mock_expanduser):
-        # This should handle the malformed YAML gracefully and use defaults
-        config = SkillCertConfig.load()
+    try:
+        with patch("os.path.expanduser", side_effect=mock_expanduser):
+            config = SkillCertConfig.load()
 
-        # Should still have default values despite malformed YAML
-        assert config.max_concurrency == 5  # Default value
-        assert config.rate_limit_rpm == 60  # Default value
-
-    os.remove(target_path)
+            assert config.max_concurrency == 5  # Default value (malformed file ignored)
+            assert config.rate_limit_rpm == 60  # Default value
+    finally:
+        shutil.rmtree(str(config_dir.parent), ignore_errors=True)
 
 
 def test_config_with_invalid_env_var_values():
