@@ -354,6 +354,11 @@ For detailed results, see the JSON output.
             calibration=calibration_data,
         )
 
+        # Progressive disclosure data (from spec, passed via metrics or config)
+        progressive_disclosure = metrics.get("progressive_disclosure") or config.get(
+            "progressive_disclosure"
+        )
+
         json_report = {
             "verdict": verdict,
             "overall_score": overall_score,
@@ -380,6 +385,8 @@ For detailed results, see the JSON output.
             json_report["reliability"] = reliability
         if maintainability:
             json_report["maintainability"] = maintainability
+        if progressive_disclosure:
+            json_report["progressive_disclosure"] = progressive_disclosure
 
         return markdown_report, json_report
 

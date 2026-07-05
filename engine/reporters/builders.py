@@ -15,6 +15,7 @@ from engine.report_models import (
 from engine.report_models import (
     EvalDetail,
     ImprovementSuggestion,
+    MetricDimension,
     MetricsSection,
     ObservabilitySection,
     TokenAnalysisSection,
@@ -369,31 +370,222 @@ def build_eval_details(eval_results: list[dict[str, Any]] | None) -> list[EvalDe
     return details
 
 
+def _build_l1_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> MetricDimension:
+    score = num(metrics.get("l1_trigger_accuracy", 0.0))
+    trigger_evals = breakdown.get("l1_details", {}).get("total_trigger_evals", 0)
+    passed = breakdown.get("l1_details", {}).get("passed_trigger_evals", 0)
+    return MetricDimension(
+        purpose=(
+            "Verifies the model triggers the skill in correct scenarios"
+            " and avoids false triggers."
+        ),
+        method=(
+            f"Evaluates {trigger_evals} trigger cases"
+            " (positive + negative) using deterministic assertions."
+        ),
+        result=(
+            f"Trigger accuracy: {score:.0%} ({passed}/{trigger_evals} passed)."
+            " Threshold: >=90%."
+        ),
+        analysis=(
+            "Low accuracy indicates trigger conditions are ambiguous"
+            " or description mismatches model interpretation."
+        ),
+        improvement=(
+            "Add explicit trigger phrases, expand negative cases,"
+            " or adjust description wording."
+        ),
+    )
+
+
+def _build_l2_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> MetricDimension:
+    delta = num(metrics.get("l2_with_without_skill_delta", 0.0))
+    with_avg = breakdown.get("l2_details", {}).get("with_skill_avg_pass_rate", 0.0)
+    without_avg = breakdown.get("l2_details", {}).get("without_skill_avg_pass_rate", 0.0)
+    return MetricDimension(
+        purpose=(
+            "Measures whether the skill demonstrably improves"
+            " output quality over the baseline."
+        ),
+        method="Compares with-skill vs without-skill pass rates on the same eval suite.",
+        result=(
+            f"Output delta: {delta:.1%}"
+            f" (with: {with_avg:.0%}, without: {without_avg:.0%})."
+            " Threshold: >=20%."
+        ),
+        analysis=(
+            "Low delta means the skill adds little value."
+            " The model may already perform the task well without it."
+        ),
+        improvement=(
+            "Strengthen workflow steps, add domain-specific instructions,"
+            " or target harder eval cases."
+        ),
+    )
+
+
+def _build_l3_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> MetricDimension:
+    score = num(metrics.get("l3_step_adherence", 0.0))
+    coverage = breakdown.get("l3_details", {}).get("step_coverage_ratio", 0.0)
+    return MetricDimension(
+        purpose=(
+            "Checks if the model follows the skill's"
+            " defined workflow steps during execution."
+        ),
+        method=(
+            "Measures step coverage via token-overlap matching"
+            " against defined workflow steps."
+        ),
+        result=(
+            f"Step adherence: {score:.0%} (coverage: {coverage:.0%})."
+            " Threshold: >=85%."
+        ),
+        analysis=(
+            "Low adherence means steps are skipped"
+            " or the workflow is not well-integrated into the prompt."
+        ),
+        improvement="Simplify workflow steps, add clearer transition cues, or reduce step count.",
+    )
+
+
+def _build_l4_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> MetricDimension:
+    std = num(breakdown.get("l4_details", {}).get("stdev_deterministic_pass_rate", 0.0))
+    return MetricDimension(
+        purpose="Measures result consistency across multiple runs of the same evaluation.",
+        method="Computes standard deviation of deterministic pass rates across N runs.",
+        result=f"Stability std: {std:.3f}. Threshold: <=0.10.",
+        analysis=(
+            "High variance indicates nondeterministic behavior"
+            " or sensitivity to prompt order."
+        ),
+        improvement=(
+            "Increase run count, lock random seeds,"
+            " or stabilize model response temperature."
+        ),
+    )
+
+
+def _build_l5_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> MetricDimension:
+    score = num(metrics.get("l5_step_efficiency", 0.0))
+    return MetricDimension(
+        purpose=(
+            "Verifies the skill operates within step, token,"
+            " and tool call limits."
+        ),
+        method=(
+            "EnvelopeChecker validates each eval run against"
+            " max_steps, max_tokens, and max_tool_calls."
+        ),
+        result=f"Step efficiency: {score:.0%}.",
+        analysis=(
+            "Low efficiency means the skill consumes excessive steps"
+            " or tokens for its task."
+        ),
+        improvement=(
+            "Optimize workflow to reduce redundant steps,"
+            " or increase envelope limits."
+        ),
+    )
+
+
+def _build_l6_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> MetricDimension:
+    score = num(metrics.get("l6_trajectory_quality", 0.0))
+    return MetricDimension(
+        purpose=(
+            "Evaluates multi-turn dialogue coherence"
+            " and decision quality (dialogue mode only)."
+        ),
+        method=(
+            "LLM-as-Judge scores turn-level relevance,"
+            " tool call accuracy, and goal completion."
+        ),
+        result=f"Trajectory quality: {score:.0%}.",
+        analysis=(
+            "Low quality indicates the model loses context"
+            " or makes poor intermediate decisions."
+        ),
+        improvement=(
+            "Add intermediate checkpoints, reduce turn count,"
+            " or strengthen context preservation."
+        ),
+    )
+
+
+def _build_l7_detail(cost_analysis: dict[str, Any] | None) -> MetricDimension:
+    if not cost_analysis:
+        return MetricDimension(purpose="Cost efficiency not available (no cost data).")
+    eff = cost_analysis.get("cost_efficiency", 0.0)
+    delta = cost_analysis.get("cost_delta_pct", 0.0)
+    return MetricDimension(
+        purpose=(
+            "Determines whether the quality improvement"
+            " justifies the additional cost."
+        ),
+        method=(
+            "Compares per-eval cost for with-skill"
+            " vs without-skill runs using pricing table."
+        ),
+        result=f"Cost efficiency: {eff:.2f}, delta: {delta:.1%}.",
+        analysis="High cost delta with low L2 gain means poor return on investment.",
+        improvement="Optimize prompt length, reduce tool calls, or switch to a cheaper model.",
+    )
+
+
+def _build_l8_detail(latency_analysis: dict[str, Any] | None) -> MetricDimension:
+    if not latency_analysis:
+        return MetricDimension(purpose="Latency analysis not available.")
+    overhead = latency_analysis.get("overhead_pct", 0.0)
+    ws = latency_analysis.get("with_skill", {})
+    wos = latency_analysis.get("without_skill", {})
+    return MetricDimension(
+        purpose="Measures the latency overhead introduced by the skill.",
+        method="Compares P50/P95/P99 latency between with-skill and without-skill runs.",
+        result=(
+            f"Overhead: {overhead:.0f}%"
+            f" (P50 with: {ws.get('p50', 0):.2f}s,"
+            f" without: {wos.get('p50', 0):.2f}s)."
+        ),
+        analysis="High overhead may degrade user experience, especially for interactive skills.",
+        improvement="Reduce skill complexity, optimize step count, or use faster model inference.",
+    )
+
+
 def build_metrics_section(
     metrics: dict[str, Any], metrics_breakdown: dict[str, Any]
 ) -> MetricsSection:
-    """Build MetricsSection from metrics data."""
+    """Build MetricsSection from metrics data with per-metric five-field analysis."""
     l4_details = metrics_breakdown.get("l4_details", {})
     cost_analysis = metrics.get("cost_analysis")
     latency_analysis = metrics.get("latency_analysis")
+    l1_score = num(metrics.get("l1_trigger_accuracy", 0.0))
+    l2_score = num(metrics.get("l2_with_without_skill_delta", 0.0))
+    l3_score = num(metrics.get("l3_step_adherence", 0.0))
+    l5_score = num(metrics.get("l5_step_efficiency", 0.0))
+    l6_score = num(metrics.get("l6_trajectory_quality", 0.0))
+
+    ws_p50 = latency_analysis.get("with_skill", {}).get("p50", 0.0) if latency_analysis else 0.0
+    ws_p95 = latency_analysis.get("with_skill", {}).get("p95", 0.0) if latency_analysis else 0.0
+    ws_p99 = latency_analysis.get("with_skill", {}).get("p99", 0.0) if latency_analysis else 0.0
 
     return MetricsSection(
-        l1_trigger_accuracy=num(metrics.get("l1_trigger_accuracy", 0.0)) * 100,
-        l2_output_delta=num(metrics.get("l2_with_without_skill_delta", 0.0)),
-        l3_step_adherence=num(metrics.get("l3_step_adherence", 0.0)) * 100,
+        l1_trigger_accuracy=l1_score * 100,
+        l1_detail=_build_l1_detail(metrics, metrics_breakdown),
+        l2_output_delta=l2_score,
+        l2_detail=_build_l2_detail(metrics, metrics_breakdown),
+        l3_step_adherence=l3_score * 100,
+        l3_detail=_build_l3_detail(metrics, metrics_breakdown),
         l4_stability_std=num(l4_details.get("stdev_deterministic_pass_rate", 0.0)),
-        l5_step_efficiency=num(metrics.get("l5_step_efficiency", 0.0)) * 100,
-        l6_trajectory_quality=num(metrics.get("l6_trajectory_quality", 0.0)) * 100,
+        l4_detail=_build_l4_detail(metrics, metrics_breakdown),
+        l5_step_efficiency=l5_score * 100,
+        l5_detail=_build_l5_detail(metrics, metrics_breakdown),
+        l6_trajectory_quality=l6_score * 100,
+        l6_detail=_build_l6_detail(metrics, metrics_breakdown),
         l7_cost_efficiency=cost_analysis.get("cost_efficiency", 0.0) if cost_analysis else 0.0,
-        l8_latency_p50=latency_analysis.get("with_skill", {}).get("p50", 0.0) * 1000
-        if latency_analysis and latency_analysis.get("with_skill")
-        else 0.0,
-        l8_latency_p95=latency_analysis.get("with_skill", {}).get("p95", 0.0) * 1000
-        if latency_analysis and latency_analysis.get("with_skill")
-        else 0.0,
-        l8_latency_p99=latency_analysis.get("with_skill", {}).get("p99", 0.0) * 1000
-        if latency_analysis and latency_analysis.get("with_skill")
-        else 0.0,
+        l7_detail=_build_l7_detail(cost_analysis),
+        l8_latency_p50=ws_p50 * 1000,
+        l8_latency_p95=ws_p95 * 1000,
+        l8_latency_p99=ws_p99 * 1000,
+        l8_detail=_build_l8_detail(latency_analysis),
     )
 
 

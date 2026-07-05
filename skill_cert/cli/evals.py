@@ -603,10 +603,14 @@ def _generate_and_write_reports(
 
     _print_phase(5, "Generate Report")
     reporter = Reporter()
+    pd_data = spec.get("progressive_disclosure")
+    report_config = config.model_dump()
+    if pd_data:
+        report_config["progressive_disclosure"] = pd_data
     md_report, json_report = reporter.generate_report(
         metrics=metrics,
         drift=drift_report,
-        config=config.model_dump(),
+        config=report_config,
         maintainability=spec.get("maintainability"),
     )
 
@@ -679,11 +683,99 @@ def _run_single_phase(
     args, config, spec_path, output_dir, skill_name, spec, adapters, deadline=None
 ) -> int:
     # Lazy imports so test patches at skill_cert.cli.XXX intercept.
+    # Phase 0.5: Progressive Disclosure Gate (Issue #72)
+    from engine.progressive_disclosure import (
+        analyze_structure_quality,
+        progressive_disclosure_test,
+    )
+
+    # Phase 0.5b: Structure Quality — tool permission + script usage (Issue #74)
+    from engine.structure_quality import check_script_usage, check_tool_permission
     from skill_cert.cli import (  # noqa: F811
         EvalRunner,
         Grader,
         ReliabilityTracker,
     )
+
+    _print_phase(1, "Progressive Disclosure Check")
+    skill_dir = str(Path(spec_path).parent) if spec_path else ""
+    if skill_dir:
+        pd_result = progressive_disclosure_test(skill_dir)
+        spec["progressive_disclosure"] = {
+            "passed": pd_result.passed,
+            "verdict": pd_result.verdict,
+            "has_references_dir": pd_result.has_references_dir,
+            "references_file_count": pd_result.references_file_count,
+            "references_token_count": pd_result.references_token_count,
+            "runtime_to_index_ratio": pd_result.runtime_to_index_ratio,
+            "issues": pd_result.issues,
+        }
+        if pd_result.tiered_cost_result:
+            pd_val = spec["progressive_disclosure"]
+            pd_val["index_tokens"] = pd_result.tiered_cost_result.index.token_count
+            pd_val["load_tokens"] = pd_result.tiered_cost_result.load.token_count
+            pd_val["total_tokens"] = pd_result.tiered_cost_result.total_tokens
+        print(f"  Progressive Disclosure: {pd_result.verdict}")
+        if not pd_result.passed:
+            for issue in pd_result.issues:
+                print(f"    ⚠️ {issue}")
+
+        # Structure quality check
+        _print_phase(1, "Structure Quality Check")
+        try:
+            sp = Path(spec_path)
+            skill_md_path = sp / "SKILL.md" if sp.is_dir() else sp
+            if skill_md_path.exists():
+                content = skill_md_path.read_text(encoding="utf-8")
+                tp_result = check_tool_permission(content)
+                spec["tool_permission"] = {
+                    "passed": tp_result.passed,
+                    "score": tp_result.score,
+                    "has_tools_md": tp_result.has_tools_md,
+                    "dangerous_tools_allowed": tp_result.dangerous_tools_allowed,
+                    "issues": tp_result.issues,
+                }
+                tp_status = "PASS" if tp_result.passed else "FAIL"
+                print(f"  Tool Permission: {tp_status} ({tp_result.score:.0f}/100)")
+                if not tp_result.passed:
+                    for issue in tp_result.issues:
+                        print(f"    ⚠️ {issue}")
+
+                sq_result = analyze_structure_quality(content)
+                spec["structure_quality"] = {
+                    "score": sq_result.score,
+                    "skill_md_line_count": sq_result.skill_md_line_count,
+                    "skill_md_over_limit": sq_result.skill_md_over_limit,
+                    "has_routing_table": sq_result.has_routing_table,
+                    "is_router_pattern": sq_result.is_router_pattern,
+                    "issues": sq_result.issues,
+                }
+                sq_line_info = f"({sq_result.skill_md_line_count} lines)"
+                print(f"  Structure Quality: {sq_result.score:.0f}/100 {sq_line_info}")
+                if sq_result.issues:
+                    for issue in sq_result.issues:
+                        print(f"    ⚠️ {issue}")
+        except Exception as e:
+            print(f"  Tool Permission/Structure check skipped: {e}")
+
+        try:
+            su_result = check_script_usage(skill_dir)
+            spec["script_usage"] = {
+                "has_scripts": su_result.has_scripts,
+                "script_count": su_result.script_count,
+                "score": su_result.score,
+                "script_references": su_result.script_references,
+                "issues": su_result.issues,
+            }
+            su_line = f"  Script Usage: {su_result.script_count} scripts found"
+            print(f"{su_line} (score: {su_result.score:.0f}/100)")
+            if not su_result.has_scripts:
+                for issue in su_result.issues:
+                    print(f"    ℹ️ {issue}")
+        except Exception as e:
+            print(f"  Script Usage check skipped: {e}")
+    else:
+        print("  Skipped (no spec_path)")
 
     # Create TokenLedger for per-eval token accounting
     token_ledger = TokenLedger()

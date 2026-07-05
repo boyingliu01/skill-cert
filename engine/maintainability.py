@@ -3,7 +3,7 @@
 import re
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import yaml
 
@@ -655,6 +655,167 @@ def detect_hardcoded_credentials(
                 )
                 break
     return findings
+
+
+# ─── Description Quality Analysis (Issue #73) ──────────────────────────────
+
+
+@dataclass
+class DescriptionQualityResult:
+    """Result of SKILL.md description quality analysis."""
+
+    has_what: bool = False
+    has_when: bool = False
+    has_trigger_words: bool = False
+    has_exclusion: bool = False
+    uses_third_person: bool = False
+    trigger_word_count: int = 0
+    score: float = 0.0
+    issues: list[str] = field(default_factory=list)
+
+
+def analyze_description_quality(description: str) -> DescriptionQualityResult:
+    """Analyze description quality for L1 trigger accuracy enhancement.
+
+    Checks:
+    1. WHAT: Does it describe what the skill does?
+    2. WHEN: Does it describe when to use it?
+    3. Trigger words: Does it enumerate trigger phrases?
+    4. Exclusion: Does it note when NOT to use?
+    5. Third person: Is it objective (not conversational)?
+    """
+    if not description:
+        return DescriptionQualityResult(
+            score=0.0,
+            issues=["Description is empty"],
+        )
+
+    issues: list[str] = []
+    desc_lower = description.lower()
+    words = desc_lower.split()
+
+    has_what = any(
+        word in desc_lower
+        for word in [
+            "use",
+            "run",
+            "execute",
+            "perform",
+            "generate",
+            "create",
+            "analyze",
+            "evaluate",
+            "check",
+            "validate",
+            "audit",
+            "build",
+            "deploy",
+            "test",
+            "debug",
+            "review",
+            "search",
+            "scrape",
+            "extract",
+            "transform",
+            "convert",
+            "用于",
+            "执行",
+            "生成",
+            "分析",
+            "检查",
+            "验证",
+        ]
+    )
+
+    has_when = any(
+        phrase in desc_lower
+        for phrase in [
+            "when",
+            "use for",
+            "use when",
+            "for use",
+            "适用于",
+            "use this",
+            "best for",
+            "用于",
+            "场景",
+            "when you",
+            "whenever",
+            "in case of",
+            "if you need",
+        ]
+    )
+
+    trigger_indicators = [
+        "trigger",
+        "triggers on",
+        "activate",
+        "invoke",
+        "触发",
+        "激活",
+    ]
+    has_trigger_words = any(indicator in desc_lower for indicator in trigger_indicators)
+    trigger_word_count = sum(1 for indicator in trigger_indicators if indicator in desc_lower)
+
+    has_exclusion = any(
+        phrase in desc_lower
+        for phrase in [
+            "not for",
+            "do not use",
+            "not suitable",
+            "not intended",
+            "不要",
+            "不适合",
+            "不适用",
+        ]
+    )
+
+    first_person_indicators = [
+        "i ",
+        "i'll",
+        "i'm",
+        "i've",
+        "you ",
+        "you'll",
+        "you're",
+        "we ",
+        "we'll",
+        "we're",
+    ]
+    has_first_person = any(pi in desc_lower for pi in first_person_indicators)
+    uses_third_person = not has_first_person and len(words) > 3
+
+    score = 0.0
+    if has_what:
+        score += 25.0
+    if has_when:
+        score += 25.0
+    if has_trigger_words:
+        score += 20.0
+    if has_exclusion:
+        score += 10.0
+    if uses_third_person:
+        score += 20.0
+
+    if not has_what:
+        issues.append("Description does not specify WHAT the skill does (action verb)")
+    if not has_when:
+        issues.append("Description does not specify WHEN to use the skill (scenario indicator)")
+    if not has_trigger_words:
+        issues.append("Description does not enumerate trigger words")
+    if not uses_third_person:
+        issues.append("Description uses first/second person — use third person objective style")
+
+    return DescriptionQualityResult(
+        has_what=has_what,
+        has_when=has_when,
+        has_trigger_words=has_trigger_words,
+        has_exclusion=has_exclusion,
+        uses_third_person=uses_third_person,
+        trigger_word_count=trigger_word_count,
+        score=score,
+        issues=issues,
+    )
 
 
 def detect_freshness_patterns(
