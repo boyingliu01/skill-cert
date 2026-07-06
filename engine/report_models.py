@@ -53,19 +53,37 @@ class VerdictSummary(BaseModel):
 # ── Metrics ───────────────────────────────────────────────────
 
 
+class MetricDimension(BaseModel):
+    """Evaluation dimension with five-field analysis for each metric."""
+
+    purpose: str = ""
+    method: str = ""
+    result: str = ""
+    analysis: str = ""
+    improvement: str = ""
+
+
 class MetricsSection(BaseModel):
     """L1-L8 metrics section."""
 
     l1_trigger_accuracy: float = 0.0
+    l1_detail: MetricDimension = Field(default_factory=MetricDimension)
     l2_output_delta: float = 0.0
+    l2_detail: MetricDimension = Field(default_factory=MetricDimension)
     l3_step_adherence: float = 0.0
+    l3_detail: MetricDimension = Field(default_factory=MetricDimension)
     l4_stability_std: float = 0.0
+    l4_detail: MetricDimension = Field(default_factory=MetricDimension)
     l5_step_efficiency: float = 0.0
+    l5_detail: MetricDimension = Field(default_factory=MetricDimension)
     l6_trajectory_quality: float = 0.0
+    l6_detail: MetricDimension = Field(default_factory=MetricDimension)
     l7_cost_efficiency: float = 0.0
+    l7_detail: MetricDimension = Field(default_factory=MetricDimension)
     l8_latency_p50: float = 0.0
     l8_latency_p95: float = 0.0
     l8_latency_p99: float = 0.0
+    l8_detail: MetricDimension = Field(default_factory=MetricDimension)
     extras: dict[str, Any] = Field(default_factory=dict)
 
 

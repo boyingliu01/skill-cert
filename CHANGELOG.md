@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] - 2026-07-05
+
+### Added — Progressive Disclosure Phase 0.5 Gate (Issue #72)
+- **engine/progressive_disclosure.py**: Added CJK-aware token counting (`_count_tokens` now handles CJK at ~1.5 chars/token vs 4 chars/token for ASCII). New `analyze_structure_quality()` for SKILL.md line count, routing table detection, and router pattern analysis. Removed duplicate `analyze_description_quality` (moved to `engine/maintainability.py`).
+- **skill_cert/cli/evals.py**: Phase 0.5 gate runs `progressive_disclosure_test()` before Phase 1, storing results in `spec["progressive_disclosure"]` for downstream report generation.
+- **engine/reporters/generator.py**: JSON report now includes `progressive_disclosure` field when available.
+- **Tests**: 1453 total (8 new for structure quality).
+
+### Added — Report Metrics Five-Field Enhancement (Issue #71)
+- **engine/report_models.py**: New `MetricDimension` Pydantic model with `purpose`/`method`/`result`/`analysis`/`improvement` fields. `MetricsSection` extended with `l1_detail` through `l8_detail`.
+- **engine/reporters/builders.py**: 8 new `_build_l*_detail()` functions generating meaningful per-metric analysis. `build_metrics_section()` refactored to wire all details.
+
+### Added — Description Quality Analysis (Issue #73)
+- **engine/maintainability.py**: New `analyze_description_quality()` evaluating WHAT/WHEN/trigger words/exclusion/third-person checks. `DescriptionQualityResult` dataclass with 0-100 scoring.
+
+### Added — Structure Quality Analysis (Issue #74)
+- **engine/structure_quality.py** (new): `check_tool_permission()` for tools.md whitelist validation + dangerous tool pattern detection. `check_script_usage()` for scripts/ directory discovery.
+- **tests/test_structure_quality.py** (new): 8 test cases covering tool permission, script usage, edge cases.
+
 ## [0.11.2] - 2026-07-03
 
 ### Fixed — Pre-existing pyright type errors (5 files)

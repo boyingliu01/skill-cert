@@ -8,11 +8,13 @@ References:
     - Anthropic Skill methodology: skill is a folder, not a file
     - Perplexity three-tier cost model: Index < 100t, Load < 5000t
     - Issue #41: progressive disclosure evaluation
+    - Issue #72: L0 progressive disclosure as Phase 0.5 gate
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -90,9 +92,19 @@ class TieredCostModel:
         self.index_token_limit = index_token_limit
         self.load_token_limit = load_token_limit
 
-    def _count_tokens(self, text: str) -> int:
-        """Approximate token count (4 chars per token)."""
-        return len(text) // 4
+    @staticmethod
+    def _count_tokens(text: str) -> int:
+        """Approximate token count with CJK awareness.
+
+        Uses 4 chars per token for ASCII text and 1.5 chars per token
+        for CJK characters, which better matches real tokenizer behavior.
+        Falls back to len(text) // 4 when no CJK detected.
+        """
+        if not text:
+            return 0
+        cjk_count = sum(1 for c in text if "\u4e00" <= c <= "\u9fff" or "\u3000" <= c <= "\u303f")
+        ascii_count = len(text) - cjk_count
+        return (ascii_count // 4) + (cjk_count * 2 // 3)
 
     def _read_text(self, path: Path) -> str:
         """Safely read a text file, return empty string on error."""
@@ -263,6 +275,92 @@ class ProgressiveDisclosureResult:
         if self.passed:
             return "PASS"
         return "FAIL"
+
+
+# ── Structure Quality Analysis ──────────────────────────────────
+
+
+SKILL_MD_MAX_LINES = 500
+MODULE_MAX_LINES = 300
+ROUTER_PATTERN_RE = re.compile(
+    r"(?:skill\s*routing|routing\s*table|route\s*to|dispatch|delegat)",
+    re.IGNORECASE,
+)
+
+
+@dataclass
+class StructureQualityResult:
+    """Result of SKILL.md structure quality analysis."""
+
+    skill_md_line_count: int = 0
+    skill_md_over_limit: bool = False
+    has_routing_table: bool = False
+    is_router_pattern: bool = False
+    issues: list[str] = field(default_factory=list)
+
+    @property
+    def score(self) -> float:
+        """Compute structure quality score 0-100."""
+        if self.skill_md_line_count == 0:
+            return 0.0
+        deductions = 0.0
+        if self.skill_md_over_limit:
+            deductions += 30.0
+        if not self.has_routing_table:
+            deductions += 25.0
+        if not self.is_router_pattern:
+            deductions += 25.0
+        return max(0.0, 100.0 - deductions)
+
+
+def analyze_structure_quality(content: str) -> StructureQualityResult:
+    """Analyze SKILL.md structure quality from raw text content.
+
+    Checks:
+    1. SKILL.md line count (should be ≤ 500)
+    2. Routing table presence (is this a router or a warehouse?)
+    3. Router pattern detection (business logic in modules, not SKILL.md)
+
+    Args:
+        content: Raw SKILL.md text content.
+
+    Returns:
+        StructureQualityResult with score and issues.
+    """
+    lines = content.split("\n")
+    line_count = len(lines)
+    over_limit = line_count > SKILL_MD_MAX_LINES
+
+    # Check for routing table indicators
+    has_routing = bool(ROUTER_PATTERN_RE.search(content))
+
+    # Check for module file references (references/ directory indicators)
+    has_module_refs = bool(re.search(r"references/|modules/|skills/", content))
+
+    issues: list[str] = []
+    if over_limit:
+        issues.append(
+            f"SKILL.md is {line_count} lines (max: {SKILL_MD_MAX_LINES}). "
+            "Consider splitting into router + module files."
+        )
+    if not has_routing and has_module_refs:
+        issues.append(
+            "Module references found but no routing table detected. "
+            "Add a routing table to delegate tasks to modules."
+        )
+    if not has_module_refs and line_count > SKILL_MD_MAX_LINES * 0.6:
+        issues.append(
+            f"SKILL.md is {line_count} lines with no module files. "
+            "Consider extracting business logic into references/ modules."
+        )
+
+    return StructureQualityResult(
+        skill_md_line_count=line_count,
+        skill_md_over_limit=over_limit,
+        has_routing_table=has_routing,
+        is_router_pattern=has_routing or has_module_refs,
+        issues=issues,
+    )
 
 
 def progressive_disclosure_test(skill_dir: str | Path) -> ProgressiveDisclosureResult:
