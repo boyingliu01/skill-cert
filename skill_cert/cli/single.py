@@ -93,8 +93,12 @@ def _setup_single_mode(args, config, deadline=None) -> tuple[Any, Any, Any, Any,
         print(f"  WARNING: Coverage below {generator.coverage_threshold * 100:.0f}% threshold")
 
     # REQ-017: Fail-fast on low coverage
-    result = generator.check_coverage_or_abort(coverage)
-    if result == generator.CoverageResult.FAILED:
+    # Use the failed/degraded markers from
+    # generate_evals_with_convergence -> _finalize_evals_result,
+    # rather than re-calling check_coverage_or_abort, because
+    # _calculate_coverage is sensitive to LLM response structure
+    # and may underestimate coverage when assertion schemas vary.
+    if evals.get("failed", False):
         print(
             f"\n  FAIL-FAST: Coverage {coverage:.2f} below block threshold "
             f"({generator.block_threshold}). Aborting."
