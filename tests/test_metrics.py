@@ -21,7 +21,7 @@ class TestMetricsCalculator:
         assert metrics["l1_trigger_accuracy"] == 0.0
         assert metrics["l2_with_without_skill_delta"] == 0.0
         assert metrics["l3_step_adherence"] is None  # None when no trajectory data
-        assert metrics["l4_execution_stability"] == 1.0  # Perfect stability with no data
+        assert metrics["l4_execution_stability"] is None  # No data → L4 unavailable
 
         # Check that breakdowns exist
         assert "l1_details" in metrics["metrics_breakdown"]
@@ -268,10 +268,43 @@ class TestMetricsCalculator:
 
         l2_score = calculator._calculate_l2_with_without_skill_delta(eval_results)
 
-        # With avg: (0.0 + 0.8) / 2 = 0.40
-        # Without avg: (0.5 + 0.5) / 2 = 0.50
-        # Normalized gain: (0.40 - 0.50) / 0.50 = -0.20 → capped to 0.0
         assert l2_score == pytest.approx(0.0)
+
+    def test_l2_category_weighted_delta_higher_weight_categories(self):
+        """L2 weighted delta gives higher weight to trigger/normal categories."""
+        calculator = MetricsCalculator()
+
+        with_skill = [
+            {"skill_used": True, "category": "trigger", "pass_rate": 1.0},
+            {"skill_used": True, "category": "normal", "pass_rate": 1.0},
+            {"skill_used": True, "category": "failure", "pass_rate": 0.0},
+        ]
+        without_skill = [
+            {"skill_used": False, "category": "trigger", "pass_rate": 0.5},
+            {"skill_used": False, "category": "normal", "pass_rate": 0.5},
+            {"skill_used": False, "category": "failure", "pass_rate": 0.5},
+        ]
+        eval_results = with_skill + without_skill
+        l2_score = calculator._calculate_l2_with_without_skill_delta(eval_results)
+
+        assert 0.0 < l2_score < 1.0
+
+    def test_l2_flat_average_same_category(self):
+        """L2 weighted delta matches flat avg when all results share one category."""
+        calculator = MetricsCalculator()
+
+        eval_results = [
+            {"skill_used": True, "category": "normal", "pass_rate": 0.8},
+            {"skill_used": True, "category": "normal", "pass_rate": 0.9},
+            {"skill_used": False, "category": "normal", "pass_rate": 0.6},
+            {"skill_used": False, "category": "normal", "pass_rate": 0.7},
+        ]
+
+        l2_score = calculator._calculate_l2_with_without_skill_delta(eval_results)
+        with_avg = 0.85
+        without_avg = 0.65
+        expected = max(0.0, min(1.0, (with_avg - without_avg) / without_avg))
+        assert l2_score == pytest.approx(expected, rel=1e-3)
 
     def test_calculate_l3_step_adherence(self):
         """Test L3 step adherence calculation."""
@@ -398,6 +431,7 @@ class TestMetricsCalculator:
         # Second result: 1/2 deterministic assertions passed = 0.5
         # Third result: 2/2 deterministic assertions passed = 1.0
         # Std dev of [1.0, 0.5, 1.0] should affect stability score
+        assert l4_score is not None
         assert 0.0 <= l4_score <= 1.0
 
     def test_calculate_l4_single_result(self):
@@ -433,8 +467,8 @@ class TestMetricsCalculator:
 
         l4_score = calculator._calculate_l4_execution_stability(eval_results)
 
-        # With no deterministic results, should return 0.0 if no results, or 1.0 if one result
-        assert l4_score in [0.0, 1.0]  # Depends on implementation logic
+        # With eval_results but no deterministic assertions, L4 is unavailable
+        assert l4_score is None
 
     def test_get_l1_details(self):
         """Test getting L1 details."""
@@ -488,6 +522,41 @@ class TestMetricsCalculator:
         assert details["total_evaluations"] == 4
         assert details["passing_evaluations"] == 3
         assert details["step_coverage_ratio"] == 0.75  # 3/4
+
+    def test_l3_step_quality_both_dimensions(self):
+        """L3 step_quality combines tool_acc and turn_rel with 60/40 weight."""
+        calculator = MetricsCalculator()
+        sq = calculator._compute_step_quality(0.8, 0.5)
+        expected = 0.6 * 0.8 + 0.4 * 0.5
+        assert sq == pytest.approx(expected), f"Expected {expected}, got {sq}"
+
+    def test_l3_step_quality_tool_only(self):
+        """L3 step_quality falls back to tool_acc when turn_rel is None."""
+        calculator = MetricsCalculator()
+        sq = calculator._compute_step_quality(0.8, None)
+        assert sq == 0.8
+
+    def test_l3_step_quality_turn_only(self):
+        """L3 step_quality falls back to turn_rel when tool_acc is None."""
+        calculator = MetricsCalculator()
+        sq = calculator._compute_step_quality(None, 0.5)
+        assert sq == 0.5
+
+    def test_l3_step_quality_none_when_no_data(self):
+        """L3 step_quality returns None when both inputs are None."""
+        calculator = MetricsCalculator()
+        sq = calculator._compute_step_quality(None, None)
+        assert sq is None
+
+    def test_l3_details_includes_step_quality(self):
+        """L3 details dict includes step_quality sub-metric."""
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"final_passed": True},
+            {"final_passed": True},
+        ]
+        details = calculator._get_l3_details(eval_results)
+        assert "step_quality" in details
 
     def test_get_l4_details(self):
         """Test getting L4 details."""

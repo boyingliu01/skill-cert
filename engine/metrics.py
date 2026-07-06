@@ -190,11 +190,39 @@ class MetricsCalculator:
         without_skill = [r for r in eval_results if not r.get("skill_used", True)]
         return with_skill, without_skill
 
+    _L2_CATEGORY_WEIGHTS = {
+        "trigger": 0.25,
+        "normal": 0.25,
+        "boundary": 0.20,
+        "failure": 0.20,
+        "adversarial": 0.10,
+    }
+
     @staticmethod
     def _avg_pass_rate(results):
         if not results:
             return 0.0
         return sum(r.get("pass_rate", 0.0) for r in results) / len(results)
+
+    @staticmethod
+    def _weighted_avg_pass_rate(results):
+        if not results:
+            return 0.0
+        weights = MetricsCalculator._L2_CATEGORY_WEIGHTS
+        cat_groups: dict[str, list[float]] = {}
+        for r in results:
+            cat = r.get("category", "normal")
+            cat_groups.setdefault(cat, []).append(r.get("pass_rate", 0.0))
+        weighted_sum = 0.0
+        weight_total = 0.0
+        for cat, rates in cat_groups.items():
+            cat_weight = weights.get(cat, 0.15)
+            cat_avg = sum(rates) / len(rates)
+            weighted_sum += cat_avg * cat_weight
+            weight_total += cat_weight
+        if weight_total == 0.0:
+            return 0.0
+        return weighted_sum / weight_total
 
     _L2_EPSILON = 1e-6
 
@@ -209,9 +237,9 @@ class MetricsCalculator:
         if not with_skill or not without_skill:
             if not eval_results:
                 return 0.0
-            return self._avg_pass_rate(eval_results)
-        with_avg = self._avg_pass_rate(with_skill)
-        without_avg = self._avg_pass_rate(without_skill)
+            return self._weighted_avg_pass_rate(eval_results)
+        with_avg = self._weighted_avg_pass_rate(with_skill)
+        without_avg = self._weighted_avg_pass_rate(without_skill)
         normalized_gain = self._compute_normalized_gain(with_avg, without_avg)
         return max(0.0, min(1.0, normalized_gain))
 
@@ -379,16 +407,19 @@ class MetricsCalculator:
         variance = sum((x - avg) ** 2 for x in values) / len(values)
         return variance**0.5
 
-    def _calculate_l4_execution_stability(self, eval_results: list[dict[str, Any]]) -> float:
+    def _calculate_l4_execution_stability(self, eval_results: list[dict[str, Any]]) -> float | None:
         logger.warning(
             "L4 calculated from single-run std_dev is deprecated. "
             "Use --runs >= 5 for Bootstrap CI-based L4."
         )
         if not eval_results:
-            return 1.0
+            return None
         deterministic_results = self._extract_deterministic_pass_rates(eval_results)
+        if not deterministic_results:
+            # Results exist but none have deterministic assertions → L4 unavailable
+            return None
         if len(deterministic_results) < 2:
-            return 1.0 if deterministic_results else 0.0
+            return 1.0
         std_dev = self._compute_std_dev(deterministic_results)
         return max(0.0, 1.0 - std_dev)
 
@@ -482,16 +513,8 @@ class MetricsCalculator:
         with_skill_results = [r for r in eval_results if r.get("skill_used", True)]
         without_skill_results = [r for r in eval_results if not r.get("skill_used", True)]
 
-        with_skill_avg = (
-            sum(r.get("pass_rate", 0.0) for r in with_skill_results) / len(with_skill_results)
-            if with_skill_results
-            else 0.0
-        )
-        without_skill_avg = (
-            sum(r.get("pass_rate", 0.0) for r in without_skill_results) / len(without_skill_results)
-            if without_skill_results
-            else 0.0
-        )
+        with_skill_avg = self._weighted_avg_pass_rate(with_skill_results)
+        without_skill_avg = self._weighted_avg_pass_rate(without_skill_results)
 
         return {
             "with_skill_avg_pass_rate": with_skill_avg,
@@ -523,18 +546,36 @@ class MetricsCalculator:
         return details
 
     @staticmethod
+    def _compute_step_quality(tool_acc: float | None, turn_rel: float | None) -> float | None:
+        """Compute step_quality sub-metric from tool_call_accuracy and turn_relevance.
+
+        Uses 0.6*tool_acc + 0.4*turn_rel when both available.
+        Falls back to whichever is available alone.
+        Returns None when neither is available.
+        """
+        if tool_acc is not None and turn_rel is not None:
+            return 0.6 * tool_acc + 0.4 * turn_rel
+        if tool_acc is not None:
+            return tool_acc
+        if turn_rel is not None:
+            return turn_rel
+        return None
+
+    @staticmethod
     def _build_l3_base_details(total_evals, passing_evals, step_cov, tool_acc, turn_rel):
         method = (
             "weighted_composite"
             if (tool_acc is not None and turn_rel is not None)
             else "pass_rate_proxy"
         )
+        step_quality = MetricsCalculator._compute_step_quality(tool_acc, turn_rel)
         details = {
             "total_evaluations": total_evals,
             "passing_evaluations": len(passing_evals),
             "step_coverage_ratio": len(passing_evals) / total_evals if total_evals > 0 else 0.0,
             "method": method,
             "step_coverage": step_cov,
+            "step_quality": step_quality,
             "tool_call_accuracy": tool_acc,
             "turn_relevance": turn_rel,
         }
