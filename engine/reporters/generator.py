@@ -271,6 +271,85 @@ class Reporter:
 - **Test Coverage**: {{ benchmark_info.test_coverage }}
 - **Total Token Usage**: {{ benchmark_info.total_tokens }} tokens
 
+{% if dq %}
+## Description Quality
+
+**Score**: {{ "%.0f"|format(dq.score) }}/100
+
+| Dimension | Status |
+|-----------|--------|
+| WHAT (describes what the skill does) | {{ "✅" if dq.has_what else "❌" }} |
+| WHEN (describes when to use it) | {{ "✅" if dq.has_when else "❌" }} |
+| Trigger Words (enumerates triggers) | {{ "✅" if dq.has_trigger_words else "❌" }} |
+| Exclusion (not when scenarios) | {{ "✅" if dq.has_exclusion else "❌" }} |
+| Third Person (objective style) | {{ "✅" if dq.uses_third_person else "❌" }} |
+| Trigger Word Count | {{ dq.trigger_word_count }} |
+
+{% if dq.issues %}
+**Issues:**
+{% for issue in dq.issues %}
+- {{ issue }}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if su %}
+## Script Usage
+
+**Score**: {{ "%.0f"|format(su.score) }}/100
+**Scripts Found**: {{ su.script_count }}
+
+{% if su.script_references %}
+**Scripts:**
+{% for ref in su.script_references %}
+- {{ ref }}
+{% endfor %}
+{% endif %}
+
+{% if su.issues %}
+**Issues:**
+{% for issue in su.issues %}
+- {{ issue }}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if tp %}
+## Tool Permission
+
+**Score**: {{ "%.0f"|format(tp.score) }}/100
+**Status**: {{ "✅ PASS" if tp.passed else "❌ FAIL" }}
+**Has tools.md**: {{ "✅" if tp.has_tools_md else "❌" }}
+
+{% if tp.dangerous_tools_allowed %}
+**Dangerous tools without whitelist:**
+{% for tool in tp.dangerous_tools_allowed %}
+- {{ tool }}
+{% endfor %}
+{% endif %}
+
+{% if tp.issues %}
+**Issues:**
+{% for issue in tp.issues %}
+- {{ issue }}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if hk %}
+## Hooks Detection
+
+**Score**: {{ "%.0f"|format(hk.score) }}/100
+**Status**: {{ "✅ PASS" if hk.passed else "❌ FAIL" }}
+
+**Safety Hooks**: {{ hk.safety_hooks | join(", ") if hk.safety_hooks else "None detected" }}
+**Operational Hooks**: {{ hk.operational_hooks | join(", ") if hk.operational_hooks else "None detected" }}
+
+{% if hk.issues %}
+**Issues:**
+{% for issue in hk.issues %}
+- {{ issue }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
 ## Eval Results Drill-Down
 
 ### Failed Eval Cases
@@ -347,6 +426,10 @@ For detailed results, see the JSON output.
         cost_analysis = metrics.get("l7_cost_efficiency")
         latency_analysis = metrics.get("l8_latency", {})
         reliability = metrics.get("reliability", {})
+        description_quality = config.get("description_quality") if isinstance(config, dict) else None
+        script_usage = config.get("script_usage") if isinstance(config, dict) else None
+        tool_permission = config.get("tool_permission") if isinstance(config, dict) else None
+        hooks_detection = config.get("hooks_detection") if isinstance(config, dict) else None
 
         suggestions = generate_suggestions(
             metrics, drift, verdict, overall_score, cost_analysis, latency_analysis, reliability
@@ -374,6 +457,10 @@ For detailed results, see the JSON output.
             reliability=reliability,
             maintainability=maintainability,
             calibration=calibration_data,
+            dq=description_quality,
+            su=script_usage,
+            tp=tool_permission,
+            hk=hooks_detection,
         )
 
         # Progressive disclosure data (from spec, passed via metrics or config)

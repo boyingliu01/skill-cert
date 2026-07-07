@@ -607,6 +607,18 @@ def _generate_and_write_reports(
     report_config = config.model_dump()
     if pd_data:
         report_config["progressive_disclosure"] = pd_data
+    dq_data = spec.get("description_quality")
+    if dq_data:
+        report_config["description_quality"] = dq_data
+    su_data = spec.get("script_usage")
+    if su_data:
+        report_config["script_usage"] = su_data
+    tp_data = spec.get("tool_permission")
+    if tp_data:
+        report_config["tool_permission"] = tp_data
+    hk_data = spec.get("hooks_detection")
+    if hk_data:
+        report_config["hooks_detection"] = hk_data
     md_report, json_report = reporter.generate_report(
         metrics=metrics,
         drift=drift_report,
@@ -690,6 +702,8 @@ def _run_single_phase(
     )
 
     # Phase 0.5b: Structure Quality — tool permission + script usage (Issue #74)
+    from engine.hooks_detector import detect_hooks
+    from engine.maintainability import analyze_description_quality
     from engine.structure_quality import check_script_usage, check_tool_permission
     from skill_cert.cli import (  # noqa: F811
         EvalRunner,
@@ -757,6 +771,50 @@ def _run_single_phase(
                         print(f"    ⚠️ {issue}")
         except Exception as e:
             print(f"  Tool Permission/Structure check skipped: {e}")
+
+        # Description quality check (Issue #73: L1 description quality)
+        try:
+            description = spec.get("description", "")
+            if description:
+                dq_result = analyze_description_quality(description)
+                spec["description_quality"] = {
+                    "score": dq_result.score,
+                    "has_what": dq_result.has_what,
+                    "has_when": dq_result.has_when,
+                    "has_trigger_words": dq_result.has_trigger_words,
+                    "has_exclusion": dq_result.has_exclusion,
+                    "uses_third_person": dq_result.uses_third_person,
+                    "trigger_word_count": dq_result.trigger_word_count,
+                    "issues": dq_result.issues,
+                }
+                print(f"  Description Quality: {dq_result.score:.0f}/100")
+                if dq_result.issues:
+                    for issue in dq_result.issues:
+                        print(f"    ℹ️ {issue}")
+        except Exception as e:
+            print(f"  Description Quality check skipped: {e}")
+
+        # Hooks detection (Issue #75 P1: on-demand hooks)
+        try:
+            hk_sp = Path(spec_path)
+            hk_md_path = hk_sp / "SKILL.md" if hk_sp.is_dir() else hk_sp
+            if hk_md_path.exists():
+                hk_content = hk_md_path.read_text(encoding="utf-8")
+                hk_result = detect_hooks(hk_content)
+                spec["hooks_detection"] = {
+                    "score": hk_result.score,
+                    "passed": hk_result.passed,
+                    "safety_hooks": hk_result.safety_hooks,
+                    "operational_hooks": hk_result.operational_hooks,
+                    "issues": hk_result.issues,
+                }
+                print(f"  Hooks Detection: {hk_result.score:.0f}/100 "
+                      f"({'PASS' if hk_result.passed else 'FAIL'})")
+                if hk_result.issues:
+                    for issue in hk_result.issues:
+                        print(f"    ℹ️ {issue}")
+        except Exception as e:
+            print(f"  Hooks Detection skipped: {e}")
 
         try:
             su_result = check_script_usage(skill_dir)

@@ -10,6 +10,7 @@ from engine.maintainability import (
     FreshnessFinding,
     MaintainabilityResult,
     MaintainabilityScorer,
+    analyze_description_quality,
     completeness_score,
     detect_catch_all_except,
     detect_deprecated_api,
@@ -881,6 +882,69 @@ class TestDetectFreshnessPatterns:
 
 
 # ─── Test: Existing fixtures not affected by new detectors ────────────────
+
+
+# ─── Test: analyze_description_quality ──────────────────────────────────────
+
+
+class TestAnalyzeDescriptionQuality:
+    """Test analyze_description_quality() — description quality scoring."""
+
+    def test_good_description_full_score(self):
+        """Full description with all quality signals scores high."""
+        desc = (
+            "Use this skill to evaluate AI skill definitions. "
+            "Use when you need to check if a skill works correctly. "
+            "Trigger on 'skill-cert', '/skill-cert', 'evaluate skill'. "
+            "Not for general code review tasks. "
+            "A dedicated tool for automated evaluation."
+        )
+        result = analyze_description_quality(desc)
+        assert result.score >= 80.0
+        assert result.has_what is True
+        assert result.has_when is True
+        assert result.has_trigger_words is True
+        assert result.has_exclusion is True
+
+    def test_empty_description_zero_score(self):
+        """Empty description scores 0 and reports issue."""
+        result = analyze_description_quality("")
+        assert result.score == 0.0
+        assert "Description is empty" in result.issues
+
+    def test_minimal_description_partial_score(self):
+        """Bare description with only 'what' gets partial score."""
+        desc = "Run evaluation on SKILL.md files."
+        result = analyze_description_quality(desc)
+        assert result.score == 45.0  # has_what(25) + uses_third_person(20)
+        assert result.has_what is True
+        assert result.has_when is False
+        assert result.has_exclusion is False
+
+    def test_description_missing_when_reports_issue(self):
+        """Description lacking 'when' adds appropriate issue."""
+        desc = "Evaluate AI skills. Trigger on 'skill-cert'."
+        result = analyze_description_quality(desc)
+        issues_text = " ".join(result.issues)
+        assert "WHEN" in issues_text or "when" in issues_text
+
+    def test_first_person_lowers_score(self):
+        """First-person description loses third-person points."""
+        desc = "I will help you evaluate skills when you need testing."
+        result = analyze_description_quality(desc)
+        assert result.uses_third_person is False
+        assert result.score < 100.0
+
+    def test_trigger_word_count_tracked(self):
+        """Description with multiple trigger indicators counts them."""
+        desc = "Trigger on 'run'. This skill activates when invoked."
+        result = analyze_description_quality(desc)
+        assert result.trigger_word_count >= 2
+
+    def test_description_none_trivially_empty(self):
+        """None/empty descriptions should not crash."""
+        result = analyze_description_quality("")
+        assert result.score == 0.0
 
 
 class TestNewDetectorsNoRegression:
