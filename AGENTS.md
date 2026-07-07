@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Qoder (qoder.com) when working with code in this repository.
+This file provides guidance to AI coding agents working on the **skill-cert** engine codebase. Do NOT apply this guidance to unrelated projects that happen to mention "skills" or "evaluation."
 
 **Project:** skill-cert — AI Skill Evaluation Engine  
 **Version:** 0.5.2  
