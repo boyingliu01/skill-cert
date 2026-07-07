@@ -888,6 +888,33 @@ def test_compute_section_coverage_plain_strings_still_work():
     assert coverage == 1.0, f"Expected 1.0, got {coverage}"
 
 
+def test_compute_section_coverage_token_overlap_fallback():
+    """Token-overlap matching covers semantically similar items."""
+    generator = EvalGenerator()
+    section_items = ["Parse skill definition file"]
+    assertion_set = {"parse SKILL.md file"}
+    coverage = generator._compute_section_coverage(section_items, assertion_set)
+    assert coverage == 1.0, f"Expected 1.0 (token overlap match), got {coverage}"
+
+
+def test_compute_section_coverage_token_overlap_no_match():
+    """Token-overlap with low similarity does not match."""
+    generator = EvalGenerator()
+    section_items = ["Parse SKILL.md"]
+    assertion_set = {"run security scan"}
+    coverage = generator._compute_section_coverage(section_items, assertion_set)
+    assert coverage == 0.0, f"Expected 0.0 (no overlap), got {coverage}"
+
+
+def test_compute_section_coverage_dict_items_str_converted():
+    """Section items that are dicts (e.g. workflow steps) are str()-converted."""
+    generator = EvalGenerator()
+    section_items = [{"name": "Parse SKILL.md"}, {"name": "Run tests"}]
+    assertion_set = {"Parse SKILL.md"}
+    coverage = generator._compute_section_coverage(section_items, assertion_set)
+    assert coverage == pytest.approx(0.5, rel=1e-3), f"Expected 0.5, got {coverage}"
+
+
 def test_calculate_coverage_with_regex_assertions():
     """_calculate_coverage correctly handles regex assertion values in full pipeline."""
     generator = EvalGenerator()

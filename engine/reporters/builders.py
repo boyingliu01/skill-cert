@@ -50,7 +50,7 @@ def prepare_drift_data(drift: dict[str, Any] | None) -> dict[str, Any]:
     """Prepare drift data for template rendering."""
     if drift is None:
         return {
-            "drift_detected": False,
+            "drift_detected": None,  # None = not applicable (single model)
             "highest_severity": "none",
             "average_variance": 0.0,
             "max_variance": 0.0,

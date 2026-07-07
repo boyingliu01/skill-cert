@@ -78,29 +78,36 @@ class Reporter:
 - **Coverage**: {{ "%.2f"|format(l3_details.step_coverage_ratio * 100) }}%
   of evaluations covered expected steps
 
-### L4: Execution Stability
-- **Score**: {{ "%.2f"|format(l4_score * 100) }}%
-- **Stability**: {{ "%.2f"|format(l4_details.execution_stability * 100) }}%
-- **Std Dev**: {{ "%.3f"|format(l4_details.stdev_deterministic_pass_rate) }}
+	### L4: Execution Stability
+	{% if l4_score is not none %}
+	- **Score**: {{ "%.2f"|format(l4_score * 100) }}%
+	- **Stability**: {{ "%.2f"|format(l4_details.execution_stability * 100) }}%
+	- **Std Dev**: {{ "%.3f"|format(l4_details.stdev_deterministic_pass_rate) }}
+	{% else %}
+	- **Score**: N/A (no deterministic assertions in eval results)
+	{% endif %}
 
 ## Drift Analysis
 
-{% if drift_detected %}
-### Cross-Model Drift Detected
-- **Highest Severity**: {{ highest_severity }}
-- **Average Variance**: {{ "%.3f"|format(average_variance) }}
-- **Max Variance**: {{ "%.3f"|format(max_variance) }}
+	{% if drift_detected is none %}
+	### Drift Analysis: Skipped
+	- Requires 2+ models for drift detection (single model evaluation)
+	{% elif drift_detected %}
+	### Cross-Model Drift Detected
+	- **Highest Severity**: {{ highest_severity }}
+	- **Average Variance**: {{ "%.3f"|format(average_variance) }}
+	- **Max Variance**: {{ "%.3f"|format(max_variance) }}
 
-#### Model Comparisons
-{% for result in drift_results %}
-- {{ result.model_a }} vs {{ result.model_b }}:
-  {{ result.severity }} severity
-  (variance: {{ "%.3f"|format(result.variance) }})
-{% endfor %}
-{% else %}
-### No Significant Drift Detected
-- All model comparisons show consistent performance
-{% endif %}
+	#### Model Comparisons
+	{% for result in drift_results %}
+	- {{ result.model_a }} vs {{ result.model_b }}:
+	  {{ result.severity }} severity
+	  (variance: {{ "%.3f"|format(result.variance) }})
+	{% endfor %}
+	{% else %}
+	### No Significant Drift Detected
+	- All model comparisons show consistent performance
+	{% endif %}
 
 ## Evaluation Coverage
 
@@ -264,6 +271,21 @@ class Reporter:
 - **Test Coverage**: {{ benchmark_info.test_coverage }}
 - **Total Token Usage**: {{ benchmark_info.total_tokens }} tokens
 
+## Eval Results Drill-Down
+
+### Failed Eval Cases
+
+{% set failed_cases = eval_results | selectattr("final_passed", "equalto", false) | list %}
+{% if failed_cases %}
+| # | Eval Name | Category | Model | Pass Rate | Error |
+|---|-----------|----------|-------|-----------|-------|
+{% for case in failed_cases %}
+| {{ case.get("eval_id", case.get("id", "")) }} | {{ case.get("eval_name", case.get("name", "")) }} | {{ case.get("category", "") }} | {{ case.get("model", case.get("model_name", "")) }} | {{ "%.0f"|format(case.get("pass_rate", 0.0) * 100) }}% | {{ case.get("error", "") }} |
+{% endfor %}
+{% else %}
+_All eval cases passed — no failures to report._
+{% endif %}
+
 ## Raw Results
 
 For detailed results, see the JSON output.
@@ -305,7 +327,7 @@ For detailed results, see the JSON output.
         l1_score = num(metrics.get("l1_trigger_accuracy", 0.0))
         l2_score = num(metrics.get("l2_with_without_skill_delta", 0.0))
         l3_score = num(metrics.get("l3_step_adherence", 0.0))
-        l4_score = num(metrics.get("l4_execution_stability", 0.0))
+        l4_score = metrics.get("l4_execution_stability")
 
         metrics_breakdown = metrics.get("metrics_breakdown", {})
         l1_details = metrics_breakdown.get("l1_details", {})
@@ -320,7 +342,7 @@ For detailed results, see the JSON output.
         coverage_data = prepare_coverage_data(metrics, config)
         config_info = prepare_config_info(config)
         benchmark_info = prepare_benchmark_info(metrics, config)
-        summary = create_summary(verdict, overall_score, l1_score, l2_score, l3_score, l4_score)
+        summary = create_summary(verdict, overall_score, l1_score, l2_score, l3_score, l4_score if l4_score is not None else 0.0)
 
         cost_analysis = metrics.get("l7_cost_efficiency")
         latency_analysis = metrics.get("l8_latency", {})

@@ -1060,12 +1060,27 @@ Minimum requirements:
                 deduped.append(b)
         return deduped
 
-    def _compute_section_coverage(self, section_items: list[str], assertion_set: set[str]) -> float:
+    @staticmethod
+    def _tokenize(text: str) -> set[str]:
+        """Split text into lowercased word tokens for overlap matching."""
+        return set(re.findall(r"[a-zA-Z0-9]+", text.lower()))
+
+    @staticmethod
+    def _jaccard_overlap(a_tokens: set[str], b_tokens: set[str]) -> float:
+        """Compute Jaccard similarity between two token sets."""
+        if not a_tokens or not b_tokens:
+            return 0.0
+        intersection = a_tokens & b_tokens
+        max_len = max(len(a_tokens), len(b_tokens))
+        return len(intersection) / max_len if max_len > 0 else 0.0
+
+    def _compute_section_coverage(self, section_items: list[Any], assertion_set: set[str]) -> float:
         """Compute coverage of a section (workflow, anti_patterns, output_format).
 
         Expands regex alternation patterns in assertion values before matching,
         so patterns like (Parse|Generate|Execute) are correctly matched against
-        individual section items.
+        individual section items. Falls back to token-overlap matching
+        (>=60% Jaccard similarity) when substring matching fails.
         """
         if not section_items:
             return 1.0  # No items to cover = automatic pass
@@ -1079,8 +1094,20 @@ Minimum requirements:
 
         covered = 0
         for item in section_items:
-            item_lower = str(item).lower()
-            if any(item_lower in b.lower() or b.lower() in item_lower for b in expanded):
+            item_str = str(item) if not isinstance(item, str) else item
+            item_lower = item_str.lower()
+            item_tokens = self._tokenize(item_str)
+            matched = False
+            for b in expanded:
+                b_lower = b.lower()
+                if item_lower in b_lower or b_lower in item_lower:
+                    matched = True
+                    break
+                b_tokens = self._tokenize(b)
+                if self._jaccard_overlap(item_tokens, b_tokens) >= 0.6:
+                    matched = True
+                    break
+            if matched:
                 covered += 1
         return covered / len(section_items)
 

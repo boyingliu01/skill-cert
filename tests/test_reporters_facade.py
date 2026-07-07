@@ -153,7 +153,7 @@ class TestBuildersModuleContents:
 
         assert callable(prepare_drift_data)
         result = prepare_drift_data(None)
-        assert result["drift_detected"] is False
+        assert result["drift_detected"] is None  # None = single model, not applicable
 
     def test_has_prepare_coverage_data(self):
         """builders module has prepare_coverage_data() function."""

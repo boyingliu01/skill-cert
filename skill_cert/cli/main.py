@@ -70,6 +70,12 @@ Examples:
         help="Models: 'name=url,key[,fallback]|name2=url,key'",
     )
     parser.add_argument(
+        "--models-alias",
+        default="",
+        help="Display aliases for models: 'alias1=name1|alias2=name2' "
+        "(used in reports to show friendlier names)",
+    )
+    parser.add_argument(
         "--output",
         default="./results",
         help="Output directory (default: ./results)",
