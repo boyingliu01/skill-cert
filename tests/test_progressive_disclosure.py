@@ -235,3 +235,115 @@ class TestProgressiveDisclosureTest:
 
         assert result.references_file_count == 2
         assert result.references_token_count > 0
+
+
+# ─── Test: analyze_structure_quality ────────────────────────────────────────
+
+
+class TestAnalyzeStructureQuality:
+    """Tests for analyze_structure_quality() — SKILL.md structure quality scoring."""
+
+    def test_empty_content_scores_low(self):
+        """Empty content scores low but not zero (has 1 line from split)."""
+        from engine.progressive_disclosure import analyze_structure_quality
+
+        result = analyze_structure_quality("")
+        assert result.skill_md_line_count == 1
+        assert not result.skill_md_over_limit
+        assert not result.is_router_pattern
+        assert not result.has_routing_table
+
+    def test_small_skill_scores_high(self):
+        """Small well-structured SKILL.md with routing and modules scores high."""
+        from engine.progressive_disclosure import analyze_structure_quality
+
+        content = "\n".join([
+            "# My Skill",
+            "",
+            "## Description",
+            "A skill for doing things.",
+            "",
+            "## Routing Table",
+            "| Trigger | Module |",
+            "|----------|--------|",
+            "| build    | references/build.md |",
+            "| test     | references/test.md |",
+            "",
+            "## Workflow",
+            "1. Check trigger",
+            "2. Route to module",
+        ] + ["padding line " * 10] * 3)  # small file
+        result = analyze_structure_quality(content)
+        assert result.score >= 20.0
+        assert not result.skill_md_over_limit
+        assert result.has_routing_table
+        assert result.is_router_pattern
+
+    def test_over_limit_small_line_count_deducted(self):
+        """SKILL.md over 500 lines should trigger over_limit with deduction."""
+        from engine.progressive_disclosure import analyze_structure_quality
+
+        content = "\n".join([
+            "# Large Skill",
+            "",
+            "## Routing Table",
+            "delegate to references/module.md"
+        ] + ["line " + str(i) for i in range(510)])
+        result = analyze_structure_quality(content)
+        assert result.skill_md_over_limit
+        assert result.skill_md_line_count >= 500
+        assert result.score < 100.0
+        assert len(result.issues) >= 1
+
+    def test_over_limit_no_module_refs_generates_issue(self):
+        """Over-limit SKILL.md without module refs gets extraction suggestion."""
+        from engine.progressive_disclosure import analyze_structure_quality
+
+        content = "\n".join([
+            "# Large Skill Without Modules",
+        ] + ["content line " + str(i) for i in range(520)])
+        result = analyze_structure_quality(content)
+        assert result.skill_md_over_limit
+        # Should have issue about extracting business logic
+        assert any("extract" in issue.lower() or "module" in issue.lower()
+                   for issue in result.issues)
+
+    def test_has_routing_table_detected(self):
+        """Routing table text should be detected."""
+        from engine.progressive_disclosure import analyze_structure_quality
+
+        content = "# Skill\n\n## Routing Table\n\n| Use | Module |\n"
+        result = analyze_structure_quality(content)
+        assert result.has_routing_table
+
+    def test_module_refs_without_routing_generates_issue(self):
+        """Module references without routing table should flag an issue."""
+        from engine.progressive_disclosure import analyze_structure_quality
+
+        content = "# Skill\n\nSee references/build.md and modules/deploy.md for details.\n"
+        result = analyze_structure_quality(content)
+        assert not result.has_routing_table
+        assert result.is_router_pattern  # has module refs
+        assert any("routing table" in issue.lower() for issue in result.issues)
+
+    def test_cjk_content_counts_lines_correctly(self):
+        """CJK content should count lines correctly (not token count)."""
+        from engine.progressive_disclosure import analyze_structure_quality
+
+        content = "\n".join(["# 技能说明", "", "## 路由表"] + ["中文内容行" * 5] * 10)
+        result = analyze_structure_quality(content)
+        assert result.skill_md_line_count == 13
+        assert not result.skill_md_over_limit
+
+    def test_exactly_500_lines_not_over_limit(self):
+        """Exactly 500 lines should NOT be over limit (boundary)."""
+        from engine.progressive_disclosure import analyze_structure_quality
+
+        content = "\n".join([
+            "# Exactly 500",
+            "## Routing Table",
+            "delegate to references/module.md",
+        ] + ["line " + str(i) for i in range(497)])
+        result = analyze_structure_quality(content)
+        assert result.skill_md_line_count == 500
+        assert not result.skill_md_over_limit
