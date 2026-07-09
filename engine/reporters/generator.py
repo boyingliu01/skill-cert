@@ -101,8 +101,8 @@ class Reporter:
 	#### Model Comparisons
 	{% for result in drift_results %}
 	- {{ result.model_a }} vs {{ result.model_b }}:
-	  {{ result.severity }} severity
-	  (variance: {{ "%.3f"|format(result.variance) }})
+	{{ result.severity }} severity
+	(variance: {{ "%.3f"|format(result.variance) }})
 	{% endfor %}
 	{% else %}
 	### No Significant Drift Detected
@@ -292,6 +292,22 @@ class Reporter:
 {% endfor %}
 {% endif %}
 {% endif %}
+{% if sq %}
+## Structure Quality
+
+**Score**: {{ "%.0f"|format(sq.score) }}/100
+**SKILL.md Lines**: {{ sq.skill_md_line_count }}
+**Over Limit (>500 lines)**: {{ "⚠️" if sq.skill_md_over_limit else "✅" }}
+**Has Routing Table**: {{ "✅" if sq.has_routing_table else "❌" }}
+**Is Router Pattern**: {{ "✅" if sq.is_router_pattern else "❌" }}
+
+{% if sq.issues %}
+**Issues:**
+{% for issue in sq.issues %}
+- {{ issue }}
+{% endfor %}
+{% endif %}
+{% endif %}
 {% if su %}
 ## Script Usage
 
@@ -329,6 +345,35 @@ class Reporter:
 {% if tp.issues %}
 **Issues:**
 {% for issue in tp.issues %}
+- {{ issue }}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if pd %}
+## Progressive Disclosure
+
+**Status**: {{ "✅ PASS" if pd.passed else "❌ FAIL" }}
+**Has references/**: {{ pd.has_references_dir }}
+**References File Count**: {{ pd.references_file_count }}
+**References Token Count**: {{ pd.references_token_count }}
+**Runtime-to-Index Ratio**: {{ pd.runtime_to_index_ratio }}
+
+{% if pd.tiered_cost_result %}
+### Tiered Cost Analysis
+
+| Tier | Token Count | File Count | Over Budget |
+|------|------------|------------|-------------|
+| Index | {{ pd.tiered_cost_result.index.token_count }} | {{ pd.tiered_cost_result.index.file_count }} | {{ "⚠️" if pd.tiered_cost_result.index.over_budget else "✅" }} |
+| Load | {{ pd.tiered_cost_result.load.token_count }} | {{ pd.tiered_cost_result.load.file_count }} | {{ "⚠️" if pd.tiered_cost_result.load.over_budget else "✅" }} |
+| Runtime | {{ pd.tiered_cost_result.runtime.token_count }} | {{ pd.tiered_cost_result.runtime.file_count }} | - |
+| **Total** | **{{ pd.tiered_cost_result.total_tokens }}** | - | **All: {{ "⚠️" if not pd.tiered_cost_result.all_within_budget else "✅" }}** |
+
+ROE Ratio: {{ pd.tiered_cost_result.roe_ratio }}
+{% endif %}
+
+{% if pd.issues %}
+**Issues:**
+{% for issue in pd.issues %}
 - {{ issue }}
 {% endfor %}
 {% endif %}
@@ -421,15 +466,28 @@ For detailed results, see the JSON output.
         coverage_data = prepare_coverage_data(metrics, config)
         config_info = prepare_config_info(config)
         benchmark_info = prepare_benchmark_info(metrics, config)
-        summary = create_summary(verdict, overall_score, l1_score, l2_score, l3_score, l4_score if l4_score is not None else 0.0)
+        summary = create_summary(
+            verdict,
+            overall_score,
+            l1_score,
+            l2_score,
+            l3_score,
+            l4_score if l4_score is not None else 0.0,
+        )
 
         cost_analysis = metrics.get("l7_cost_efficiency")
         latency_analysis = metrics.get("l8_latency", {})
         reliability = metrics.get("reliability", {})
-        description_quality = config.get("description_quality") if isinstance(config, dict) else None
+        description_quality = (
+            config.get("description_quality") if isinstance(config, dict) else None
+        )
         script_usage = config.get("script_usage") if isinstance(config, dict) else None
         tool_permission = config.get("tool_permission") if isinstance(config, dict) else None
         hooks_detection = config.get("hooks_detection") if isinstance(config, dict) else None
+        progressive_disclosure = metrics.get("progressive_disclosure") or config.get(
+            "progressive_disclosure"
+        )
+        structure_quality = config.get("structure_quality") if isinstance(config, dict) else None
 
         suggestions = generate_suggestions(
             metrics, drift, verdict, overall_score, cost_analysis, latency_analysis, reliability
@@ -461,11 +519,8 @@ For detailed results, see the JSON output.
             su=script_usage,
             tp=tool_permission,
             hk=hooks_detection,
-        )
-
-        # Progressive disclosure data (from spec, passed via metrics or config)
-        progressive_disclosure = metrics.get("progressive_disclosure") or config.get(
-            "progressive_disclosure"
+            pd=progressive_disclosure,
+            sq=structure_quality,
         )
 
         json_report = {
@@ -496,6 +551,14 @@ For detailed results, see the JSON output.
             json_report["maintainability"] = maintainability
         if progressive_disclosure:
             json_report["progressive_disclosure"] = progressive_disclosure
+        if description_quality:
+            json_report["description_quality"] = description_quality
+        if script_usage:
+            json_report["script_usage"] = script_usage
+        if tool_permission:
+            json_report["tool_permission"] = tool_permission
+        if structure_quality:
+            json_report["structure_quality"] = structure_quality
 
         return markdown_report, json_report
 
@@ -697,6 +760,16 @@ For detailed results, see the JSON output.
             extras["session_telemetry"] = session_telemetry
         if calibration_data:
             extras["calibration"] = calibration_data
+        if config.get("description_quality"):
+            extras["description_quality"] = config["description_quality"]
+        if config.get("script_usage"):
+            extras["script_usage"] = config["script_usage"]
+        if config.get("tool_permission"):
+            extras["tool_permission"] = config["tool_permission"]
+        if config.get("structure_quality"):
+            extras["structure_quality"] = config["structure_quality"]
+        if config.get("progressive_disclosure"):
+            extras["progressive_disclosure"] = config["progressive_disclosure"]
 
         eval_details = build_eval_details(eval_results)
 

@@ -619,6 +619,9 @@ def _generate_and_write_reports(
     hk_data = spec.get("hooks_detection")
     if hk_data:
         report_config["hooks_detection"] = hk_data
+    sq_data = spec.get("structure_quality")
+    if sq_data:
+        report_config["structure_quality"] = sq_data
     md_report, json_report = reporter.generate_report(
         metrics=metrics,
         drift=drift_report,
@@ -696,14 +699,13 @@ def _run_single_phase(
 ) -> int:
     # Lazy imports so test patches at skill_cert.cli.XXX intercept.
     # Phase 0.5: Progressive Disclosure Gate (Issue #72)
+    # Phase 0.5b: Structure Quality — tool permission + script usage (Issue #74)
+    from engine.hooks_detector import detect_hooks
+    from engine.maintainability import analyze_description_quality
     from engine.progressive_disclosure import (
         analyze_structure_quality,
         progressive_disclosure_test,
     )
-
-    # Phase 0.5b: Structure Quality — tool permission + script usage (Issue #74)
-    from engine.hooks_detector import detect_hooks
-    from engine.maintainability import analyze_description_quality
     from engine.structure_quality import check_script_usage, check_tool_permission
     from skill_cert.cli import (  # noqa: F811
         EvalRunner,
