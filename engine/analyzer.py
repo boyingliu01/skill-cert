@@ -226,6 +226,19 @@ def _load_references(skill_dir: Path) -> dict[str, str]:
     return loaded
 
 
+def _merge_references_content(main_content: str, references: dict[str, str]) -> str:
+    """Merge SKILL.md content with all loaded reference file contents.
+
+    Concatenates the main SKILL.md content with the contents of all loaded
+    references/*.md files so that structural extraction can find sections
+    from references (workflow_steps, anti_patterns, triggers, output_format).
+    """
+    parts = [main_content]
+    for ref_content in references.values():
+        parts.append(ref_content)
+    return "\n\n".join(parts)
+
+
 def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
     """Parse a SKILL.md file and return structured SkillSpec as dict.
 
@@ -295,6 +308,40 @@ def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
 
     # Step 6: Load references/ directory if present
     spec.references = _load_references(path.parent)
+
+    if spec.references:
+        merged_content = _merge_references_content(content, spec.references)
+        if merged_content != content:
+            ref_workflow = _extract_workflow_steps(merged_content)
+            ref_anti = _extract_anti_patterns(merged_content)
+            ref_output = _extract_output_format(merged_content)
+            ref_triggers = _extract_triggers(merged_content, spec.description, frontmatter)
+            ref_examples = _extract_examples(merged_content)
+
+            if not spec.workflow_steps and ref_workflow:
+                spec.workflow_steps = ref_workflow
+            if not spec.anti_patterns and ref_anti:
+                spec.anti_patterns = ref_anti
+            if not spec.output_format and ref_output:
+                spec.output_format = ref_output
+            if not spec.triggers and ref_triggers:
+                spec.triggers = ref_triggers
+            if not spec.examples and ref_examples:
+                spec.examples = ref_examples
+
+            merged_headings = _extract_headings(MarkdownIt("commonmark").parse(merged_content))
+            spec.content_length = len(merged_content)
+            spec.parse_confidence = _calculate_confidence(
+                has_frontmatter=bool(frontmatter),
+                has_workflow=bool(spec.workflow_steps),
+                has_headings=bool(headings) or bool(merged_headings),
+                has_anti_patterns=bool(spec.anti_patterns),
+                has_output_format=bool(spec.output_format),
+                has_examples=bool(spec.examples),
+                has_triggers=bool(spec.triggers),
+                content_length=len(merged_content),
+            )
+            spec.parse_confidence = max(0.0, spec.parse_confidence - schema_result.confidence_penalty)
 
     # Step 7: Determine parse method
     if spec.parse_confidence >= 0.6 and frontmatter:

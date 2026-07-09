@@ -510,4 +510,129 @@ description: test
         result = parse_skill_md(str(skill_file))
         assert len(result["references"]) == 1
         assert "readme.md" in result["references"]
+
+    def test_routing_skill_md_extracts_from_references(self, tmp_path):
+        """Routing SKILL.md with references/ should extract structural fields from merged content."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: routing-skill
+description: A routing skill
+---
+# Routing Skill
+
+Short routing file. See references/ for details.
+
+| Reference | Content |
+|-----------|---------|
+| [references/flow.md](references/flow.md) | Flow details |
+""")
+        refs_dir = tmp_path / "references"
+        refs_dir.mkdir()
+        (refs_dir / "flow.md").write_text("""## Workflow
+
+1. Parse input from user
+2. Validate the input
+3. Execute the task
+
+Phase 1: Init
+Phase 2: Run
+
+## Anti-Patterns
+
+| 错误 | 正确 |
+|------|------|
+| skip validation | always validate |
+
+## Triggers
+
+- `run command`
+- `execute task`
+
+## Output Format
+
+- verdict
+- overall_score
+- metric_results
+""")
+
+        result = parse_skill_md(str(skill_file))
+        assert len(result["workflow_steps"]) >= 2
+        assert len(result["anti_patterns"]) >= 1
+        assert len(result["triggers"]) >= 2
+        assert len(result["output_format"]) >= 2
+        assert result["parse_confidence"] >= 0.6
+
+    def test_fulsome_skill_md_not_overwritten_by_references(self, tmp_path):
+        """When SKILL.md already has full sections, references should not overwrite them."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: fulsome-skill
+description: A fulsome skill
+---
+# Fulsome Skill
+
+## Workflow
+
+1. Step A
+2. Step B
+
+## Anti-Patterns
+
+- Do not skip A
+
+## Output Format
+
+- field_a
+- field_b
+
+## Triggers
+
+- `trigger x`
+
+| Reference | Content |
+|-----------|---------|
+| [references/extra.md](references/extra.md) | Extra details |
+""")
+        refs_dir = tmp_path / "references"
+        refs_dir.mkdir()
+        (refs_dir / "extra.md").write_text("""# Extra
+
+## Workflow
+
+1. Extra Step 1
+2. Extra Step 2
+
+## Anti-Patterns
+
+- Extra anti-pattern
+
+## Output Format
+
+- extra_field
+
+## Triggers
+
+- `extra trigger`
+""")
+
+        result = parse_skill_md(str(skill_file))
+        step_names = [s["name"] for s in result["workflow_steps"]]
+        assert any("Step A" in n for n in step_names), "Main SKILL.md steps should be preserved"
+        assert any("Step B" in n for n in step_names), "Main SKILL.md steps should be preserved"
+        assert not any("Extra" in n for n in step_names), "References should not overwrite existing steps"
+
+    def test_no_references_no_re_extraction(self, tmp_path):
+        """Without references/ dir, behavior should be unchanged."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: plain-skill
+description: A plain skill
+---
+# Plain Skill
+
+No references directory.
+""")
+        result = parse_skill_md(str(skill_file))
+        assert result["references"] == {}
+        assert result["parse_confidence"] < 0.6
         assert "notes.txt" not in result["references"]
