@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skill-cert"
-version = "0.13.0"
+version = "0.13.1"
 description = "通用 AI Skill 评测引擎 — 自解析、自生成测试、自执行、自评估"
 readme = "README.md"
 license = {text = "Apache-2.0"}
