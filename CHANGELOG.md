@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-07-09
+
+### Added — Report 5-Dimension Enhancement (Issue #71)
+- **engine/constants.py**: Added `METRIC_METADATA` dictionary with purpose + method strings for all 12 metrics (L1-L8, drift, security, cost, reliability) in Chinese.
+- **engine/report_models.py**: Added `MetricAnalysis` Pydantic model with metric_name, purpose, method, result_summary, analysis, and suggestions fields.
+- **engine/reporters/builders.py**: Added `build_metric_analysis()` deterministic function with per-metric analysis rules (L1 fp/fn bias detection, L2 low-gain warning, L4 single-run N/A, drift single-model skip).
+- **engine/reporters/generator.py**: Jinja2 template upgraded to 5-dimension format (评测目的/评测方法/评测结果/分析/改进建议) for all metric sections.
+- **Tests**: 32 new builder tests, 10 new constants tests, 6 new report model tests.
+
+### Added — Exclusion Scenarios Detection (Issue #75 P1)
+- **engine/gotchas_analyzer.py**: Added `analyze_exclusion_scenarios()` with English and Chinese exclusion pattern matching. Scores description coverage (0-100) based on exclusion phrase count.
+- **Tests**: 14 new exclusion scenario tests (empty, single/multiple matches, Chinese keywords, case insensitivity).
+
+### Changed — SKILL.md Restructuring (Issues #76, #82)
+- **SKILL.md**: Restructured from 278-line monolithic file to 38-line router with description exclusion clause ("Do NOT trigger for: code reviews, sprint progress checks...").
+- **references/**: 6 new reference files extracted from original SKILL.md (setup, evaluation-flow, metrics, output-format, anti-patterns, examples).
+- **tools.md**: New tool allowlist with dangerous tool restrictions.
+- **engine/analyzer.py**: Added `_load_references()` for multi-file skill loading, backward-compatible (no references/ directory = no change). Added `references` field to `SkillSpec`.
+- **Tests**: 6 new analyzer tests for references loading, backward compatibility, file filtering.
+
+### Fixed — Code Quality
+- **engine/hooks_detector.py**: Removed unused `total_hooks` variable.
+- **engine/reporters/builders.py**: Removed unused `wos` variable. Fixed E501 line length violations.
+- **engine/constants.py**: Fixed all E501 line length violations via string concatenation.
+- **engine/gotchas_analyzer.py**: Removed unused `Path` and `Any` imports. Fixed E501 in GOTCHA_PATTERNS.
+- **tests/test_builders.py**: Removed unused `pytest` import.
+- **ruff**: 0 errors, 0 warnings across all project files.
+
 ## [0.11.3] - 2026-07-05
 
 ### Added — Progressive Disclosure Phase 0.5 Gate (Issue #72)
