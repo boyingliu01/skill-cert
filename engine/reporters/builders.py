@@ -744,3 +744,295 @@ def build_multi_skill_section(report: dict[str, Any]) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> dict[str, Any]:
+    """Build 5-dimension metric analysis for a single metric.
+
+    Returns a dict with keys: purpose, method, result_summary, analysis, suggestions.
+    Computed deterministically via if/else branches — no LLM calls.
+
+    Args:
+        metric_name: One of "L1".."L8", "drift", "security", "cost", "reliability".
+        details: Metric-specific dict with score/rate/count fields.
+    """
+    from engine.constants import METRIC_METADATA  # noqa: F811
+
+    if details is None:
+        details = {}
+
+    meta = METRIC_METADATA.get(metric_name, {})
+    purpose = meta.get("purpose", f"Evaluate {metric_name} performance")
+    method = meta.get("method", "Standard metric computation")
+
+    result_summary = ""
+    analysis = ""
+    suggestions: list[str] = []
+
+    # ── L1: Trigger Accuracy ───────────────────────────────────────
+    if metric_name == "L1":
+        score = details.get("score", 0.0)
+        total = details.get("total_trigger_evals", 0)
+        passed = details.get("passed_trigger_evals", 0)
+        fp = details.get("fp_count", 0)
+        fn = details.get("fn_count", 0)
+        status = "PASS" if score >= 0.9 else "FAIL"
+        result_summary = (
+            f"触发准确率: {score:.1%} ({passed}/{total} 通过) — {status} (阈值≥90%)"
+        )
+        if fp > fn:
+            analysis = "误触发偏多（FP > FN），Skill描述可能过于宽泛，导致模型在不相关场景也误触发"
+        elif fn > fp:
+            analysis = "漏触发偏多（FN > FP），Skill触发条件不够明确，模型未能识别应触发场景"
+        else:
+            analysis = "触发准确率在各维度均衡，FP与FN分布基本对称"
+        if score < 0.7:
+            suggestions.append("添加更明确的触发短语，减少触发条件歧义")
+        if score < 0.9:
+            suggestions.append("扩充反例用例，覆盖更多不应触发场景")
+
+    # ── L2: With/Without Skill Delta ───────────────────────────────
+    elif metric_name == "L2":
+        score = details.get("score", 0.0)
+        improvement = details.get("improvement_percentage", 0.0)
+        with_avg = details.get("with_skill_avg_pass_rate", 0.0)
+        without_avg = details.get("without_skill_avg_pass_rate", 0.0)
+        status = "PASS" if score >= 0.2 else "FAIL"
+        result_summary = (
+            f"输出增益: {improvement:.1f}% (With: {with_avg:.0%}, Without: {without_avg:.0%})"
+            f" — {status} (阈值≥20%)"
+        )
+        if improvement < 5.0:
+            analysis = "增益极低（<5%），Skill未明显提升模型输出质量，模型本身可能已有相关能力"
+        elif improvement < 0:
+            analysis = "Skill引入负增益，提示词可能干扰了模型的原有判断"
+        elif improvement >= 20:
+            analysis = "Skill带来显著提升，成功将领域知识注入模型行为"
+        else:
+            analysis = "Skill有正向增益但未达阈值，建议针对性强化关键步骤"
+        if improvement < 20:
+            suggestions.append("增强Skill的核心步骤指令，提供更具体的领域知识")
+        if improvement < 5:
+            suggestions.append("考虑将Skill中的基础知识融入系统提示词，而非单独Skill")
+
+    # ── L3: Step Adherence ─────────────────────────────────────────
+    elif metric_name == "L3":
+        score = details.get("score", 0.0)
+        coverage = details.get("step_coverage_ratio", 0.0)
+        status = "PASS" if score >= 0.85 else "FAIL"
+        result_summary = (
+            f"步骤遵循度: {score:.1%} (覆盖率: {coverage:.0%}) — {status} (阈值≥85%)"
+        )
+        if score < 0.7:
+            analysis = "步骤遵循度严重不足，工作流步骤过于复杂或缺少明确执行指引"
+        elif score < 0.85:
+            analysis = "部分步骤被跳过，可能是工作流定义不够简洁或模型难以理解中间步骤"
+        else:
+            analysis = "模型良好遵循工作流步骤，Skill的结构设计合理"
+        if score < 0.85:
+            suggestions.append("简化工作流步骤，减少步骤数量或合并相关步骤")
+            suggestions.append("为每个步骤添加明确的转换提示（如'完成后进入下一步...'）")
+
+    # ── L4: Execution Stability ────────────────────────────────────
+    elif metric_name == "L4":
+        score = details.get("score")
+        std = details.get("stdev_deterministic_pass_rate", 0.0)
+        runs = details.get("runs", 1)
+        if score is None or runs < 2:
+            result_summary = "N/A — 仅单次执行，无法评估稳定性"
+            analysis = "单次执行不能反映稳定性，需要≥2次执行才能计算标准差"
+        else:
+            status = "PASS" if std <= 0.10 else "FAIL"
+            result_summary = (
+                f"执行稳定性标准差: {std:.3f} — {status} (阈值≤0.10)"
+            )
+            if std > 0.10:
+                analysis = "多次执行结果波动较大，Skill可能存在非确定性行为（如依赖模型随机性）"
+            else:
+                analysis = "执行结果稳定，Skill在不同轮次间表现一致"
+        if runs < 2:
+            suggestions.append("增加执行次数（--runs≥2）以评估稳定性")
+        if std > 0.10:
+            suggestions.append("锁定随机种子或降低模型temperature以增强确定性")
+
+    # ── L5: Step Efficiency ────────────────────────────────────────
+    elif metric_name == "L5":
+        score = details.get("score", 0.0)
+        violations = details.get("violations", 0)
+        status = "PASS" if score >= 0.7 else "FAIL"
+        result_summary = (
+            f"步骤效率: {score:.1%} ({violations} 次违规) — {status}"
+        )
+        if score == 1.0:
+            analysis = "所有执行在操作边界内完成，步骤/Token/工具调用均未超限"
+        elif score >= 0.7:
+            analysis = "存在少量违规，整体效率可接受"
+        else:
+            analysis = "多次违规表明Skill消耗过多步骤、Token或工具调用"
+        if violations > 0:
+            suggestions.append("优化工作流减少冗余步骤或降低Token消耗")
+        if violations >= 2:
+            suggestions.append("考虑提高操作包络限制或拆分复杂Skill")
+
+    # ── L6: Trajectory Quality ─────────────────────────────────────
+    elif metric_name == "L6":
+        score = details.get("score", 0.0)
+        result_summary = f"轨迹质量: {score:.1%}"
+        if score >= 0.8:
+            analysis = "多轮对话轨迹连贯，决策路径合理，目标达成度高"
+        elif score >= 0.6:
+            analysis = "对话轨迹基本合理但存在局部决策问题或上下文丢失"
+        else:
+            analysis = "对话轨迹质量低，模型可能迷失方向或做出不当中间决策"
+        if score < 0.7:
+            suggestions.append("添加中间检查点，在关键步骤后确认当前方向")
+            suggestions.append("强化上下文保留机制或减少单次对话轮数")
+
+    # ── L7: Cost Efficiency ────────────────────────────────────────
+    elif metric_name == "L7":
+        delta_pct = details.get("cost_delta_pct", 0.0)
+        efficiency = details.get("cost_efficiency", 0.0)
+        total_cost = details.get("total_cost", 0.0)
+        result_summary = (
+            f"成本效率: {efficiency:.4f}, 总成本: ${total_cost:.2f}, 成本增量: {delta_pct:.1%}"
+        )
+        if delta_pct > 0.5:
+            analysis = "Skill显著增加成本（>50%），ROI可能不理想"
+        elif delta_pct < 0:
+            analysis = "Skill降低了执行成本，极高性价比"
+        elif delta_pct < 0.2:
+            analysis = "成本增量在可接受范围，Skill带来的增益值得额外成本"
+        else:
+            analysis = "成本增量较高，需评估增益是否能证明开销合理"
+        if delta_pct > 0.5:
+            suggestions.append("优化提示词长度，减少冗余内容以降低Token消耗")
+        if efficiency < 0.01 and delta_pct > 0:
+            suggestions.append("成本效率极低 — 质量增益无法证明成本增加的合理性")
+
+    # ── L8: Latency ────────────────────────────────────────────────
+    elif metric_name == "L8":
+        overhead = details.get("overhead_pct", 0.0)
+        ws = details.get("with_skill", {})
+        ws_p50 = ws.get("p50", 0.0) if ws else 0.0
+        result_summary = (
+            f"延迟开销: {overhead:.0f}% (P50 With: {ws_p50:.2f}s)"
+        )
+        if overhead > 50:
+            analysis = "延迟开销过大（>50%），严重影响交互式使用体验"
+        elif overhead > 20:
+            analysis = "延迟开销较高，可能影响用户体验但对非交互式场景可接受"
+        elif overhead < 0:
+            analysis = "Skill反而降低延迟（可能因更精确的指引减少了模型思考时间）"
+        else:
+            analysis = "延迟开销在正常范围，Skill未显著拖慢执行速度"
+        if overhead > 50:
+            suggestions.append("大幅优化Skill结构，减少步骤或使用更快的模型")
+        if overhead > 20:
+            suggestions.append("考虑异步处理或并行执行非依赖步骤")
+
+    # ── Drift ───────────────────────────────────────────────────────
+    elif metric_name == "drift":
+        models = details.get("models", 1)
+        drift_detected = details.get("drift_detected")
+        severity = details.get("highest_severity", "none")
+        max_var = details.get("max_variance", 0.0)
+        avg_var = details.get("average_variance", 0.0)
+        if drift_detected is None or models < 2:
+            result_summary = "Skipped — 单模型评估，无法检测跨模型漂移"
+            analysis = "跨模型漂移检测需要≥2个不同provider的模型"
+            suggestions.append("增加至少一个不同provider的模型以启用漂移检测")
+        elif drift_detected:
+            result_summary = (
+                f"检测到跨模型漂移 — 最高严重度: {severity}"
+                f" (Max方差: {max_var:.3f}, Avg方差: {avg_var:.3f})"
+            )
+            if severity == "high":
+                analysis = "严重跨模型漂移 — Skill极度依赖特定模型，无法在多模型间稳定工作"
+            elif severity == "moderate":
+                analysis = "中等跨模型漂移 — 不同模型间存在显著差异，需关注模型适配性"
+            else:
+                analysis = "轻微跨模型漂移 — 模型间差异在可接受范围内"
+            if severity in ("moderate", "high"):
+                suggestions.append("Skill中避免依赖特定模型特性，使用通用化描述")
+                suggestions.append("针对表现较差的模型调整提示词或增加适配说明")
+        else:
+            result_summary = "未检测到显著漂移 — 所有模型表现一致"
+            analysis = "Skill在不同模型上都表现一致，跨模型稳定性良好"
+
+    # ── Security ────────────────────────────────────────────────────
+    elif metric_name == "security":
+        probe_count = details.get("probe_count", 0)
+        triggered = details.get("triggered", 0)
+        bypasses = details.get("bypasses_found", 0)
+        if bypasses == 0 and triggered == 0:
+            result_summary = f"安全扫描通过 — 0/{probe_count} 探针触发，未发现绕过"
+            analysis = "未检测到安全风险，Skill定义不包含危险指令或可注入模式"
+        else:
+            result_summary = (
+                f"安全问题 — {triggered}/{probe_count} 探针触发, {bypasses} 绕过"
+            )
+            analysis = "检测到潜在安全风险，Skill可能包含危险指令或存在注入点"
+        if bypasses > 0:
+            suggestions.append("立即移除硬编码凭证或危险命令")
+            suggestions.append("使用参数化输入替代直接拼接命令")
+        if triggered > 0:
+            suggestions.append("审查触发探针的Skill内容，确保指令上下文安全")
+
+    # ── Cost (separate section) ─────────────────────────────────────
+    elif metric_name == "cost":
+        total_cost = details.get("total_cost", 0.0)
+        cost_per_eval = details.get("cost_per_eval", 0.0)
+        model = details.get("model", "unknown")
+        result_summary = (
+            f"总成本: ${total_cost:.2f}, 单次评测: ${cost_per_eval:.4f} (模型: {model})"
+        )
+        if total_cost > 1.0:
+            analysis = "评测成本较高，大量评测用例或高成本模型可能影响批量评测可行性"
+        elif total_cost > 0.1:
+            analysis = "评测成本适中，适合常规使用"
+        else:
+            analysis = "评测成本极低，可频繁运行"
+        if total_cost > 1.0:
+            suggestions.append("考虑降低评测用例数或切换到更经济的模型")
+            suggestions.append("缓存常用评测结果以降低重复评测成本")
+
+    # ── Reliability ─────────────────────────────────────────────────
+    elif metric_name == "reliability":
+        total_evals = details.get("total_evals", 0)
+        error_rate = details.get("error_rate", 0.0)
+        success_rate = details.get("success_rate", 0.0)
+        retry_stats = details.get("retry_stats", {})
+        avg_retries = retry_stats.get("avg_retries", 0.0)
+        max_retries = retry_stats.get("max_retries", 0)
+        result_summary = (
+            f"成功率: {success_rate:.1%}, 错误率: {error_rate:.1%}"
+            f" ({total_evals} 次执行, 平均重试: {avg_retries:.1f})"
+        )
+        if error_rate > 0.2:
+            analysis = "评测过程中错误率过高（>20%），评测结果可能不够可靠"
+        elif error_rate > 0.05:
+            analysis = "存在一定错误率，整体评测可靠性尚可"
+        else:
+            analysis = "评测过程高度可靠，API调用稳定性良好"
+        if error_rate > 0.1:
+            suggestions.append("实现指数退避重试策略以提升成功率")
+        if max_retries > 2:
+            suggestions.append(f"检测到高达{max_retries}次的重试 — 考虑熔断器或备用模型")
+        errors_by_category = details.get("errors_by_category", {})
+        if "timeout" in errors_by_category:
+            suggestions.append("超时错误频发 — 增加超时时间或优化提示词复杂度")
+        if "rate_limit" in errors_by_category:
+            suggestions.append("速率限制错误 — 降低并发数或增加请求间隔")
+
+    # ── Unknown metric ──────────────────────────────────────────────
+    else:
+        result_summary = f"{metric_name}: data available"
+        analysis = f"Metric analysis for '{metric_name}' — no specific rule defined"
+
+    return {
+        "purpose": purpose,
+        "method": method,
+        "result_summary": result_summary,
+        "analysis": analysis,
+        "suggestions": suggestions,
+    }

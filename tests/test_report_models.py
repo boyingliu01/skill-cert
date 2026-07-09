@@ -6,6 +6,7 @@ from engine.report_models import (
     AssertionResult,
     EvalDetail,
     ImprovementSuggestion,
+    MetricAnalysis,
     MetricsSection,
     ObservabilitySection,
     ReportMetadata,
@@ -247,3 +248,79 @@ class TestStructuredReport:
         report = StructuredReport.model_validate(data)
         assert report.metadata.skill_name == "test"
         assert report.verdict.verdict == "PASS"
+
+
+class TestMetricAnalysis:
+    """Tests for MetricAnalysis model."""
+
+    def test_default_values(self):
+        ma = MetricAnalysis()
+        assert ma.metric_name == ""
+        assert ma.purpose == ""
+        assert ma.method == ""
+        assert ma.result_summary == ""
+        assert ma.analysis == ""
+        assert ma.suggestions == []
+
+    def test_full_model(self):
+        ma = MetricAnalysis(
+            metric_name="L1",
+            purpose="验证模型是否在正确场景触发该Skill，而非误触发或遗漏触发",
+            method="生成正例和反例触发用例，通过混淆矩阵（TP/TN/FP/FN）计算综合准确率",
+            result_summary="触发准确率 95.0%，PASS",
+            analysis="模型对正面触发场景识别良好，但存在少量误判",
+            suggestions=["增加边界触发用例", "优化触发条件描述"],
+        )
+        assert ma.metric_name == "L1"
+        assert "混淆矩阵" in ma.method
+        assert ma.result_summary == "触发准确率 95.0%，PASS"
+        assert len(ma.suggestions) == 2
+        assert "边界触发" in ma.suggestions[0]
+
+    def test_model_dump(self):
+        ma = MetricAnalysis(
+            metric_name="L2",
+            purpose="验证Skill是否确实提升了模型表现",
+            method="计算归一化增益Δ=(with-without)/without，增益≥20%为PASS",
+            result_summary="增益 25%，PASS",
+            analysis="Skill对代码生成任务有明显提升",
+            suggestions=["优化上下文使用"],
+        )
+        data = ma.model_dump()
+        assert data["metric_name"] == "L2"
+        assert data["purpose"] == "验证Skill是否确实提升了模型表现"
+        assert "Δ" in data["method"]
+        assert data["suggestions"] == ["优化上下文使用"]
+
+    def test_model_dump_json(self):
+        ma = MetricAnalysis(
+            metric_name="drift",
+            purpose="验证Skill在不同模型上的表现一致性",
+            method="在至少2个不同provider的模型上执行相同评测集，计算通过率方差",
+            result_summary="drift severity: none",
+            analysis="跨模型表现一致",
+            suggestions=[],
+        )
+        json_str = ma.model_dump_json()
+        assert '"metric_name"' in json_str
+        assert '"drift"' in json_str
+        assert "跨模型" in json_str
+
+    def test_suggestions_default_to_empty_list(self):
+        ma = MetricAnalysis(metric_name="cost")
+        assert ma.suggestions == []
+
+    def test_fields_are_all_strings_except_suggestions(self):
+        ma = MetricAnalysis(
+            metric_name="L8",
+            purpose="验证Skill是否引入不可接受的延迟",
+            method="统计P50/P95/P99延迟，计算开销百分比",
+            result_summary="P50: 2.3s, P95: 5.1s",
+            analysis="延迟在可接受范围内",
+        )
+        assert isinstance(ma.metric_name, str)
+        assert isinstance(ma.purpose, str)
+        assert isinstance(ma.method, str)
+        assert isinstance(ma.result_summary, str)
+        assert isinstance(ma.analysis, str)
+        assert isinstance(ma.suggestions, list)

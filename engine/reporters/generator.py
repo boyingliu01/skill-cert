@@ -23,6 +23,7 @@ from engine.reporters.builders import (
     build_blocking_issues,
     build_caveats,
     build_eval_details,
+    build_metric_analysis,
     build_metrics_section,
     build_multi_skill_section,
     build_observability_section,
@@ -57,57 +58,81 @@ class Reporter:
 
 ## L1-L4 Metrics
 
-### L1: Trigger Accuracy
-- **Score**: {{ "%.2f"|format(l1_score * 100) }}%
-- **Details**:
-  {{ l1_details.total_trigger_evals }} trigger evaluations,
-  {{ l1_details.passed_trigger_evals }} passed
-- **Accuracy**: {{ "%.2f"|format(l1_details.trigger_accuracy * 100) }}%
+### L1: Trigger Accuracy — {{ "%.0f"|format(l1_score * 100) }}% {{ "PASS" if l1_score >= 0.9 else "FAIL" }}
+**评测目的**: {{ l1_analysis.purpose }}
+**评测方法**: {{ l1_analysis.method }}
+**评测结果**: {{ l1_analysis.result_summary }}
+**分析**: {{ l1_analysis.analysis }}
+**改进建议**:
+{% for s in l1_analysis.suggestions %}- {{ s }}
+{% endfor %}
 
-### L2: With/Without Skill Delta
-- **Score**: {{ "%.2f"|format(l2_score * 100) }}%
-- **With Skill Avg**: {{ "%.2f"|format(l2_details.with_skill_avg_pass_rate * 100) }}%
-- **Without Skill Avg**: {{ "%.2f"|format(l2_details.without_skill_avg_pass_rate * 100) }}%
-- **Improvement**: {{ "%.2f"|format(l2_details.improvement_percentage) }}%
-{% if l2_details.denominator_warning %}
-⚠️ **Warning**: Without-skill baseline is near zero — L2 gain may be unreliable.
+### L2: With/Without Skill Delta — {{ "%.0f"|format(l2_score * 100) }}% {{ "PASS" if l2_score >= 0.2 else "FAIL" }}
+**评测目的**: {{ l2_analysis.purpose }}
+**评测方法**: {{ l2_analysis.method }}
+**评测结果**: {{ l2_analysis.result_summary }}
+**分析**: {{ l2_analysis.analysis }}
+**改进建议**:
+{% for s in l2_analysis.suggestions %}- {{ s }}
+{% endfor %}
+
+### L3: Step Adherence — {{ "%.0f"|format(l3_score * 100) }}% {{ "PASS" if l3_score >= 0.85 else "FAIL" }}
+**评测目的**: {{ l3_analysis.purpose }}
+**评测方法**: {{ l3_analysis.method }}
+**评测结果**: {{ l3_analysis.result_summary }}
+**分析**: {{ l3_analysis.analysis }}
+**改进建议**:
+{% for s in l3_analysis.suggestions %}- {{ s }}
+{% endfor %}
+
+### L4: Execution Stability
+{% if l4_score is not none %}{{ "%.0f"|format(l4_score * 100) }}%{% else %}N/A{% endif %}
+**评测目的**: {{ l4_analysis.purpose }}
+**评测方法**: {{ l4_analysis.method }}
+**评测结果**: {{ l4_analysis.result_summary }}
+**分析**: {{ l4_analysis.analysis }}
+**改进建议**:
+{% for s in l4_analysis.suggestions %}- {{ s }}
+{% endfor %}
+
+{% if l5_analysis %}
+### L5: Step Efficiency — {{ "%.0f"|format(l5_score * 100) }}%
+**评测目的**: {{ l5_analysis.purpose }}
+**评测方法**: {{ l5_analysis.method }}
+**评测结果**: {{ l5_analysis.result_summary }}
+**分析**: {{ l5_analysis.analysis }}
+**改进建议**:
+{% for s in l5_analysis.suggestions %}- {{ s }}
+{% endfor %}
 {% endif %}
-
-### L3: Step Adherence
-- **Score**: {{ "%.2f"|format(l3_score * 100) }}%
-- **Coverage**: {{ "%.2f"|format(l3_details.step_coverage_ratio * 100) }}%
-  of evaluations covered expected steps
-
-	### L4: Execution Stability
-	{% if l4_score is not none %}
-	- **Score**: {{ "%.2f"|format(l4_score * 100) }}%
-	- **Stability**: {{ "%.2f"|format(l4_details.execution_stability * 100) }}%
-	- **Std Dev**: {{ "%.3f"|format(l4_details.stdev_deterministic_pass_rate) }}
-	{% else %}
-	- **Score**: N/A (no deterministic assertions in eval results)
-	{% endif %}
+{% if l6_analysis %}
+### L6: Trajectory Quality — {{ "%.0f"|format(l6_score * 100) }}%
+**评测目的**: {{ l6_analysis.purpose }}
+**评测方法**: {{ l6_analysis.method }}
+**评测结果**: {{ l6_analysis.result_summary }}
+**分析**: {{ l6_analysis.analysis }}
+**改进建议**:
+{% for s in l6_analysis.suggestions %}- {{ s }}
+{% endfor %}
+{% endif %}
 
 ## Drift Analysis
 
-	{% if drift_detected is none %}
-	### Drift Analysis: Skipped
-	- Requires 2+ models for drift detection (single model evaluation)
-	{% elif drift_detected %}
-	### Cross-Model Drift Detected
-	- **Highest Severity**: {{ highest_severity }}
-	- **Average Variance**: {{ "%.3f"|format(average_variance) }}
-	- **Max Variance**: {{ "%.3f"|format(max_variance) }}
+### Drift
+**评测目的**: {{ drift_analysis.purpose }}
+**评测方法**: {{ drift_analysis.method }}
+**评测结果**: {{ drift_analysis.result_summary }}
+**分析**: {{ drift_analysis.analysis }}
+**改进建议**:
+{% for s in drift_analysis.suggestions %}- {{ s }}
+{% endfor %}
 
-	#### Model Comparisons
-	{% for result in drift_results %}
-	- {{ result.model_a }} vs {{ result.model_b }}:
-	{{ result.severity }} severity
-	(variance: {{ "%.3f"|format(result.variance) }})
-	{% endfor %}
-	{% else %}
-	### No Significant Drift Detected
-	- All model comparisons show consistent performance
-	{% endif %}
+{% if drift_detected and drift_results %}
+#### Model Comparisons
+{% for result in drift_results %}
+- {{ result.model_a }} vs {{ result.model_b }}: {{ result.severity }} severity (variance: {{ "%.3f"|format(result.variance) }})
+{% endfor %}
+{% endif %}
 
 ## Evaluation Coverage
 
@@ -118,24 +143,27 @@ class Reporter:
 - **Normal Assertions**: {{ normal_passed }}/{{ normal_total }} passed
 {% if cost_analysis %}
 
-## Cost Analysis
+## L7: Cost Efficiency
 
-### L7: Cost Efficiency
-- **Cost per Eval**: ${{ "%.4f"|format(cost_analysis.cost_per_eval) }}
-- **Total Cost**: ${{ "%.2f"|format(cost_analysis.total_cost) }}
-- **With Skill (avg)**: ${{ "%.4f"|format(cost_analysis.cost_with_skill) }}
-- **Without Skill (avg)**: ${{ "%.4f"|format(cost_analysis.cost_without_skill) }}
-- **Cost Delta**: {{ "%.1f"|format(cost_analysis.cost_delta_pct * 100) }}%
-- **Cost Efficiency **(L2/Cost){{ "%.2f"|format(cost_analysis.cost_efficiency) }}
-{% if cost_analysis.cost_delta_pct > 0.5 %}
-⚠️ Skill increases costs by more than 50%. Consider optimizing.
-{% endif %}
+**评测目的**: {{ l7_analysis.purpose }}
+**评测方法**: {{ l7_analysis.method }}
+**评测结果**: {{ l7_analysis.result_summary }}
+**分析**: {{ l7_analysis.analysis }}
+**改进建议**:
+{% for s in l7_analysis.suggestions %}- {{ s }}
+{% endfor %}
 {% endif %}
 {% if latency_analysis %}
 
-## Latency Analysis
+## L8: Execution Latency
 
-### L8: Execution Latency
+**评测目的**: {{ l8_analysis.purpose }}
+**评测方法**: {{ l8_analysis.method }}
+**评测结果**: {{ l8_analysis.result_summary }}
+**分析**: {{ l8_analysis.analysis }}
+**改进建议**:
+{% for s in l8_analysis.suggestions %}- {{ s }}
+{% endfor %}
 {% if latency_analysis.with_skill %}
 | Metric | With Skill | Without Skill | Overhead |
 |--------|-----------|---------------|----------|
@@ -168,13 +196,18 @@ class Reporter:
   {{ latency_analysis.slow_without_skill }} |
   +{{ latency_analysis.slow_with_skill - latency_analysis.slow_without_skill }} |
 {% endif %}
-{% if latency_analysis.overhead_pct and latency_analysis.overhead_pct > 20 %}
-⚠️ Skill adds {{ latency_analysis.overhead_pct }}% latency overhead.
-{% endif %}
 {% endif %}
 {% if reliability and reliability.total_evals > 0 %}
 
 ## Reliability Analysis
+
+**评测目的**: {{ reliability_analysis.purpose }}
+**评测方法**: {{ reliability_analysis.method }}
+**评测结果**: {{ reliability_analysis.result_summary }}
+**分析**: {{ reliability_analysis.analysis }}
+**改进建议**:
+{% for s in reliability_analysis.suggestions %}- {{ s }}
+{% endfor %}
 
 | Metric | Value |
 |--------|-------|
@@ -493,6 +526,51 @@ For detailed results, see the JSON output.
             metrics, drift, verdict, overall_score, cost_analysis, latency_analysis, reliability
         )
 
+        # Build 5-dimension metric analyses via build_metric_analysis()
+        l1_analysis = build_metric_analysis("L1", {
+            "score": l1_score,
+            "total_trigger_evals": l1_details.get("total_trigger_evals", 0),
+            "passed_trigger_evals": l1_details.get("passed_trigger_evals", 0),
+            "fp_count": l1_details.get("fp_count", 0),
+            "fn_count": l1_details.get("fn_count", 0),
+        })
+        l2_analysis = build_metric_analysis("L2", {
+            "score": l2_score,
+            "improvement_percentage": l2_details.get("improvement_percentage", 0.0),
+            "with_skill_avg_pass_rate": l2_details.get("with_skill_avg_pass_rate", 0.0),
+            "without_skill_avg_pass_rate": l2_details.get("without_skill_avg_pass_rate", 0.0),
+        })
+        l3_analysis = build_metric_analysis("L3", {
+            "score": l3_score,
+            "step_coverage_ratio": l3_details.get("step_coverage_ratio", 0.0),
+        })
+        l4_analysis = build_metric_analysis("L4", {
+            "score": l4_score,
+            "stdev_deterministic_pass_rate": l4_details.get(
+                "stdev_deterministic_pass_rate", 0.0
+            ),
+            "runs": l4_details.get("runs", 1),
+        })
+        l5_score_val = num(metrics.get("l5_step_efficiency", 0.0))
+        l5_analysis = build_metric_analysis("L5", {
+            "score": l5_score_val,
+            "violations": metrics.get("l5_violations", 0),
+        })
+        l6_score_val = num(metrics.get("l6_trajectory_quality", 0.0))
+        l6_analysis = build_metric_analysis("L6", {"score": l6_score_val})
+        drift_analysis = build_metric_analysis("drift", {
+            "models": len(config.get("models", [])),
+            "drift_detected": drift_data.get("drift_detected"),
+            "highest_severity": drift_data.get("highest_severity", "none"),
+            "max_variance": drift_data.get("max_variance", 0.0),
+            "average_variance": drift_data.get("average_variance", 0.0),
+        })
+        l7_analysis = build_metric_analysis("L7", cost_analysis if cost_analysis else {})
+        l8_analysis = build_metric_analysis("L8", latency_analysis if latency_analysis else {})
+        reliability_analysis = build_metric_analysis(
+            "reliability", reliability if reliability else {}
+        )
+
         markdown_report = self.markdown_template.render(
             verdict=verdict,
             overall_score=overall_score,
@@ -501,6 +579,18 @@ For detailed results, see the JSON output.
             l2_score=l2_score,
             l3_score=l3_score,
             l4_score=l4_score,
+            l5_score=l5_score_val,
+            l6_score=l6_score_val,
+            l1_analysis=l1_analysis,
+            l2_analysis=l2_analysis,
+            l3_analysis=l3_analysis,
+            l4_analysis=l4_analysis,
+            l5_analysis=l5_analysis,
+            l6_analysis=l6_analysis,
+            drift_analysis=drift_analysis,
+            l7_analysis=l7_analysis,
+            l8_analysis=l8_analysis,
+            reliability_analysis=reliability_analysis,
             l1_details=l1_details,
             l2_details=l2_details,
             l3_details=l3_details,

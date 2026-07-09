@@ -160,6 +160,23 @@ class ObservabilitySection(BaseModel):
     trace_format: str = "jsonl"
 
 
+# ── Metric Analysis ────────────────────────────────────────────
+
+
+class MetricAnalysis(BaseModel):
+    """Structured analysis for a single evaluation metric dimension.
+
+    Supports L1-L8, drift, security, cost, and reliability metrics.
+    """
+
+    metric_name: str = ""
+    purpose: str = ""
+    method: str = ""
+    result_summary: str = ""
+    analysis: str = ""
+    suggestions: list[str] = Field(default_factory=list)
+
+
 # ── Improvement Suggestions ───────────────────────────────────
 
 

@@ -18,8 +18,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +34,10 @@ GENERIC_STEP_PATTERNS: list[re.Pattern] = [
 
 # Patterns that indicate high-value gotcha content
 GOTCHA_PATTERNS: list[re.Pattern] = [
-    re.compile(r"(don'?t|do not|never|always|must|must not|avoid|watch out|caveat|注意|陷阱)", re.IGNORECASE),
+    re.compile(
+        r"(don'?t|do not|never|always|must|must not|avoid|watch out|caveat|注意|陷阱)",
+        re.IGNORECASE,
+    ),
     re.compile(r"(gotcha|gotchas?|anti[-\s]?pattern|pitfall)", re.IGNORECASE),
     re.compile(r"(but only|except when|unless|however|beware)", re.IGNORECASE),
     re.compile(r"(this is (not|different)|unlike|contrary to)", re.IGNORECASE),
@@ -249,10 +250,106 @@ def analyze_verification_strength(skill_md_content: str) -> VerificationStrength
     )
 
 
+# ── Exclusion Scenarios Analysis ──────────────────────────────────
+
+EXCLUSION_PATTERNS: list[re.Pattern] = [
+    re.compile(r"do\s+not\s+(trigger|activate|use|run|apply|invoke)", re.IGNORECASE),
+    re.compile(r"don'?t\s+(trigger|activate|use|run|apply)", re.IGNORECASE),
+    re.compile(r"never\s+(trigger|activate|use|run|apply)", re.IGNORECASE),
+    re.compile(r"不触发|不激活|不应使用|不要触发|排除|不适用", re.IGNORECASE),
+    re.compile(r"not\s+(intended|applicable|suitable)\s+for", re.IGNORECASE),
+    re.compile(r"excluded\s+from", re.IGNORECASE),
+    re.compile(r"should\s+not\s+be\s+(triggered|activated|used|applied)", re.IGNORECASE),
+]
+
+
+@dataclass
+class ExclusionResult:
+    """Result of exclusion scenario analysis in a skill description."""
+
+    has_exclusion: bool = False
+    exclusion_count: int = 0
+    exclusion_phrases: list[str] = field(default_factory=list)
+    score: float = 0.0
+    issues: list[str] = field(default_factory=list)
+
+    @property
+    def passed(self) -> bool:
+        return self.score >= 50.0
+
+
+def analyze_exclusion_scenarios(description: str) -> ExclusionResult:
+    """Analyze a skill description for exclusion scenario coverage.
+
+    Exclusion scenarios define when a skill should NOT trigger — these are
+    critical for preventing false positives. This function matches against
+    English and Chinese exclusion phrases and scores the coverage.
+
+    Scoring: 0 matches → 0, 1 → 40, 2 → 60, 3+ → 80, 5+ → 100.
+    Threshold: >= 50 passes.
+
+    Args:
+        description: The skill description text to analyze.
+
+    Returns:
+        ExclusionResult with match count, phrases, score, and issues.
+    """
+    if not description.strip():
+        return ExclusionResult(
+            issues=["Empty description — no exclusion scenarios found"],
+        )
+
+    matched_phrases: list[str] = []
+    for pattern in EXCLUSION_PATTERNS:
+        for m in pattern.finditer(description):
+            matched_phrases.append(m.group())
+
+    exclusion_count = len(matched_phrases)
+    has_exclusion = exclusion_count > 0
+
+    if exclusion_count >= 5:
+        score = 100.0
+    elif exclusion_count >= 3:
+        score = 80.0
+    elif exclusion_count >= 2:
+        score = 60.0
+    elif exclusion_count == 1:
+        score = 40.0
+    else:
+        score = 0.0
+
+    issues: list[str] = []
+    if score < 50.0:
+        if exclusion_count == 0:
+            issues.append(
+                "No exclusion scenarios defined. Consider specifying when this "
+                "skill should NOT trigger (e.g., 'Do not trigger for production "
+                "databases', '不触发此技能当...'). Exclusion scenarios reduce false "
+                "positives and improve L1 trigger accuracy."
+            )
+        else:
+            issues.append(
+                f"Only {exclusion_count} exclusion scenario(s) found (score={score:.0f}). "
+                "Consider adding more exclusion scenarios to clearly define when NOT "
+                "to trigger this skill."
+            )
+
+    return ExclusionResult(
+        has_exclusion=has_exclusion,
+        exclusion_count=exclusion_count,
+        exclusion_phrases=matched_phrases,
+        score=score,
+        issues=issues,
+    )
+
+
 __all__ = [
     "GotchasDensityResult",
     "analyze_gotchas_density",
     "VerificationStrengthResult",
     "analyze_verification_strength",
+    "ExclusionResult",
+    "analyze_exclusion_scenarios",
+    "EXCLUSION_PATTERNS",
     "GOTCHAS_DENSITY_TARGET",
 ]

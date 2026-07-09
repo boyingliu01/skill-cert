@@ -241,8 +241,8 @@ class TestReporter:
 
         # Check that markdown reflects the lower score and drift detection
         assert "**Verdict**: FAIL" in markdown_report
-        assert "Cross-Model Drift Detected" in markdown_report
-        assert "**Highest Severity**: high" in markdown_report
+        assert "Drift" in markdown_report
+        assert "评测目的" in markdown_report
         assert "model_x vs model_y" in markdown_report
         assert "model_x vs model_z" in markdown_report
 

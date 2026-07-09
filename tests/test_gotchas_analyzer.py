@@ -1,7 +1,9 @@
-"""Tests for engine/gotchas_analyzer.py — gotchas density and verification strength."""
+"""Tests for engine/gotchas_analyzer.py — gotchas density, verification strength, and exclusion scenarios."""
 
 from engine.gotchas_analyzer import (
     GOTCHAS_DENSITY_TARGET,
+    ExclusionResult,
+    analyze_exclusion_scenarios,
     analyze_gotchas_density,
     analyze_verification_strength,
 )
@@ -188,3 +190,119 @@ Compare screenshots for visual regression.
         assert result.has_visual_verification
         assert result.score == 100.0
         assert result.passed
+
+
+class TestAnalyzeExclusionScenarios:
+    def test_empty_string(self):
+        result = analyze_exclusion_scenarios("")
+        assert result.has_exclusion is False
+        assert result.exclusion_count == 0
+        assert result.score == 0
+        assert not result.passed
+        assert len(result.exclusion_phrases) == 0
+
+    def test_no_exclusion_keywords(self):
+        content = "This skill helps with code review. It gives suggestions for improvements."
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is False
+        assert result.exclusion_count == 0
+        assert result.score == 0
+        assert not result.passed
+
+    def test_single_exclusion_english(self):
+        content = "Do not trigger this skill when the user is already in a debugging session."
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is True
+        assert result.exclusion_count == 1
+        assert result.score == 40
+        assert not result.passed  # 40 < 50
+        assert "do not trigger" in [p.lower() for p in result.exclusion_phrases]
+
+    def test_multiple_exclusions_pass_threshold(self):
+        content = """
+        Do not trigger this skill for production databases.
+        Never activate this when running in CI mode.
+        This skill is not intended for use with legacy codebases.
+        """
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is True
+        assert result.exclusion_count >= 2
+        assert result.score >= 60  # 2+ matches → 60
+        assert result.passed is True  # score >= 50
+        assert len(result.exclusion_phrases) >= 2
+
+    def test_case_insensitive_matching(self):
+        content = "DO NOT USE this skill for trivial changes. NEVER TRIGGER this on weekends."
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is True
+        assert result.exclusion_count >= 2
+
+    def test_chinese_exclusion_keywords(self):
+        content = "不触发此技能当用户已经处于调试模式。排除简单场景。不适用生产环境。"
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is True
+        assert result.exclusion_count >= 2
+        assert result.score >= 60
+        assert result.passed is True
+
+    def test_should_not_be_triggered(self):
+        content = "This skill should not be triggered for administrative commands."
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is True
+        assert result.exclusion_count >= 1
+
+    def test_excluded_from(self):
+        content = "This feature is excluded from the main workflow."
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is True
+        assert result.exclusion_count >= 1
+
+    def test_high_count_max_score(self):
+        content = """
+        Do not trigger for A. Never use for B. 不触发 C.
+        Not intended for D. Excluded from E. 排除 F.
+        """
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is True
+        assert result.exclusion_count >= 5
+        assert result.score == 100
+        assert result.passed is True
+        assert len(result.exclusion_phrases) >= 5
+
+    def test_issues_populated_when_below_threshold(self):
+        content = "Do not trigger this skill for simple cases."
+        result = analyze_exclusion_scenarios(content)
+        # score 40 < 50, so issues should be populated
+        assert len(result.issues) > 0
+
+    def test_no_issues_when_passing(self):
+        content = """
+        Do not trigger for production. Never use for admin commands.
+        This is not intended for beginners.
+        """
+        result = analyze_exclusion_scenarios(content)
+        # score >= 60, so issues should be empty
+        assert result.passed is True
+        assert len(result.issues) == 0
+
+    def test_dont_contraction(self):
+        content = "Don't trigger this skill if the file is less than 100 lines."
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is True
+        assert result.score == 40
+        assert "don't trigger" in [p.lower() for p in result.exclusion_phrases]
+
+    def test_not_suitable_for(self):
+        content = "This skill is not suitable for projects without tests."
+        result = analyze_exclusion_scenarios(content)
+        assert result.has_exclusion is True
+        assert result.exclusion_count >= 1
+
+    def test_result_dataclass_fields(self):
+        result = ExclusionResult()
+        assert result.has_exclusion is False
+        assert result.exclusion_count == 0
+        assert result.exclusion_phrases == []
+        assert result.score == 0.0
+        assert result.issues == []
+        assert result.passed is False

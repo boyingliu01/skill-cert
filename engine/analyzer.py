@@ -1,6 +1,7 @@
 """SKILL.md parser — extracts structured semantic model from markdown skill files."""
 
 import re
+import warnings
 from pathlib import Path
 
 from markdown_it import MarkdownIt
@@ -25,6 +26,7 @@ class SkillSpec(BaseModel):
     content_length: int = 0
     parse_method: str = "regex"
     parse_confidence: float = 0.0
+    references: dict[str, str] = Field(default_factory=dict)
 
 
 class SchemaViolation:
@@ -200,8 +202,35 @@ def _detect_skill_type(content: str) -> str:
     return "agent_guide"
 
 
+def _load_references(skill_dir: Path) -> dict[str, str]:
+    """Load all .md files from references/ subdirectory of the skill.
+
+    Args:
+        skill_dir: Parent directory of the SKILL.md file.
+
+    Returns:
+        Dict mapping relative filename to content. Empty dict if references/ doesn't exist or
+        has no .md files.
+    """
+    refs_dir = skill_dir / "references"
+    if not refs_dir.is_dir():
+        return {}
+
+    loaded: dict[str, str] = {}
+    for md_file in sorted(refs_dir.glob("*.md")):
+        try:
+            loaded[md_file.name] = md_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as e:
+            warnings.warn(f"Failed to load reference {md_file}: {e}", stacklevel=2)
+
+    return loaded
+
+
 def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
     """Parse a SKILL.md file and return structured SkillSpec as dict.
+
+    If a references/ directory exists alongside the SKILL.md, all .md files within
+    are loaded and attached to the SkillSpec.
 
     Args:
         file_path: Path to SKILL.md file
@@ -264,7 +293,10 @@ def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
     if strict_schema and not schema_result.is_valid:
         raise SchemaValidationError(schema_result.violations)
 
-    # Step 6: Determine parse method
+    # Step 6: Load references/ directory if present
+    spec.references = _load_references(path.parent)
+
+    # Step 7: Determine parse method
     if spec.parse_confidence >= 0.6 and frontmatter:
         spec.parse_method = "regex"
     else:

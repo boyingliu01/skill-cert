@@ -412,3 +412,102 @@ description: Multi-expert consensus review
         assert result["skill_type"] == "agent_guide"
         assert result["name"] == "delphi-review"
         assert len(result["workflow_steps"]) >= 1
+
+
+class TestReferencesLoading:
+    """Test references/ directory loading in parse_skill_md()."""
+
+    def test_no_references_dir_returns_empty(self, tmp_path):
+        """When no references/ dir exists, references should be empty dict."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: test
+description: test
+---
+# Test
+""")
+        result = parse_skill_md(str(skill_file))
+        assert "references" in result
+        assert result["references"] == {}
+
+    def test_loads_reference_files(self, tmp_path):
+        """All .md files in references/ should be loaded."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: test
+description: test
+---
+# Test
+""")
+        refs_dir = tmp_path / "references"
+        refs_dir.mkdir()
+        (refs_dir / "setup.md").write_text("# Setup\nConfig goes here.")
+        (refs_dir / "metrics.md").write_text("# Metrics\nL1-L8 details.")
+
+        result = parse_skill_md(str(skill_file))
+        refs = result["references"]
+        assert len(refs) == 2
+        assert refs["setup.md"].startswith("# Setup")
+        assert refs["metrics.md"].startswith("# Metrics")
+
+    def test_references_in_skill_spec(self, tmp_path):
+        """SkillSpec.model_dump should include references field."""
+        from engine.analyzer import SkillSpec
+
+        spec = SkillSpec(name="test", references={"a.md": "content"})
+        dumped = spec.model_dump(by_alias=True)
+        assert "references" in dumped
+        assert dumped["references"] == {"a.md": "content"}
+
+    def test_overloaded_name_uses_file_disambiguation(self, tmp_path):
+        """_load_references sorts files, ensuring deterministic loading order."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: test
+description: test
+---
+# Test
+""")
+        refs_dir = tmp_path / "references"
+        refs_dir.mkdir()
+        (refs_dir / "z.md").write_text("z")
+        (refs_dir / "a.md").write_text("a")
+
+        result = parse_skill_md(str(skill_file))
+        keys = list(result["references"].keys())
+        assert keys == ["a.md", "z.md"]
+
+    def test_backward_compat_no_references(self, tmp_path):
+        """Existing skills without references/ should continue to work."""
+        result = parse_skill_md(str(tmp_path / "nonexistent.md")) if False else None
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: legacy
+description: Legacy skill
+---
+# Legacy
+""")
+        result = parse_skill_md(str(skill_file))
+        assert result["references"] == {}
+        assert result["name"] == "legacy"
+        assert result["description"] == "Legacy skill"
+
+    def test_non_md_files_ignored(self, tmp_path):
+        """Only .md files are loaded; other extensions are skipped."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""---
+name: test
+description: test
+---
+# Test
+""")
+        refs_dir = tmp_path / "references"
+        refs_dir.mkdir()
+        (refs_dir / "readme.md").write_text("ref content")
+        (refs_dir / "notes.txt").write_text("not loaded")
+        (refs_dir / "config.yaml").write_text("yaml: data")
+
+        result = parse_skill_md(str(skill_file))
+        assert len(result["references"]) == 1
+        assert "readme.md" in result["references"]
+        assert "notes.txt" not in result["references"]

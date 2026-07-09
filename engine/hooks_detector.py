@@ -66,7 +66,6 @@ def detect_hooks(content: str) -> HooksResult:
 
     safety_count = len(found_safety)
     op_count = len(found_operational)
-    total_hooks = safety_count + op_count
 
     # Scoring:
     # - Each safety hook: 20 points (max 3 = 60)

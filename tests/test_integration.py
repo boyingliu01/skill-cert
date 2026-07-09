@@ -619,7 +619,8 @@ description: "Test skill for integration testing"
         assert "L2: With/Without Skill Delta" in markdown_report
         assert "L3: Step Adherence" in markdown_report
         assert "L4: Execution Stability" in markdown_report
-        assert "Cross-Model Drift Detected" in markdown_report
+        assert "Drift" in markdown_report
+        assert "评测目的" in markdown_report
 
         assert json_report["verdict"] == "PASS"
         assert abs(json_report["overall_score"] - 0.85) < 0.01

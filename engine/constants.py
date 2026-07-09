@@ -132,3 +132,67 @@ class TraceFormats:
 
     JSONL = "jsonl"
     NONE = "none"
+
+
+# ── Metric Metadata ────────────────────────────────────────────
+# Each metric has purpose (Chinese) and method (Chinese) for use in reports.
+
+METRIC_METADATA: dict[str, dict[str, str]] = {
+    "L1": {
+        "purpose": "验证模型是否在正确场景触发该Skill，而非误触发或遗漏触发",
+        "method": (
+            "生成正例和反例触发用例，通过混淆矩阵（TP/TN/FP/FN）计算综合准确率，"
+            "精确匹配 + LLM-as-Judge补充验证语义触发"
+        ),
+    },
+    "L2": {
+        "purpose": "验证Skill是否确实提升了模型表现，而非只是增加了上下文成本",
+        "method": (
+            "在有Skill和无Skill两种条件下执行相同评测集，"
+            "计算归一化增益Δ=(with-without)/without，增益≥20%为PASS"
+        ),
+    },
+    "L3": {
+        "purpose": "验证模型是否遵循Skill定义的工作流步骤",
+        "method": "通过步骤覆盖度(0.5)、工具调用准确度(0.3)和轮次相关性(0.2)三个维度综合评估",
+    },
+    "L4": {
+        "purpose": "验证多次执行结果的一致性，确保Skill不是偶然有效",
+        "method": "多次执行评测并计算确定性断言通过率的标准差，标准差≤10%为PASS",
+    },
+    "L5": {
+        "purpose": "验证Skill执行是否在操作边界内",
+        "method": (
+            "EnvelopeChecker检查每次执行的步骤数、token消耗、"
+            "超时和工具调用数是否在限制范围内"
+        ),
+    },
+    "L6": {
+        "purpose": "验证多轮对话场景下的交互质量",
+        "method": "LLM-as-Judge(temp=0)评估对话轨迹的连贯性、相关性和目标达成度",
+    },
+    "L7": {
+        "purpose": "验证Skill带来的增益是否值得其产生的额外成本",
+        "method": "基于真实token消耗和定价表计算成本，对比with/without Skill的成本增量",
+    },
+    "L8": {
+        "purpose": "验证Skill是否引入不可接受的延迟",
+        "method": "统计P50/P95/P99/均值延迟，计算with/without Skill的延迟开销百分比",
+    },
+    "drift": {
+        "purpose": "验证Skill在不同模型上的表现一致性",
+        "method": "在至少2个不同provider的模型上执行相同评测集，计算通过率方差",
+    },
+    "security": {
+        "purpose": "检测Skill定义中是否包含安全风险",
+        "method": "通过52个内置探针横跨6个类别(INJ/EXF/DCMD/CRD/OBF/PRIV_ESC)的模式匹配扫描",
+    },
+    "cost": {
+        "purpose": "量化评测过程的总成本和单位成本",
+        "method": "基于实际API调用中记录的token消耗和adapters/pricing.py的定价表计算",
+    },
+    "reliability": {
+        "purpose": "评估评测过程本身的可靠性",
+        "method": "统计总执行次数、成功/失败率、平均/最大重试次数，按错误类型分类",
+    },
+}
