@@ -1,0 +1,34 @@
+# Architecture Configuration for skill-cert (archy format)
+# Clean Architecture layer boundaries adapted for Python evaluation engine
+#
+# domain = engine/ — core pipeline (parser, testgen, runner, grader, metrics, ...)
+# infrastructure = adapters/ — LLM provider adapters
+# presentation = skill_cert/ — CLI entry point
+# support = prompts/ + schemas/ + templates/ — reference data, no business logic
+
+layers:
+  - name: domain
+    patterns: ["engine"]
+  - name: infrastructure
+    patterns: ["adapters"]
+  - name: presentation
+    patterns: ["skill_cert"]
+  - name: support
+    patterns: ["prompts", "schemas", "templates"]
+
+forbid:
+  # Domain must not depend on outer layers
+  - from_layer: domain
+    to_layer: presentation
+  # Infrastructure must not depend on domain or presentation (it's the outermost layer)
+  - from_layer: infrastructure
+    to_layer: domain
+  - from_layer: infrastructure
+    to_layer: presentation
+  # Support (static data) must not depend on code layers
+  - from_layer: support
+    to_layer: domain
+  - from_layer: support
+    to_layer: infrastructure
+  - from_layer: support
+    to_layer: presentation
