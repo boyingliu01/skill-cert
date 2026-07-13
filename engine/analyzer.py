@@ -183,7 +183,7 @@ LIBRARY_IMPORT_PATTERN_RE = re.compile(r"^\s*(?:from\s+\w+\s+import\s|import\s+\
 def _detect_skill_type(content: str) -> str:
     """Detect skill type from content signals.
 
-    Returns one of: "cli_tool", "library", "agent_guide".
+    Returns one of: "cli_tool", "library", "instruction", "agent_guide".
     """
     has_cli_specific_section = bool(CLI_SPECIFIC_SECTION_RE.search(content))
     has_usage_section = bool(CLI_USAGE_SECTION_RE.search(content))
@@ -198,6 +198,12 @@ def _detect_skill_type(content: str) -> str:
 
     if lib_section or lib_import:
         return "library"
+
+    # Instruction-type detection (Issue #84): long prose with phase-heavy structure
+    line_count = content.count("\n") + 1
+    phase_count = len(_INSTR_PHASE_RE.findall(content))
+    if line_count > 500 and phase_count >= 3:
+        return "instruction"
 
     return "agent_guide"
 
@@ -286,6 +292,26 @@ def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
     spec.examples = examples
     spec.skill_type = _detect_skill_type(content)
 
+    # Step 3b: Instruction-type fallback (Issue #84)
+    # When structured extraction returns empty for ALL of workflow/triggers/anti_patterns,
+    # try instruction-type prose extraction. Results flow naturally into confidence.
+    if not workflow_steps and not triggers and not anti_patterns:
+        instr_phases, instr_triggers, instr_anti = _extract_instruction_patterns(content)
+        if instr_phases:
+            spec.workflow_steps = instr_phases
+            workflow_steps = instr_phases
+        if instr_triggers:
+            spec.triggers = instr_triggers
+            triggers = instr_triggers
+        if instr_anti:
+            spec.anti_patterns = instr_anti
+            anti_patterns = instr_anti
+    elif not workflow_steps:
+        instr_phases, _, _ = _extract_instruction_patterns(content)
+        if instr_phases:
+            spec.workflow_steps = instr_phases
+            workflow_steps = instr_phases
+
     # Step 4: Calculate parse confidence
     spec.parse_confidence = _calculate_confidence(
         has_frontmatter=bool(frontmatter),
@@ -329,6 +355,18 @@ def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
             if not spec.examples and ref_examples:
                 spec.examples = ref_examples
 
+            # Instruction-type fallback on merged content (Issue #84)
+            if not spec.workflow_steps and not spec.triggers and not spec.anti_patterns:
+                instr_phases, instr_triggers, instr_anti = _extract_instruction_patterns(
+                    merged_content
+                )
+                if instr_phases:
+                    spec.workflow_steps = instr_phases
+                if instr_triggers:
+                    spec.triggers = instr_triggers
+                if instr_anti:
+                    spec.anti_patterns = instr_anti
+
             merged_headings = _extract_headings(MarkdownIt("commonmark").parse(merged_content))
             spec.content_length = len(merged_content)
             spec.parse_confidence = _calculate_confidence(
@@ -341,7 +379,9 @@ def parse_skill_md(file_path: str, strict_schema: bool = False) -> dict:
                 has_triggers=bool(spec.triggers),
                 content_length=len(merged_content),
             )
-            spec.parse_confidence = max(0.0, spec.parse_confidence - schema_result.confidence_penalty)
+            spec.parse_confidence = max(
+                0.0, spec.parse_confidence - schema_result.confidence_penalty
+            )
 
     # Step 7: Determine parse method
     if spec.parse_confidence >= 0.6 and frontmatter:
@@ -699,3 +739,93 @@ def _calculate_confidence(
     if content_length > 0 and content_length // 40 >= 5:
         score += 0.05
     return min(score, 1.0)
+
+
+# --- Instruction-type skill pattern extraction (Issue #84) ---
+
+# Phase patterns: match both "## Phase N: NAME" headings and inline "Phase N: NAME" text
+# Contextual anchor: colon followed by capitalized word
+_INSTR_PHASE_RE = re.compile(
+    r"^(?:##\s+)?Phase\s+(\d+(?:/\d+)?):\s*([A-Z][^\n]*)",
+    re.MULTILINE,
+)
+
+# Trigger patterns: bold markers, table rows, or list items with trigger keywords
+_INSTR_TRIGGER_BOLD_RE = re.compile(
+    r"\*\*(?:Triggers?|Trigger\s+phrases?)\*\*:\s*(.+)",
+    re.IGNORECASE,
+)
+_INSTR_TRIGGER_TABLE_RE = re.compile(
+    r"\|\s*\*\*(?:English|中文|触发)\*\*\s*\|\s*([^|\n]+)",
+)
+_INSTR_TRIGGER_USE_WHEN_RE = re.compile(
+    r"(?:^|\n)\s*(?:[-*])\s*(?:Use\s+when|Triggers?)[\s:]*\"([^\"]+)\"",
+    re.IGNORECASE,
+)
+
+# Anti-pattern directives: MUST NOT / NEVER / Do NOT in list items or table cells
+_INSTR_ANTI_PATTERN_RE = re.compile(
+    r"(?:^|\n)\s*(?:[-*|])\s*.*?(?:MUST\s+NOT|NEVER|Do\s+NOT)\s+(.+)",
+    re.IGNORECASE,
+)
+
+
+def _extract_instruction_patterns(
+    content: str,
+) -> tuple[list[WorkflowStep], list[str], list[str]]:
+    """Single-pass extraction of instruction-type skill patterns.
+
+    Scans content once for phases, triggers, and anti-patterns embedded in prose.
+    All patterns require contextual anchors (list items, table cells, bold markers)
+    to avoid false positives from narrative text.
+
+    Returns:
+        Tuple of (phases, triggers, anti_patterns).
+    """
+    phases: list[WorkflowStep] = []
+    triggers: list[str] = []
+    anti_patterns: list[str] = []
+    seen_phases: set[str] = set()
+    seen_triggers: set[str] = set()
+    seen_anti: set[str] = set()
+
+    # Extract phases (both heading and inline formats)
+    for m in _INSTR_PHASE_RE.finditer(content):
+        phase_label = f"Phase {m.group(1)}: {m.group(2).strip()}"
+        if phase_label not in seen_phases:
+            phases.append(WorkflowStep(name=phase_label, type="phase", critical=False))
+            seen_phases.add(phase_label)
+
+    # Extract triggers from bold markers
+    for m in _INSTR_TRIGGER_BOLD_RE.finditer(content):
+        raw_text = m.group(1).strip()
+        for phrase in raw_text.split(","):
+            trigger_text = phrase.strip().strip('"').strip("'").strip()
+            if trigger_text and trigger_text not in seen_triggers:
+                triggers.append(trigger_text)
+                seen_triggers.add(trigger_text)
+
+    # Extract triggers from table rows
+    for m in _INSTR_TRIGGER_TABLE_RE.finditer(content):
+        raw_text = m.group(1).strip()
+        for phrase in raw_text.split(","):
+            trigger_text = phrase.strip().strip('"').strip("'").strip()
+            if trigger_text and trigger_text not in seen_triggers:
+                triggers.append(trigger_text)
+                seen_triggers.add(trigger_text)
+
+    # Extract triggers from "Use when" list items
+    for m in _INSTR_TRIGGER_USE_WHEN_RE.finditer(content):
+        trigger_text = m.group(1).strip()
+        if trigger_text and trigger_text not in seen_triggers:
+            triggers.append(trigger_text)
+            seen_triggers.add(trigger_text)
+
+    # Extract anti-patterns from list items or table cells with directives
+    for m in _INSTR_ANTI_PATTERN_RE.finditer(content):
+        anti_text = m.group(1).strip().rstrip(".")
+        if anti_text and len(anti_text) > 3 and anti_text not in seen_anti:
+            anti_patterns.append(anti_text)
+            seen_anti.add(anti_text)
+
+    return phases, triggers, anti_patterns

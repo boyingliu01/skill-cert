@@ -99,6 +99,238 @@ description: Multi-expert consensus review
         assert result["parse_method"] in ("regex", "hybrid")
         assert result["parse_confidence"] > 0
 
+    def test_parse_instruction_type_extracts_phase_steps(self, tmp_path):
+        """Instruction-type skill with inline Phase N: patterns extracts workflow steps."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Sprint Flow
+
+One-shot sprint automation pipeline.
+
+Phase 1: PREP - Setup worktree
+Phase 2: DESIGN - Brainstorm and plan
+Phase 3: BUILD - Implement with TDD
+Phase 4: VERIFY - Code walkthrough
+Phase 5: SHIP - Create PR
+Phase 6: CLOSE - User acceptance
+""")
+        result = parse_skill_md(str(skill_file))
+        assert len(result["workflow_steps"]) == 6
+        assert result["workflow_steps"][0]["name"] == "Phase 1: PREP - Setup worktree"
+        assert result["workflow_steps"][5]["name"] == "Phase 6: CLOSE - User acceptance"
+
+    def test_parse_instruction_type_extracts_heading_phases(self, tmp_path):
+        """Instruction-type skill with ## Phase N: headings extracts workflow steps."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Development Pipeline
+
+## Phase 1: Requirements
+Gather requirements from stakeholders.
+
+## Phase 2: Design
+Create architecture design.
+
+## Phase 3: Implementation
+Build the solution.
+""")
+        result = parse_skill_md(str(skill_file))
+        assert len(result["workflow_steps"]) == 3
+        assert result["workflow_steps"][0]["name"] == "Phase 1: Requirements"
+        assert result["workflow_steps"][1]["name"] == "Phase 2: Design"
+        assert result["workflow_steps"][2]["name"] == "Phase 3: Implementation"
+
+    def test_parse_instruction_type_extracts_prose_triggers(self, tmp_path):
+        """Instruction-type skill with prose triggers extracts trigger phrases."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Code Review Skill
+
+**Triggers**: review code, check code quality, code review
+
+When reviewing code, follow these steps:
+1. Check for bugs
+2. Verify best practices
+""")
+        result = parse_skill_md(str(skill_file))
+        assert len(result["triggers"]) >= 3
+        assert "review code" in result["triggers"]
+        assert "check code quality" in result["triggers"]
+        assert "code review" in result["triggers"]
+
+    def test_parse_instruction_type_extracts_list_anti_patterns(self, tmp_path):
+        """Instruction-type skill with MUST NOT/NEVER in lists extracts anti-patterns."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Security Review Skill
+
+## Anti-Patterns
+- MUST NOT skip authentication checks
+- NEVER ignore input validation
+- Do NOT modify eval cases after execution
+
+## Workflow
+1. Analyze code
+2. Identify vulnerabilities
+""")
+        result = parse_skill_md(str(skill_file))
+        assert len(result["anti_patterns"]) >= 3
+        assert any("skip authentication" in ap for ap in result["anti_patterns"])
+        assert any("ignore input validation" in ap for ap in result["anti_patterns"])
+        assert any("modify eval cases" in ap for ap in result["anti_patterns"])
+
+    def test_parse_instruction_type_confidence_via_natural_flow(self, tmp_path):
+        """Instruction-type skill achieves confidence >= 0.60 via natural flow (no bonus)."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Sprint Automation
+
+Phase 1: PREP - Setup
+Phase 2: DESIGN - Plan
+Phase 3: BUILD - Implement
+
+**Triggers**: start sprint, implement feature
+
+- MUST NOT skip design phase
+- NEVER skip user acceptance
+
+## Scope
+This skill automates sprint workflows. It does NOT replace manual code review.
+
+## Security Notes
+This skill does not execute dangerous commands.
+
+## Permissions
+This skill requires read/write access to project files.
+""")
+        result = parse_skill_md(str(skill_file))
+        # Confidence should be at least 0.60 from natural flow:
+        # has_workflow=True (+0.25) + has_triggers=True (+0.07) + has_anti_patterns=True (+0.10)
+        # + has_headings=True (+0.15) + content_length bonus (+0.05) = 0.62
+        assert result["parse_confidence"] >= 0.60
+        assert len(result["workflow_steps"]) == 3
+        assert len(result["triggers"]) >= 2
+        assert len(result["anti_patterns"]) >= 2
+
+    def test_parse_instruction_type_detected(self, tmp_path):
+        """Long instruction-type skill with >=3 phases detected as 'instruction' type."""
+        skill_file = tmp_path / "SKILL.md"
+        content = "# Long Instruction Skill\n\n"
+        for i in range(500):
+            content += f"Line {i}: Some instruction text here.\n"
+        content += "\nPhase 1: Setup\nPhase 2: Design\nPhase 3: Build\n"
+        skill_file.write_text(content)
+        result = parse_skill_md(str(skill_file))
+        assert result["skill_type"] == "instruction"
+        assert len(result["workflow_steps"]) == 3
+
+    def test_instruction_type_no_false_positive_phase_in_narrative(self, tmp_path):
+        """Phase mentioned in narrative text (not as step) is NOT extracted."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Code Review Guide
+
+This guide explains how to review code effectively.
+
+In Phase 1 of development, developers write code.
+During Phase 2, teams collaborate on design.
+By Phase 3, the product is ready for testing.
+
+## Workflow
+1. Review the code changes
+2. Check test coverage
+""")
+        result = parse_skill_md(str(skill_file))
+        assert len(result["workflow_steps"]) == 2
+        assert result["workflow_steps"][0]["name"] == "Review the code changes"
+        assert result["workflow_steps"][1]["name"] == "Check test coverage"
+
+    def test_instruction_type_no_false_positive_must_not_in_narrative(self, tmp_path):
+        """MUST NOT in narrative text (not in list) is NOT extracted as anti-pattern."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Testing Best Practices
+
+You MUST NOT write tests without assertions.
+It is important to NEVER skip edge cases.
+
+## Workflow
+1. Write test cases
+2. Run test suite
+""")
+        result = parse_skill_md(str(skill_file))
+        assert len(result["anti_patterns"]) == 0
+
+    def test_instruction_type_structured_preferred_over_prose(self, tmp_path):
+        """When ## Workflow section exists, prose Phase patterns are ignored."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Hybrid Skill
+
+This skill has both structured and prose phases.
+
+Phase 1: Prose Phase One
+Phase 2: Prose Phase Two
+
+## Workflow
+1. Structured Step A
+2. Structured Step B
+3. Structured Step C
+""")
+        result = parse_skill_md(str(skill_file))
+        assert len(result["workflow_steps"]) == 3
+        assert result["workflow_steps"][0]["name"] == "Structured Step A"
+        assert not any("Prose Phase" in step["name"] for step in result["workflow_steps"])
+
+    def test_instruction_type_with_references_merging(self, tmp_path):
+        """Instruction-type fallback runs on merged_content when references/ exist."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Main Skill
+
+This is the main skill file.
+
+## Workflow
+1. Main step one
+2. Main step two
+""")
+        refs_dir = skill_file.parent / "references"
+        refs_dir.mkdir()
+        ref_file = refs_dir / "phase.md"
+        ref_file.write_text("""
+Phase 1: Reference Phase One
+Phase 2: Reference Phase Two
+Phase 3: Reference Phase Three
+""")
+        result = parse_skill_md(str(skill_file))
+        assert len(result["workflow_steps"]) == 2
+        assert result["workflow_steps"][0]["name"] == "Main step one"
+        assert "phase.md" in result["references"]
+
+    def test_instruction_type_short_content_not_detected(self, tmp_path):
+        """Short content (<500 lines) with phases stays as 'agent_guide' type."""
+        skill_file = tmp_path / "SKILL.md"
+        content = "# Short Skill\n\n"
+        for i in range(100):
+            content += f"Line {i}: Some text.\n"
+        content += "\nPhase 1: Setup\nPhase 2: Design\nPhase 3: Build\n"
+        skill_file.write_text(content)
+        result = parse_skill_md(str(skill_file))
+        assert result["skill_type"] == "agent_guide"
+
+    def test_instruction_type_mixed_phase_formats(self, tmp_path):
+        """Both inline 'Phase N:' and '## Phase N:' formats are extracted."""
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("""# Mixed Format Skill
+
+Phase 1: Inline Phase One
+Phase 2: Inline Phase Two
+
+## Phase 3: Heading Phase Three
+
+Some content here.
+
+## Phase 4: Heading Phase Four
+""")
+        result = parse_skill_md(str(skill_file))
+        assert len(result["workflow_steps"]) == 4
+        phase_names = [step["name"] for step in result["workflow_steps"]]
+        assert "Phase 1: Inline Phase One" in phase_names
+        assert "Phase 2: Inline Phase Two" in phase_names
+        assert "Phase 3: Heading Phase Three" in phase_names
+        assert "Phase 4: Heading Phase Four" in phase_names
+
     def test_parse_no_frontmatter(self, tmp_path):
         """Parse SKILL.md without YAML frontmatter — should fallback."""
         skill_file = tmp_path / "SKILL.md"
@@ -619,7 +851,9 @@ description: A fulsome skill
         step_names = [s["name"] for s in result["workflow_steps"]]
         assert any("Step A" in n for n in step_names), "Main SKILL.md steps should be preserved"
         assert any("Step B" in n for n in step_names), "Main SKILL.md steps should be preserved"
-        assert not any("Extra" in n for n in step_names), "References should not overwrite existing steps"
+        assert not any("Extra" in n for n in step_names), (
+            "References should not overwrite existing steps"
+        )
 
     def test_no_references_no_re_extraction(self, tmp_path):
         """Without references/ dir, behavior should be unchanged."""
