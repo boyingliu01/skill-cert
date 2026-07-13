@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-07-13
+
+### Added — Instruction-Type Skill Parser Extension (Issue #84)
+- **engine/analyzer.py**: Extended `_detect_skill_type()` to recognize instruction-type skills (Phase 1 → Phase 2 → ... workflows). Added `_extract_instruction_patterns()` for regex-based phase/step extraction from structured headings. Integrated fallback detection in `parse_skill_md()` for unclassified skills.
+- **SkillSpec**: New `instruction_type` field with confidence scoring.
+- **Tests**: 63 new tests in `test_analyzer.py` covering instruction-type detection, false-positive prevention, confidence scoring, reference merging, mixed phase formats, and backward compatibility.
+- **Design spec**: `docs/superpowers/specs/2026-07-10-instruction-type-parser-design.md` (Delphi review APPROVED, 95% consensus).
+
+### Added — Documentation
+- **archy.yaml**: Clean Architecture layer boundary configuration (domain/infrastructure/presentation/support layers).
+- **docs/retrospective-v0.13.1.md**: Project retrospective covering 75 days of development (2026-04-26 to 2026-07-09).
+- **improvements/**: Methodology improvement proposals from delphi-review evaluation.
+
 ## [0.13.0] - 2026-07-09
 
 ### Added — Report 5-Dimension Enhancement (Issue #71)
