@@ -208,6 +208,61 @@
       "l5_step_efficiency": 1.0,
       "l6_trajectory_quality": null,
       "overall_score": 0.5326666666666667
+    },
+    {
+      "timestamp": "2026-07-09T10:36:20.216914+00:00",
+      "skill_path": "/home/boyingliu01/projects/xp-gate/skills/sprint-flow/SKILL.md",
+      "l1_trigger_accuracy": 0.6833333333333333,
+      "l2_with_without_skill_delta": 0.7504950495049504,
+      "l3_step_adherence": null,
+      "l4_execution_stability": null,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.858457095709571
+    },
+    {
+      "timestamp": "2026-07-09T10:47:35.313736+00:00",
+      "skill_path": "/home/boyingliu01/projects/xp-gate/skills/sprint-flow/SKILL.md",
+      "l1_trigger_accuracy": 0.4,
+      "l2_with_without_skill_delta": 0.8248663101604279,
+      "l3_step_adherence": 0.7983193277310924,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.8046371275783042
+    },
+    {
+      "timestamp": "2026-07-09T10:54:37.826554+00:00",
+      "skill_path": "/home/boyingliu01/projects/xp-gate/skills/delphi-review/SKILL.md",
+      "l1_trigger_accuracy": 0.7272727272727272,
+      "l2_with_without_skill_delta": 0.9006776379477252,
+      "l3_step_adherence": 0.8125,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.8880900730440905
+    },
+    {
+      "timestamp": "2026-07-09T15:14:20.359534+00:00",
+      "skill_path": "/home/boyingliu01/projects/xp-gate/skills/delphi-review/SKILL.md",
+      "l1_trigger_accuracy": 0.8,
+      "l2_with_without_skill_delta": 0.3261916965658637,
+      "l3_step_adherence": 0.8513513513513513,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.7955086095834429
+    },
+    {
+      "timestamp": "2026-07-10T05:59:39.533274+00:00",
+      "skill_path": "/home/boyingliu01/.claude/skills/gstack/.kiro/skills/gstack-autoplan/SKILL.md",
+      "l1_trigger_accuracy": 0.22222222222222218,
+      "l2_with_without_skill_delta": 0.0,
+      "l3_step_adherence": 0.7012987012987013,
+      "l4_execution_stability": 0.0,
+      "l5_step_efficiency": 1.0,
+      "l6_trajectory_quality": null,
+      "overall_score": 0.5847041847041847
     }
   ]
 }
