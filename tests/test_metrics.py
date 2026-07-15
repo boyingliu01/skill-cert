@@ -485,8 +485,8 @@ class TestMetricsCalculator:
 
         l4_score = calculator._calculate_l4_execution_stability(eval_results)
 
-        # With only one data point, should return perfect stability
-        assert l4_score == 1.0
+        # With only one data point, should return N/A (None)
+        assert l4_score is None
 
     def test_calculate_l4_no_deterministic_results(self):
         """Test L4 calculation with no deterministic results."""
@@ -1398,5 +1398,5 @@ class TestCIHistoryL4:
             }
         ]
         metrics = calc.calculate_metrics(eval_results, ci_history_path=None)
-        # Should use default L4 calculation (1.0 for single deterministic eval)
-        assert metrics["l4_execution_stability"] == 1.0
+        # Should use default L4 calculation (None for single deterministic eval)
+        assert metrics["l4_execution_stability"] is None

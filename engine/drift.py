@@ -186,7 +186,8 @@ class DriftDetector:
             "highest_severity": "none",
             "average_variance": 0.0,
             "model_pairs_compared": 0,
-            "summary": "No drift analysis performed",
+            "skipped": True,
+            "summary": "Skipped: single model only. Use at least 2 models from different providers for drift detection.",
         }
 
     def _build_drift_metrics(self, drift_results: list[DriftResult]) -> dict[str, Any]:
@@ -203,6 +204,7 @@ class DriftDetector:
             "model_pairs_compared": len(drift_results),
             "severity_distribution": severity_counts,
             "overall_verdict": overall_verdict,
+            "skipped": False,
         }
 
     @staticmethod

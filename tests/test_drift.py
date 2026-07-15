@@ -163,7 +163,8 @@ class TestDriftDetector:
         assert report["highest_severity"] == "none"
         assert report["average_variance"] == 0.0
         assert report["model_pairs_compared"] == 0
-        assert "No drift analysis performed" in report["summary"]
+        assert report["skipped"] is True
+        assert "single model" in report["summary"].lower()
 
     def test_aggregate_drift_report_single_result(self):
         detector = DriftDetector()

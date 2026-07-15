@@ -442,7 +442,8 @@ class MetricsCalculator:
             # Results exist but none have deterministic assertions → L4 unavailable
             return None
         if len(deterministic_results) < 2:
-            return 1.0
+            # Single data point cannot measure stability → N/A
+            return None
         std_dev = self._compute_std_dev(deterministic_results)
         return max(0.0, 1.0 - std_dev)
 

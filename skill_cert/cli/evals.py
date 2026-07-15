@@ -627,6 +627,7 @@ def _generate_and_write_reports(
         drift=drift_report,
         config=report_config,
         maintainability=spec.get("maintainability"),
+        eval_results=metrics.get("_results"),
     )
 
     # Build structured report
