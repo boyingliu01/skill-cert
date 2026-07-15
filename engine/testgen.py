@@ -1074,6 +1074,24 @@ Minimum requirements:
         max_len = max(len(a_tokens), len(b_tokens))
         return len(intersection) / max_len if max_len > 0 else 0.0
 
+    @staticmethod
+    def _levenshtein_distance(a: str, b: str) -> int:
+        if a == b:
+            return 0
+        la, lb = len(a), len(b)
+        if la == 0:
+            return lb
+        if lb == 0:
+            return la
+        prev = list(range(lb + 1))
+        for i in range(1, la + 1):
+            curr = [i] + [0] * lb
+            for j in range(1, lb + 1):
+                cost = 0 if a[i - 1] == b[j - 1] else 1
+                curr[j] = min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+            prev = curr
+        return prev[lb]
+
     def _compute_section_coverage(self, section_items: list[Any], assertion_set: set[str]) -> float:
         """Compute coverage of a section (workflow, anti_patterns, output_format).
 
@@ -1101,6 +1119,11 @@ Minimum requirements:
             for b in expanded:
                 b_lower = b.lower()
                 if item_lower in b_lower or b_lower in item_lower:
+                    matched = True
+                    break
+                max_str_len = max(len(item_lower), len(b_lower))
+                lev_threshold = max(2, max_str_len // 10) if max_str_len >= 8 else 0
+                if max_str_len >= 8 and self._levenshtein_distance(item_lower, b_lower) <= lev_threshold:
                     matched = True
                     break
                 b_tokens = self._tokenize(b)

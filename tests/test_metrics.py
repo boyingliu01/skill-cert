@@ -191,7 +191,7 @@ class TestMetricsCalculator:
 
         # Should return average of all results when one type is missing
         expected_avg = (0.8 + 0.9) / 2
-        assert l2_score == expected_avg
+        assert l2_score == pytest.approx(expected_avg)
 
     # ── L2 Regression tests ──────────────────────────────────────
 
@@ -306,6 +306,39 @@ class TestMetricsCalculator:
         expected = max(0.0, min(1.0, (with_avg - without_avg) / without_avg))
         assert l2_score == pytest.approx(expected, rel=1e-3)
 
+    def test_l2_workflow_step_category_recognized(self):
+        weights = MetricsCalculator._L2_CATEGORY_WEIGHTS
+        assert "workflow_step" in weights
+        assert weights["workflow_step"] > 0
+
+    def test_l2_trigger_and_workflow_step_dominant(self):
+        results = [
+            {"category": "trigger", "pass_rate": 1.0},
+            {"category": "workflow_step", "pass_rate": 1.0},
+            {"category": "normal", "pass_rate": 0.0},
+            {"category": "boundary", "pass_rate": 0.0},
+            {"category": "failure", "pass_rate": 0.0},
+        ]
+        weighted_avg = MetricsCalculator._weighted_avg_pass_rate(results)
+        assert weighted_avg > 0.5
+
+    def test_l2_category_weighted_delta_with_workflow_step(self):
+        calculator = MetricsCalculator()
+        eval_results = [
+            {"skill_used": True, "category": "trigger", "pass_rate": 1.0},
+            {"skill_used": True, "category": "workflow_step", "pass_rate": 1.0},
+            {"skill_used": True, "category": "normal", "pass_rate": 0.5},
+            {"skill_used": True, "category": "boundary", "pass_rate": 0.5},
+            {"skill_used": True, "category": "failure", "pass_rate": 0.5},
+            {"skill_used": False, "category": "trigger", "pass_rate": 0.5},
+            {"skill_used": False, "category": "workflow_step", "pass_rate": 0.5},
+            {"skill_used": False, "category": "normal", "pass_rate": 0.5},
+            {"skill_used": False, "category": "boundary", "pass_rate": 0.5},
+            {"skill_used": False, "category": "failure", "pass_rate": 0.5},
+        ]
+        l2 = calculator._calculate_l2_with_without_skill_delta(eval_results)
+        assert l2 > 0.5
+
     def test_calculate_l3_step_adherence(self):
         """Test L3 step adherence calculation."""
         calculator = MetricsCalculator()
@@ -350,9 +383,9 @@ class TestMetricsCalculator:
 
         l3_score = calculator._calculate_l3_step_adherence(eval_results, workflow_steps)
 
-        # Covered: {Parse input, Validate schema} — 2 unique steps covered
-        # Total: 4 steps → 2/4 = 0.5
-        assert l3_score == 0.5
+        # step_coverage = 2/4 = 0.5, step_quality = avg(0.9, 0.8, 1.0) = 0.9
+        # L3 = 0.5*0.5 + 0.5*0.9 = 0.7
+        assert l3_score == pytest.approx(0.7)
 
     def test_calculate_l3_step_adherence_full_coverage(self):
         """Test L3 step adherence when all workflow steps are covered."""
@@ -368,7 +401,9 @@ class TestMetricsCalculator:
 
         l3_score = calculator._calculate_l3_step_adherence(eval_results, workflow_steps)
 
-        assert l3_score == 1.0
+        # step_coverage = 3/3 = 1.0, step_quality = avg(0.7, 0.6, 0.9) ≈ 0.733
+        # L3 = 0.5*1.0 + 0.5*0.733 ≈ 0.867
+        assert l3_score == pytest.approx(0.5 * 1.0 + 0.5 * (0.7 + 0.6 + 0.9) / 3)
 
     def test_calculate_l3_step_adherence_no_passing(self):
         """Test L3 step adherence when no evals pass — returns 0.0."""
@@ -395,8 +430,9 @@ class TestMetricsCalculator:
 
         l3_score = calculator._calculate_l3_step_adherence(eval_results, [])
 
-        # Has workflow_step info but empty spec → should return 0.0
-        assert l3_score == 0.0
+        # step_coverage = 0/1 = 0.0, step_quality = 0.8
+        # L3 = 0.5*0.0 + 0.5*0.8 = 0.4
+        assert l3_score == pytest.approx(0.4)
 
     def test_calculate_l4_execution_stability(self):
         """Test L4 execution stability calculation."""
@@ -737,7 +773,8 @@ class TestMetricsCalculator:
         workflow_steps = ["Parse", "Validate", "Execute", "Report"]
         details = calc._get_l3_details(results, workflow_steps)
         assert details["method"] == "workflow_step_coverage"
-        assert details["workflow_step_coverage"] == 0.5  # 2/4
+        # step_coverage=2/4=0.5, step_quality=avg(0.9,0.8,1.0)≈0.85, L3=0.5*0.5+0.5*0.85=0.675
+        assert details["workflow_step_coverage"] == pytest.approx(0.675)
         assert sorted(details["covered_workflow_steps"]) == ["Parse", "Validate"]
         assert sorted(details["uncovered_workflow_steps"]) == ["Execute", "Report"]
         assert details["total_workflow_steps"] == 4
@@ -817,7 +854,6 @@ class TestMetricsCalculator:
     # ── L3 Turn-Level Metrics ─────────────────────────────────────
 
     def test_l3_weighted_composite_with_turn_data(self):
-        """L3 uses weighted formula when tool_calls and turns data present."""
         calc = MetricsCalculator()
         results = [
             {
@@ -829,9 +865,44 @@ class TestMetricsCalculator:
             },
         ]
         l3 = calc._calculate_l3_step_adherence(results)
-        # step_coverage=0.8, tool_call_accuracy=1.0, turn_relevance=1.0
-        # 0.5*0.8 + 0.3*1.0 + 0.2*1.0 = 0.4 + 0.3 + 0.2 = 0.9
-        assert l3 == pytest.approx(0.9)
+        # step_coverage=0.8, step_quality=0.8
+        # L3 = 0.5*0.8 + 0.5*0.8 = 0.8
+        assert l3 == pytest.approx(0.8)
+
+    def test_l3_uses_coverage_plus_quality_formula(self):
+        calc = MetricsCalculator()
+        results = [
+            {
+                "final_passed": True,
+                "pass_rate": 0.8,
+                "tool_calls": [
+                    {"tool_name": "search", "success": True},
+                    {"tool_name": "delete", "success": True},
+                ],
+                "expected_tools": ["search"],
+                "turns": [
+                    {"has_tool_call": True, "message": ""},
+                    {"has_tool_call": False, "message": ""},
+                ],
+            },
+        ]
+        l3 = calc._calculate_l3_step_adherence(results)
+        # step_coverage=0.8, step_quality=avg pass_rate of passing evals=0.8
+        # L3 = 0.5*0.8 + 0.5*0.8 = 0.8
+        assert l3 == pytest.approx(0.8)
+
+    def test_l3_quality_differs_from_coverage(self):
+        calc = MetricsCalculator()
+        results = [
+            {"final_passed": True, "pass_rate": 1.0, "workflow_step": "Parse input"},
+            {"final_passed": True, "pass_rate": 0.6, "workflow_step": "Validate schema"},
+        ]
+        workflow_steps = ["Parse input", "Validate schema", "Execute"]
+        l3 = calc._calculate_l3_step_adherence(results, workflow_steps)
+        # step_coverage = 2/3 ≈ 0.667
+        # step_quality = avg(1.0, 0.6) = 0.8
+        # L3 = 0.5*(2/3) + 0.5*0.8 = 0.733
+        assert l3 == pytest.approx(0.5 * (2 / 3) + 0.5 * 0.8)
 
     def test_l3_fallback_without_turn_data(self):
         """L3 returns None when no turn-level data AND no workflow_step data."""
@@ -1012,6 +1083,25 @@ class TestMetricsCalculator:
         # token-only match → ×0.7 confidence multiplier
         # → (1/3) × 0.7 = 0.233
         assert coverage == pytest.approx((1 / 3) * 0.7, abs=0.01)
+
+    def test_levenshtein_distance(self):
+        calc = MetricsCalculator()
+        assert calc._levenshtein_distance("kitten", "sitting") == 3
+        assert calc._levenshtein_distance("desgin review", "design review") == 2
+        assert calc._levenshtein_distance("", "abc") == 3
+        assert calc._levenshtein_distance("abc", "abc") == 0
+
+    def test_step_coverage_levenshtein_matches_typo(self):
+        calc = MetricsCalculator()
+        passing_evals = [{"workflow_step": "Desgin review"}]
+        coverage = calc._calculate_step_coverage(passing_evals, ["Design review"])
+        assert coverage == 1.0
+
+    def test_step_coverage_levenshtein_no_match_beyond_threshold(self):
+        calc = MetricsCalculator()
+        passing_evals = [{"workflow_step": "Completely different"}]
+        coverage = calc._calculate_step_coverage(passing_evals, ["Design review"])
+        assert coverage == 0.0
 
     # ── L2 EPSILON guard (slice-4) ──────────────────────────────
 

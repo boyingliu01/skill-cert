@@ -915,6 +915,30 @@ def test_compute_section_coverage_dict_items_str_converted():
     assert coverage == pytest.approx(0.5, rel=1e-3), f"Expected 0.5, got {coverage}"
 
 
+def test_levenshtein_distance():
+    generator = EvalGenerator()
+    assert generator._levenshtein_distance("kitten", "sitting") == 3
+    assert generator._levenshtein_distance("Desgin review".lower(), "Design review".lower()) == 2
+    assert generator._levenshtein_distance("", "abc") == 3
+    assert generator._levenshtein_distance("abc", "abc") == 0
+
+
+def test_compute_section_coverage_levenshtein_matches_typo():
+    generator = EvalGenerator()
+    section_items = ["Desgin review"]
+    assertion_set = {"Design review"}
+    coverage = generator._compute_section_coverage(section_items, assertion_set)
+    assert coverage == 1.0
+
+
+def test_compute_section_coverage_levenshtein_no_match_beyond_threshold():
+    generator = EvalGenerator()
+    section_items = ["Completely different"]
+    assertion_set = {"Design review"}
+    coverage = generator._compute_section_coverage(section_items, assertion_set)
+    assert coverage == 0.0
+
+
 def test_calculate_coverage_with_regex_assertions():
     """_calculate_coverage correctly handles regex assertion values in full pipeline."""
     generator = EvalGenerator()
