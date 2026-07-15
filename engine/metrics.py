@@ -191,11 +191,12 @@ class MetricsCalculator:
         return with_skill, without_skill
 
     _L2_CATEGORY_WEIGHTS = {
-        "trigger": 0.25,
-        "normal": 0.25,
-        "boundary": 0.20,
-        "failure": 0.20,
-        "adversarial": 0.10,
+        "trigger": 0.3,
+        "workflow_step": 0.3,
+        "normal": 0.1,
+        "boundary": 0.1,
+        "failure": 0.1,
+        "adversarial": 0.1,
     }
 
     @staticmethod
@@ -262,29 +263,45 @@ class MetricsCalculator:
         if not passing_evals:
             return None
 
-        # Calculate base step_coverage
         step_coverage = self._calculate_step_coverage(passing_evals, workflow_steps)
-
-        # Check for turn-level data
-        tool_call_accuracy = self._calculate_tool_call_accuracy(passing_evals)
-        turn_relevance = self._calculate_turn_relevance(passing_evals)
+        step_quality = sum(r.get("pass_rate", 0.0) for r in passing_evals) / len(passing_evals)
 
         has_workflow_step_data = any(r.get("workflow_step") is not None for r in passing_evals)
+        has_spec = workflow_steps is not None and len(workflow_steps) > 0
+        has_trajectory = any(
+            r.get("tool_calls") is not None or r.get("turns") is not None
+            for r in passing_evals
+        )
 
-        if tool_call_accuracy is not None and turn_relevance is not None:
-            return 0.5 * step_coverage + 0.3 * tool_call_accuracy + 0.2 * turn_relevance
+        if has_workflow_step_data or has_spec or has_trajectory:
+            if step_coverage > 0.0 or step_quality > 0.0:
+                return 0.5 * step_coverage + 0.5 * step_quality
+            return 0.0
 
-        if has_workflow_step_data:
-            # Valid signal: step_coverage from actual workflow step data
-            return step_coverage
-
-        # No trajectory or workflow step data → L3 unavailable
         return None
 
     @staticmethod
     def _tokenize(text: str) -> set[str]:
         """Split text into lowercased word tokens for overlap matching."""
         return set(re.findall(r"[a-zA-Z0-9]+", text.lower()))
+
+    @staticmethod
+    def _levenshtein_distance(a: str, b: str) -> int:
+        if a == b:
+            return 0
+        la, lb = len(a), len(b)
+        if la == 0:
+            return lb
+        if lb == 0:
+            return la
+        prev = list(range(lb + 1))
+        for i in range(1, la + 1):
+            curr = [i] + [0] * lb
+            for j in range(1, lb + 1):
+                cost = 0 if a[i - 1] == b[j - 1] else 1
+                curr[j] = min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+            prev = curr
+        return prev[lb]
 
     def _calculate_step_coverage(
         self, passing_evals: list[dict[str, Any]], workflow_steps: list[str] | None = None
@@ -307,7 +324,7 @@ class MetricsCalculator:
                 if ws and ws in workflow_steps:
                     covered_by_exact.add(ws)
 
-            # Phase 2: token-overlap fallback for unmatched workflow_steps
+            # Phase 2: fuzzy + token-overlap fallback for unmatched workflow_steps
             covered_by_token: set[str] = set()
             for step_name in workflow_steps:
                 if step_name in covered_by_exact:
@@ -323,12 +340,18 @@ class MetricsCalculator:
                     if overlap_start >= 0:
                         covered_by_token.add(step_name)
                         break
+                    ws_lower, sn_lower = ws.lower(), step_name.lower()
+                    max_len = max(len(ws_lower), len(sn_lower))
+                    lev_threshold = max(2, max_len // 10) if max_len >= 8 else 0
+                    if max_len >= 8 and self._levenshtein_distance(ws_lower, sn_lower) <= lev_threshold:
+                        covered_by_exact.add(step_name)
+                        break
                     eval_tokens = self._tokenize(ws)
                     if not eval_tokens:
                         continue
                     intersection = step_tokens & eval_tokens
-                    max_len = max(len(step_tokens), len(eval_tokens))
-                    jaccard = len(intersection) / max_len if max_len > 0 else 0.0
+                    tok_max = max(len(step_tokens), len(eval_tokens))
+                    jaccard = len(intersection) / tok_max if tok_max > 0 else 0.0
                     if jaccard >= 0.6:
                         covered_by_token.add(step_name)
 
