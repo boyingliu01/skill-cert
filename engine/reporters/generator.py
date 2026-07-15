@@ -118,6 +118,9 @@ class Reporter:
 
 ## Drift Analysis
 
+{% if drift_analysis.skipped %}
+**Skipped**: {{ drift_analysis.result_summary }}
+{% else %}
 ### Drift
 **评测目的**: {{ drift_analysis.purpose }}
 **评测方法**: {{ drift_analysis.method }}
@@ -132,6 +135,7 @@ class Reporter:
 {% for result in drift_results %}
 - {{ result.model_a }} vs {{ result.model_b }}: {{ result.severity }} severity (variance: {{ "%.3f"|format(result.variance) }})
 {% endfor %}
+{% endif %}
 {% endif %}
 
 ## Evaluation Coverage
@@ -468,6 +472,7 @@ For detailed results, see the JSON output.
         config: dict[str, Any],
         maintainability: dict[str, Any] | None = None,
         calibration_data: dict[str, Any] | None = None,
+        eval_results: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Generate Markdown and JSON reports from metrics and drift analysis.
 
@@ -611,6 +616,7 @@ For detailed results, see the JSON output.
             hk=hooks_detection,
             pd=progressive_disclosure,
             sq=structure_quality,
+            eval_results=eval_results or [],
         )
 
         json_report = {
