@@ -7,6 +7,10 @@ import pytest
 
 from engine.deadline import Deadline, PhaseTimer
 
+# Windows time.monotonic() maps to GetTickCount64() with ~15.6ms resolution, so a
+# 10ms sleep can leave the clock unchanged and fail strict increase/decrease checks.
+_MONOTONIC_TICK = max(0.05, 4 * time.get_clock_info("monotonic").resolution)
+
 
 def test_deadline_creation_defaults():
     """Deadline created with defaults has infinite max_total_time."""
@@ -30,7 +34,7 @@ def test_deadline_elapsed_increases():
     """elapsed property increases over time."""
     dl = Deadline(max_total_time=60.0)
     e1 = dl.elapsed
-    time.sleep(0.01)
+    time.sleep(_MONOTONIC_TICK)
     e2 = dl.elapsed
     assert e2 > e1
 
@@ -39,7 +43,7 @@ def test_deadline_remaining_decreases():
     """remaining property decreases over time."""
     dl = Deadline(max_total_time=60.0)
     r1 = dl.remaining
-    time.sleep(0.01)
+    time.sleep(_MONOTONIC_TICK)
     r2 = dl.remaining
     assert r2 < r1
 
