@@ -376,24 +376,21 @@ def _build_l1_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> Metr
     passed = breakdown.get("l1_details", {}).get("passed_trigger_evals", 0)
     return MetricDimension(
         purpose=(
-            "Verifies the model triggers the skill in correct scenarios"
-            " and avoids false triggers."
+            "Verifies the model triggers the skill in correct scenarios and avoids false triggers."
         ),
         method=(
             f"Evaluates {trigger_evals} trigger cases"
             " (positive + negative) using deterministic assertions."
         ),
         result=(
-            f"Trigger accuracy: {score:.0%} ({passed}/{trigger_evals} passed)."
-            " Threshold: >=90%."
+            f"Trigger accuracy: {score:.0%} ({passed}/{trigger_evals} passed). Threshold: >=90%."
         ),
         analysis=(
             "Low accuracy indicates trigger conditions are ambiguous"
             " or description mismatches model interpretation."
         ),
         improvement=(
-            "Add explicit trigger phrases, expand negative cases,"
-            " or adjust description wording."
+            "Add explicit trigger phrases, expand negative cases, or adjust description wording."
         ),
     )
 
@@ -404,8 +401,7 @@ def _build_l2_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> Metr
     without_avg = breakdown.get("l2_details", {}).get("without_skill_avg_pass_rate", 0.0)
     return MetricDimension(
         purpose=(
-            "Measures whether the skill demonstrably improves"
-            " output quality over the baseline."
+            "Measures whether the skill demonstrably improves output quality over the baseline."
         ),
         method="Compares with-skill vs without-skill pass rates on the same eval suite.",
         result=(
@@ -429,17 +425,12 @@ def _build_l3_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> Metr
     coverage = breakdown.get("l3_details", {}).get("step_coverage_ratio", 0.0)
     return MetricDimension(
         purpose=(
-            "Checks if the model follows the skill's"
-            " defined workflow steps during execution."
+            "Checks if the model follows the skill's defined workflow steps during execution."
         ),
         method=(
-            "Measures step coverage via token-overlap matching"
-            " against defined workflow steps."
+            "Measures step coverage via token-overlap matching against defined workflow steps."
         ),
-        result=(
-            f"Step adherence: {score:.0%} (coverage: {coverage:.0%})."
-            " Threshold: >=85%."
-        ),
+        result=(f"Step adherence: {score:.0%} (coverage: {coverage:.0%}). Threshold: >=85%."),
         analysis=(
             "Low adherence means steps are skipped"
             " or the workflow is not well-integrated into the prompt."
@@ -455,12 +446,10 @@ def _build_l4_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> Metr
         method="Computes standard deviation of deterministic pass rates across N runs.",
         result=f"Stability std: {std:.3f}. Threshold: <=0.10.",
         analysis=(
-            "High variance indicates nondeterministic behavior"
-            " or sensitivity to prompt order."
+            "High variance indicates nondeterministic behavior or sensitivity to prompt order."
         ),
         improvement=(
-            "Increase run count, lock random seeds,"
-            " or stabilize model response temperature."
+            "Increase run count, lock random seeds, or stabilize model response temperature."
         ),
     )
 
@@ -468,23 +457,16 @@ def _build_l4_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> Metr
 def _build_l5_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> MetricDimension:
     score = num(metrics.get("l5_step_efficiency", 0.0))
     return MetricDimension(
-        purpose=(
-            "Verifies the skill operates within step, token,"
-            " and tool call limits."
-        ),
+        purpose=("Verifies the skill operates within step, token, and tool call limits."),
         method=(
             "EnvelopeChecker validates each eval run against"
             " max_steps, max_tokens, and max_tool_calls."
         ),
         result=f"Step efficiency: {score:.0%}.",
         analysis=(
-            "Low efficiency means the skill consumes excessive steps"
-            " or tokens for its task."
+            "Low efficiency means the skill consumes excessive steps or tokens for its task."
         ),
-        improvement=(
-            "Optimize workflow to reduce redundant steps,"
-            " or increase envelope limits."
-        ),
+        improvement=("Optimize workflow to reduce redundant steps, or increase envelope limits."),
     )
 
 
@@ -492,21 +474,17 @@ def _build_l6_detail(metrics: dict[str, Any], breakdown: dict[str, Any]) -> Metr
     score = num(metrics.get("l6_trajectory_quality", 0.0))
     return MetricDimension(
         purpose=(
-            "Evaluates multi-turn dialogue coherence"
-            " and decision quality (dialogue mode only)."
+            "Evaluates multi-turn dialogue coherence and decision quality (dialogue mode only)."
         ),
         method=(
-            "LLM-as-Judge scores turn-level relevance,"
-            " tool call accuracy, and goal completion."
+            "LLM-as-Judge scores turn-level relevance, tool call accuracy, and goal completion."
         ),
         result=f"Trajectory quality: {score:.0%}.",
         analysis=(
-            "Low quality indicates the model loses context"
-            " or makes poor intermediate decisions."
+            "Low quality indicates the model loses context or makes poor intermediate decisions."
         ),
         improvement=(
-            "Add intermediate checkpoints, reduce turn count,"
-            " or strengthen context preservation."
+            "Add intermediate checkpoints, reduce turn count, or strengthen context preservation."
         ),
     )
 
@@ -517,14 +495,8 @@ def _build_l7_detail(cost_analysis: dict[str, Any] | None) -> MetricDimension:
     eff = cost_analysis.get("cost_efficiency", 0.0)
     delta = cost_analysis.get("cost_delta_pct", 0.0)
     return MetricDimension(
-        purpose=(
-            "Determines whether the quality improvement"
-            " justifies the additional cost."
-        ),
-        method=(
-            "Compares per-eval cost for with-skill"
-            " vs without-skill runs using pricing table."
-        ),
+        purpose=("Determines whether the quality improvement justifies the additional cost."),
+        method=("Compares per-eval cost for with-skill vs without-skill runs using pricing table."),
         result=f"Cost efficiency: {eff:.2f}, delta: {delta:.1%}.",
         analysis="High cost delta with low L2 gain means poor return on investment.",
         improvement="Optimize prompt length, reduce tool calls, or switch to a cheaper model.",
@@ -768,6 +740,7 @@ def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> d
     result_summary = ""
     analysis = ""
     suggestions: list[str] = []
+    skipped = False
 
     # ── L1: Trigger Accuracy ───────────────────────────────────────
     if metric_name == "L1":
@@ -777,9 +750,7 @@ def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> d
         fp = details.get("fp_count", 0)
         fn = details.get("fn_count", 0)
         status = "PASS" if score >= 0.9 else "FAIL"
-        result_summary = (
-            f"触发准确率: {score:.1%} ({passed}/{total} 通过) — {status} (阈值≥90%)"
-        )
+        result_summary = f"触发准确率: {score:.1%} ({passed}/{total} 通过) — {status} (阈值≥90%)"
         if fp > fn:
             analysis = "误触发偏多（FP > FN），Skill描述可能过于宽泛，导致模型在不相关场景也误触发"
         elif fn > fp:
@@ -820,9 +791,7 @@ def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> d
         score = details.get("score", 0.0)
         coverage = details.get("step_coverage_ratio", 0.0)
         status = "PASS" if score >= 0.85 else "FAIL"
-        result_summary = (
-            f"步骤遵循度: {score:.1%} (覆盖率: {coverage:.0%}) — {status} (阈值≥85%)"
-        )
+        result_summary = f"步骤遵循度: {score:.1%} (覆盖率: {coverage:.0%}) — {status} (阈值≥85%)"
         if score < 0.7:
             analysis = "步骤遵循度严重不足，工作流步骤过于复杂或缺少明确执行指引"
         elif score < 0.85:
@@ -843,9 +812,7 @@ def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> d
             analysis = "单次执行不能反映稳定性，需要≥2次执行才能计算标准差"
         else:
             status = "PASS" if std <= 0.10 else "FAIL"
-            result_summary = (
-                f"执行稳定性标准差: {std:.3f} — {status} (阈值≤0.10)"
-            )
+            result_summary = f"执行稳定性标准差: {std:.3f} — {status} (阈值≤0.10)"
             if std > 0.10:
                 analysis = "多次执行结果波动较大，Skill可能存在非确定性行为（如依赖模型随机性）"
             else:
@@ -860,9 +827,7 @@ def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> d
         score = details.get("score", 0.0)
         violations = details.get("violations", 0)
         status = "PASS" if score >= 0.7 else "FAIL"
-        result_summary = (
-            f"步骤效率: {score:.1%} ({violations} 次违规) — {status}"
-        )
+        result_summary = f"步骤效率: {score:.1%} ({violations} 次违规) — {status}"
         if score == 1.0:
             analysis = "所有执行在操作边界内完成，步骤/Token/工具调用均未超限"
         elif score >= 0.7:
@@ -914,9 +879,7 @@ def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> d
         overhead = details.get("overhead_pct", 0.0)
         ws = details.get("with_skill", {})
         ws_p50 = ws.get("p50", 0.0) if ws else 0.0
-        result_summary = (
-            f"延迟开销: {overhead:.0f}% (P50 With: {ws_p50:.2f}s)"
-        )
+        result_summary = f"延迟开销: {overhead:.0f}% (P50 With: {ws_p50:.2f}s)"
         if overhead > 50:
             analysis = "延迟开销过大（>50%），严重影响交互式使用体验"
         elif overhead > 20:
@@ -937,7 +900,8 @@ def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> d
         severity = details.get("highest_severity", "none")
         max_var = details.get("max_variance", 0.0)
         avg_var = details.get("average_variance", 0.0)
-        if drift_detected is None or models < 2:
+        if drift_detected is None and models < 2:
+            skipped = True
             result_summary = "Skipped — 单模型评估，无法检测跨模型漂移"
             analysis = "跨模型漂移检测需要≥2个不同provider的模型"
             suggestions.append("增加至少一个不同provider的模型以启用漂移检测")
@@ -968,9 +932,7 @@ def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> d
             result_summary = f"安全扫描通过 — 0/{probe_count} 探针触发，未发现绕过"
             analysis = "未检测到安全风险，Skill定义不包含危险指令或可注入模式"
         else:
-            result_summary = (
-                f"安全问题 — {triggered}/{probe_count} 探针触发, {bypasses} 绕过"
-            )
+            result_summary = f"安全问题 — {triggered}/{probe_count} 探针触发, {bypasses} 绕过"
             analysis = "检测到潜在安全风险，Skill可能包含危险指令或存在注入点"
         if bypasses > 0:
             suggestions.append("立即移除硬编码凭证或危险命令")
@@ -1035,4 +997,5 @@ def build_metric_analysis(metric_name: str, details: dict[str, Any] | None) -> d
         "result_summary": result_summary,
         "analysis": analysis,
         "suggestions": suggestions,
+        "skipped": skipped,
     }

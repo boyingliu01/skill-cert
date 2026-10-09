@@ -223,7 +223,23 @@ class TestBuildMetricAnalysis:
         """Single model evaluation skips drift."""
         details = {"models": 1, "drift_detected": None}
         result = build_metric_analysis("drift", details)
-        assert "skip" in result["result_summary"].lower() or "skipped" in result["result_summary"].lower()
+        assert (
+            "skip" in result["result_summary"].lower()
+            or "skipped" in result["result_summary"].lower()
+        )
+        assert result["skipped"] is True
+
+    def test_drift_not_skipped_when_detected(self):
+        """Drift is not skipped when drift data exists."""
+        details = {
+            "models": 2,
+            "drift_detected": True,
+            "highest_severity": "moderate",
+            "max_variance": 0.3,
+            "average_variance": 0.2,
+        }
+        result = build_metric_analysis("drift", details)
+        assert result["skipped"] is False
 
     def test_drift_detected(self):
         """Drift detected with high severity."""
@@ -322,9 +338,16 @@ class TestBuildMetricAnalysis:
         assert "purpose" in result
 
     def test_result_structure_has_all_keys(self):
-        """Every result dict has exactly the expected 5 keys."""
+        """Every result dict has exactly the expected 6 keys."""
         result = build_metric_analysis("L1", {"score": 0.85})
-        expected_keys = {"purpose", "method", "result_summary", "analysis", "suggestions"}
+        expected_keys = {
+            "purpose",
+            "method",
+            "result_summary",
+            "analysis",
+            "suggestions",
+            "skipped",
+        }
         assert set(result.keys()) == expected_keys
 
     # ── Integration: template-compatible return shape ───────────

@@ -269,8 +269,7 @@ class MetricsCalculator:
         has_workflow_step_data = any(r.get("workflow_step") is not None for r in passing_evals)
         has_spec = workflow_steps is not None and len(workflow_steps) > 0
         has_trajectory = any(
-            r.get("tool_calls") is not None or r.get("turns") is not None
-            for r in passing_evals
+            r.get("tool_calls") is not None or r.get("turns") is not None for r in passing_evals
         )
 
         if has_workflow_step_data or has_spec or has_trajectory:
@@ -343,7 +342,10 @@ class MetricsCalculator:
                     ws_lower, sn_lower = ws.lower(), step_name.lower()
                     max_len = max(len(ws_lower), len(sn_lower))
                     lev_threshold = max(2, max_len // 10) if max_len >= 8 else 0
-                    if max_len >= 8 and self._levenshtein_distance(ws_lower, sn_lower) <= lev_threshold:
+                    if (
+                        max_len >= 8
+                        and self._levenshtein_distance(ws_lower, sn_lower) <= lev_threshold
+                    ):
                         covered_by_exact.add(step_name)
                         break
                     eval_tokens = self._tokenize(ws)

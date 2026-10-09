@@ -187,7 +187,10 @@ class DriftDetector:
             "average_variance": 0.0,
             "model_pairs_compared": 0,
             "skipped": True,
-            "summary": "Skipped: single model only. Use at least 2 models from different providers for drift detection.",
+            "summary": (
+                "Skipped: single model only. "
+                "Use at least 2 models from different providers for drift detection."
+            ),
         }
 
     def _build_drift_metrics(self, drift_results: list[DriftResult]) -> dict[str, Any]:
