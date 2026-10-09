@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-10-10
+
+### Added — Real-Harness Evaluation Path
+- **`skill-cert harness`**: independent second pipeline — taskgen derives tasks plus hidden rubrics from a SKILL.md, a real agent runtime executes each task twice (with and without the skill), and an LLM judge scores every rubric item via structured output (temp=0). Flags: `--harness opencode|dsh`, `--model`, `--judge-model`, `--tasks`, `--runs`, `--serve`, `--task-timeout`, `--keep-sandboxes`.
+- **engine/harness/**: `taskgen.py`, `evaluator.py`, `judge.py`, `report.py`, `llm_json.py`, `models.py` (`Task` / `Rubric` / `JudgeResult`).
+- **adapters/harness/**: runtime backends — `opencode_harness.py` (JSON event stream) and `dsh_harness.py` behind the `HarnessAdapter` protocol in `base.py`.
+- **adapters/openai_compat.py** + **adapters/factory.py**: `response_format` and custom `extra_headers` are now threaded through to the request, so structured judge output survives gateways that strip provider defaults.
+- **prompts/**: `harness-taskgen.md`, `harness-judge.md`.
+- **Tests**: `test_harness_taskgen.py`, `test_harness_judge.py`, `test_harness_evaluator.py`, `test_harness_opencode.py` (24 files, +2,710 lines).
+
+### Changed — Legacy Surface Removed
+- Dropped superseded engine modules and their mirrored tests: `skills_bench`, `trajectory_evaluator`, `gotchas_analyzer` / `gotchas_flywheel`, `adversarial`, `trigger_accuracy_eval`, together with historical `docs/plans` specs, delphi scripts, old schemas and prompts (50 files, −9,801 lines).
+- Removed unused dependencies `tenacity` and `aiolimiter` (zero imports).
+- Version is defined solely in `pyproject.toml`; the duplicate `VERSION` file was deleted.
+- Drift reporting now distinguishes **"skipped"** (single model, nothing to compare) from **"no drift detected"**, in both JSON and Markdown reports.
+
+### Fixed
+- **tests/test_deadline.py**: clock-advance assertions now wait ≥4 ticks; `time.monotonic()` on Windows is `GetTickCount64()` with 15.625 ms resolution, so the previous 10 ms sleeps failed intermittently.
+- **tests/conftest.py**: session-scoped home isolation keeps unit tests off the developer's `~/.skill-cert/models.yaml`. `os.path.expanduser()` prefers `USERPROFILE` over `HOME` on Windows, so the one CLI test that patched only `HOME` ran the full pipeline against a live LLM gateway; the suite is now ~80 s with no network access.
+
+### Infrastructure & Documentation
+- **`.xp-gate-mypy-scope`**: declares the type-check surface (`engine`, `skill_cert`, `adapters`, `scripts`) for the quality gate's mypy step.
+- `AGENTS.md`, the per-directory agent guides and both READMEs realigned with the shipped engine (module inventory, L1–L8 thresholds, harness command surface, test counts).
+- Local virtualenv (510 tracked files) and a stale July sprint record removed from git; duplicate `build/` / `.venv/` ignore entries dropped and the CI history artifact ignored.
+- Suite: 1510 tests collected (1509 passed, 1 skipped).
+
+## [0.14.2] - 2026-07-15
+
+### Fixed — Report Accuracy (Issues #91, #92, #93)
+- **engine/metrics.py**: L4 stability returns N/A instead of a misleading 1.0 for a single-model single run (#91).
+- **engine/drift.py**: single-model reports now show "Skipped" rather than "No Significant Drift Detected" (#93).
+- **engine/reporters/generator.py**: Markdown reports gained a "Failed Eval Cases" table with name / category / model / score / failed assertions (#92).
+
+## [0.14.1] - 2026-07-15
+
+### Fixed — Metrics Evaluation Precision (Issues #86, #87, #88)
+- **engine/metrics.py**: L2 weights now include the `workflow_step` category (trigger 0.3, workflow_step 0.3, normal/boundary/failure 0.1 each, adversarial 0.1) (#87).
+- **engine/metrics.py**: L3 uses `0.5 × step_coverage + 0.5 × step_quality`, where step quality is the average pass rate of the evals that passed (#88).
+- **engine/testgen.py**: Levenshtein fuzzy matching with a length-relative threshold (`max(2, max_len // 10)` for strings ≥ 8 chars) (#86).
+
 ## [0.14.0] - 2026-07-13
 
 ### Added — Instruction-Type Skill Parser Extension (Issue #84)
