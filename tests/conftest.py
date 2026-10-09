@@ -1,5 +1,6 @@
 """Shared fixtures and mock adapters for the skill-cert test suite."""
 
+import os
 from typing import Any
 
 import pytest
@@ -91,3 +92,26 @@ class MockModelAdapter:
 def mock_adapter() -> MockModelAdapter:
     """Return a fresh MockModelAdapter with default list-mode responses."""
     return MockModelAdapter()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_user_config(tmp_path_factory):
+    """Run the whole suite against an empty home so no live LLM call is made.
+
+    ``engine.config`` reads ``~/.skill-cert/models.yaml`` through
+    ``os.path.expanduser``, and on Windows ``USERPROFILE`` wins over ``HOME`` —
+    redirecting only ``HOME`` left the developer's real model list in play, which
+    made CLI tests silently execute the full pipeline against a live gateway.
+    """
+    home = tmp_path_factory.mktemp("isolated-home")
+    saved = {var: os.environ.get(var) for var in ("HOME", "USERPROFILE")}
+    os.environ["HOME"] = str(home)
+    os.environ["USERPROFILE"] = str(home)
+    try:
+        yield home
+    finally:
+        for var, value in saved.items():
+            if value is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = value
