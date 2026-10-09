@@ -1,0 +1,5 @@
+# mypy type surface for xp-gate Gate 1 (one directory per line, # comments allowed)
+engine
+skill_cert
+adapters
+scripts
