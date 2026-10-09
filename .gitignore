@@ -21,6 +21,7 @@ env/
 
 # skill-cert output
 results/
+.skill-cert-ci-history.json
 
 # OS
 .DS_Store
@@ -41,7 +42,6 @@ Thumbs.db
 .quality-history.jsonl
 .sprint-state/
 MagicMock/
-build/
-.venv/
+.skill-cert-ci-history.json
 .archlint-cache/
 .rustest_cache/
