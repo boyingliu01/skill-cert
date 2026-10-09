@@ -3,7 +3,7 @@
 This file provides guidance to AI coding agents working on the **skill-cert** engine codebase. Do NOT apply this guidance to unrelated projects that happen to mention "skills" or "evaluation."
 
 **Project:** skill-cert — AI Skill Evaluation Engine  
-**Version:** 0.14.2 (single source: `pyproject.toml`; there is no VERSION file)  
+**Version:** 0.15.0 (single source: `pyproject.toml`; there is no VERSION file)  
 **Python:** 3.10+  
 **Framework:** Pydantic v2, pytest, httpx, markdown-it-py
 
