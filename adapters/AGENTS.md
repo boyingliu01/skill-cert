@@ -6,10 +6,16 @@ Provider-agnostic LLM adapter layer — implements `ModelAdapter` abstract base 
 ## STRUCTURE
 ```
 adapters/
-├── base.py               # Abstract ModelAdapter: chat() + batch_chat() interface
+├── base.py               # TokenUsage / LLMResponse models + abstract ModelAdapter (chat, chat_with_usage, batch_chat)
 ├── anthropic_compat.py   # Anthropic Claude adapter (uses anthropic SDK)
-├── openai_compat.py      # OpenAI-compatible adapter (works with OpenAI, Azure, any OpenAI API)
-└── pricing.py            # Model pricing table: 17 models across 6 providers (Anthropic, OpenAI, Qwen, DeepSeek, Gemini, Whalecloud LOCAL), TokenUsage dataclass
+├── openai_compat.py      # OpenAI-compatible adapter over httpx (OpenAI, Azure, gateways, local models);
+│                         # honours extra_headers and passes response_format through
+├── factory.py            # create_adapter(model_config) — maps ModelConfig (incl. headers) to an adapter
+├── pricing.py            # Model pricing table: 19 entries (Anthropic/OpenAI/Qwen/DeepSeek/Gemini + 2 whalecloud LOCAL at 0)
+└── harness/
+    ├── base.py           # HarnessAdapter protocol + HarnessRunResult model (sandbox install + non-interactive run)
+    ├── opencode_harness.py  # drives `opencode run --format json`, parses the event stream
+    └── dsh_harness.py    # dsh backend
 ```
 
 ## WHERE TO LOOK
@@ -17,10 +23,13 @@ adapters/
 |------|------|-------|
 | Define adapter interface | `base.py` | `ModelAdapter` abstract class — all adapters extend this |
 | Anthropic Claude | `anthropic_compat.py` | Implements `chat()` + `batch_chat()` with rate limiting |
-| OpenAI-compatible | `openai_compat.py` | Uses `openai` SDK — works for OpenAI, Azure, local models |
+| OpenAI-compatible | `openai_compat.py` | Raw httpx client (not the `openai` SDK) so gateway quirks stay visible |
+| Structured (JSON-schema) judge output | `openai_compat.py` | `response_format` is threaded through `chat`/`chat_with_usage`/`batch_chat` |
+| Build an adapter from config | `factory.py` | Passes `model_config.headers` in as `extra_headers` |
+| Run a task on a real agent runtime | `harness/` | Used by `engine/harness/`, not by the LLM pipeline |
 
 ## CONVENTIONS
-- All adapters extend `adapters.base.ModelAdapter`
+- All adapters extend `adapters.base.ModelAdapter` — harness backends do not: they satisfy the separate `harness/base.HarnessAdapter` protocol
 - Must implement: `chat(messages, system, timeout)` → str, `batch_chat(requests, max_concurrency)` → List[str]
 - `batch_chat` defaults to `max_concurrency=5`
 - Error handling: exponential backoff for retryable errors, immediate raise for invalid keys

@@ -291,7 +291,7 @@ Two output formats:
 | Maintainability Scoring | `maintainability.py` | SKILL.md readability, completeness, freshness |
 | External Integrations | `integrations.py` | SkillLab / DeepEval providers (graceful degradation) |
 | Operating Envelope | `envelope.py` | Steps/tokens/timeout/tool_calls limit enforcement |
-| Cost Analysis | `adapters/pricing.py` | 17 models across 6 provider families |
+| Cost Analysis | `adapters/pricing.py` | 19 models across 5 provider families + whalecloud LOCAL |
 | OTel Telemetry | `engine/observability.py` | SessionTelemetry, record_trace, session summary |
 | Token Ledger | `engine/token_ledger.py` | Real-time token usage tracking (not approximations) |
 
@@ -315,7 +315,7 @@ templates/        Support layer: prompts, schemas, templates
 
 ### 5.1 Presentation: CLI Layer
 
-Location: `skill_cert/cli/`. Responsibilities: parse CLI arguments, load configuration, invoke core pipeline, emit exit codes, generate report files. Entry point: `main.py`, config wizard: `setup.py`.
+Location: `skill_cert/cli/`. Responsibilities: parse CLI arguments, load configuration, invoke core pipeline, emit exit codes, generate report files. Entry point: `main.py`, harness subcommand: `harness.py`, config wizard: `setup.py`.
 
 ### 5.2 Domain: Core Evaluation Layer
 
@@ -341,16 +341,16 @@ Location: `engine/`.
 | `stress_test.py` | Stress testing |
 | `reliability.py` | Reliability tracking |
 | `maintainability.py` | SKILL.md maintainability scoring |
-| `skills_bench.py` | Multi-skill cognitive overload detection |
+| `harness/` | Real-runtime evaluation path: taskgen → double run → LLM judge → report |
+| `reporters/` | Report section builders used by `reporter.py` |
+| `classifier.py` | Output-type classifier routing the assertion strategy |
+| `structure_quality.py` | Tool-permission isolation and script usage detection |
+| `hooks_detector.py` | Hook/guardrail detection in SKILL.md files |
 | `calibration.py` | Golden eval set calibration (Cohen's Kappa) |
 | `stability.py` | Execution stability analysis |
 | `integrations.py` | SkillLab / DeepEval external integrations |
 | `observability.py` | OTel GenAI session telemetry |
 | `token_ledger.py` | Real-time token usage tracking |
-| `trigger_accuracy_eval.py` | L1 trigger accuracy evaluation |
-| `trajectory_evaluator.py` | L6 trajectory quality evaluation |
-| `adversarial.py` | Adversarial testing support |
-| `gotchas_flywheel.py` | Gotcha patterns accumulation |
 | `progressive_disclosure.py` | Progressive disclosure evaluation |
 | `deadline.py` | Global deadline enforcement |
 | `constants.py` | Shared constants and defaults |
@@ -369,7 +369,7 @@ Pricing supports multiple model families: Anthropic, OpenAI, Qwen, DeepSeek, Gem
 
 Location: `prompts/`, `schemas/`, `templates/`.
 
-Responsibilities: LLM judge prompt, testgen prompt, test-review prompt, test-gap prompt, eval JSON schema, SkillSpec schema, minimum eval fallback template.
+Responsibilities: LLM judge prompts (`judge.md`, `judge-trigger.md`, `judge-workflow.md`, `judge-output.md`), harness prompts (`harness-taskgen.md`, `harness-judge.md`), report JSON schema, minimum eval fallback template.
 
 ---
 
@@ -517,19 +517,20 @@ ruff check . && ruff format .
 
 ```
 skill-cert/
-├── engine/          # Core pipeline: 33 modules — parser, testgen, runner, grader, metrics, reporter, drift,
-│                    # dialogue_evaluator, dialogue_runner, replay, simulator, security_probes, envelope,
-│                    # integrations, reliability, maintainability, multi_skill, stress_test, stability, config,
-│                    # skills_bench, calibration, observability, token_ledger, trigger_accuracy_eval,
-│                    # trajectory_evaluator, adversarial, gotchas_flywheel, progressive_disclosure,
-│                    # deadline, constants, report_models, trace_models
-├── skill_cert/cli/  # CLI entry (main.py, setup.py)
-├── adapters/        # LLM provider adapters (Anthropic, OpenAI-compatible) + pricing table
-├── prompts/         # LLM prompt templates (judge, dialogue, drift, testgen, test-review, test-gap)
-├── schemas/         # JSON schemas (eval cases, SkillSpec)
+├── engine/          # Core pipeline: 31 modules + harness/ + reporters/ — parser, testgen, runner, grader,
+│                    # metrics, reporter, drift, envelope, security_probes, dialogue_evaluator,
+│                    # dialogue_runner, replay, simulator, integrations, reliability, maintainability,
+│                    # multi_skill, stress_test, stability, config, calibration, observability,
+│                    # token_ledger, progressive_disclosure, classifier, structure_quality,
+│                    # hooks_detector, deadline, constants, report_models, trace_models
+├── skill_cert/cli/  # CLI entry (main.py, harness.py, setup.py, evals.py, per-mode handlers)
+├── adapters/        # LLM provider adapters (Anthropic, OpenAI-compatible) + pricing + harness/ backends
+├── prompts/         # LLM prompt templates (judge, judge-trigger, judge-workflow, judge-output, harness-taskgen, harness-judge)
+├── schemas/         # JSON schema (report.schema.json)
 ├── templates/       # Fallback eval template (minimum-evals.json)
-├── tests/           # pytest suite — 1134 tests, mirrors engine/ modules 1:1
-└── results/         # Output: {skill}-report.md, {skill}-result.json, {skill}-evals-cache.json
+├── tests/           # pytest suite — 1510 tests, mirrors engine/ modules 1:1
+└── results/         # Output: {skill}-report.md / -result.json / -evals-cache.json;
+                     # harness runs write {skill}-harness-report.md / -harness-report.json
 ```
 
 Note: `skill_cert/cli.py` was deleted (shadowed by `cli/` package directory).

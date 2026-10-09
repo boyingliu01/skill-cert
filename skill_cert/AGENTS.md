@@ -7,8 +7,12 @@ Command-line interface for the skill-cert evaluation engine. Parses CLI argument
 ```
 skill_cert/
 ├── cli/
-│   ├── main.py          # Main CLI: argparse-based, all pipeline orchestration
+│   ├── main.py          # argparse surface + mode dispatch (single/dialogue/replay/stress/multi-skill)
+│   ├── harness.py       # `skill-cert harness` — real-runtime double-run evaluation
 │   ├── setup.py         # Interactive/non-interactive config wizard (skill-cert setup)
+│   ├── evals.py         # Pipeline orchestration shared by mode handlers
+│   ├── helpers.py       # Adapter construction, phase/metric printing, exit codes
+│   ├── single.py / dialogue.py / replay.py / multi_skill.py / stress.py
 │   └── __init__.py      # Package init, exports main()
 └── __init__.py          # Package marker
 ```
@@ -17,11 +21,13 @@ skill_cert/
 
 | Flag | Purpose |
 |------|---------|
-| `--version` | Print version |
+| `--version` | Print version (read from installed package metadata) |
 | `--skill` | Path to SKILL.md (can repeat for multi-skill) |
 | `--models` | Model spec: `name=url,key\|name2=url,key` |
+| `--models-alias` / `--fallback-model` | Alias table / fallback model |
 | `--mode` | `single` (default), `dialogue`, `replay` |
 | `--strict-schema` | Reject SKILL.md on required field violations |
+| `--json-schema-validate` | Validate SKILL.md against the schema |
 | `--with-skill-lab` | Enable SkillLab integration |
 | `--with-deepeval` | Enable DeepEval integration |
 | `--envelope` | Custom envelope thresholds as JSON |
@@ -29,17 +35,24 @@ skill_cert/
 | `--max-turns` | Dialogue turn limit |
 | `--session` | Replay session JSONL file |
 | `--output` | Output directory (default: ./results) |
-| `--stress` | Enable stress testing |
-| `--stress-concurrency` | Stress test concurrency level |
-| `--stress-evals` | Stress test eval count |
-| `--stress` | Enable stress testing |
-| `--stress-concurrency` | Stress test concurrency level |
-| `--stress-evals` | Stress test eval count |
+| `--format` | `markdown`, `json`, `both` |
+| `--stress` / `--stress-concurrency` / `--stress-evals` | Concurrency stress testing |
+| `--max-concurrency` / `--rate-limit-rpm` / `--request-timeout` | Transport limits |
+| `--max-total-time` / `--token-budget` | Deadline + budget enforcement |
+| `--no-llm-judge` / `--judge-samples` / `--debias-position` | Grading control |
+| `--deep-security` | Extra security probes |
+| `--calibration-set` | Golden eval set for calibration analysis |
+| `--ci-history` / `--ci-history-path` | L4 CI-history source (default `.skill-cert-ci-history.json`) |
+| `--trace-export` / `--trace-dir` / `--otlp-endpoint` | Telemetry export |
+
+`skill-cert harness` has its own parser (`cli/harness.py`): `--skill`, `--harness opencode|dsh`,
+`--model provider/model`, `--judge-model`, `--tasks`, `--runs`, `--output`, `--serve`,
+`--task-timeout`, `--keep-sandboxes`.
 
 ## EXIT CODES
 - 0: PASS
-- 1: FAIL
-- 2: error
+- 1: error (unhandled failure in `_run_with_error_handling`)
+- 2: FAIL_WITH_CAVEATS
 
 ## CONVENTIONS
 - argparse for CLI parsing (not click/typer)

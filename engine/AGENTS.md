@@ -1,13 +1,13 @@
 # engine/ — Core Evaluation Pipeline
 
 ## OVERVIEW
-33-module evaluation pipeline: parses SKILL.md skills, validates schema, runs security probes, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L8 metrics, checks operating envelope, detects cross-model drift, integrates external tools, runs stress/stability/reliability/maintainability/multi-skill analysis, golden dataset calibration, skills bench analysis, OTel telemetry, token ledger, trigger accuracy eval, trajectory evaluation, adversarial testing, gotchas flywheel, progressive disclosure, deadline enforcement, and produces standardized reports.
+31 top-level modules plus the `harness/` and `reporters/` packages: parses SKILL.md skills, validates schema, runs security probes, generates eval tests via self-review loop, executes against LLM adapters, grades outputs, computes L1-L8 metrics, checks operating envelope, detects cross-model drift, integrates external tools, runs stress/stability/reliability/maintainability/multi-skill analysis, golden dataset calibration, OTel telemetry, token ledger, deadline enforcement, progressive disclosure / structure-quality / hooks analysis, output-type classification, and produces standardized reports. `harness/` is the separate real-runtime path (taskgen → double-run → LLM judge → report).
 
 ## STRUCTURE
 ```
 engine/
 ├── analyzer.py            # SKILL.md parser → SkillSpec (regex + AST, LLM fallback, SchemaValidationError)
-├── security_probes.py     # Security scanner: 52 patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC)
+├── security_probes.py     # Security scanner: 80 patterns across 6 categories (INJ/EXF/DCMD/CRD/OBF/PRIV_ESC)
 ├── testgen.py             # EvalGenerator: generate → review → gap-fill loop until coverage ≥90%
 ├── runner.py              # Execution engine: with/without skill, concurrency, rate limiting, deadline
 ├── grader.py              # Grader: deterministic assertions + LLM-as-judge (temp=0)
@@ -26,20 +26,24 @@ engine/
 ├── dialogue_runner.py     # Dialogue execution with OTel trace recording
 ├── simulator.py           # LLM behavior simulation for testing without live API
 ├── calibration.py         # Golden eval set calibration (Cohen's Kappa, FPR/FNR)
-├── skills_bench.py        # Multi-skill cognitive overload detection (sweet spot analysis)
+├── harness/               # Real-runtime path: taskgen → evaluator (double run) → judge → report
+│   ├── taskgen.py         # Tasks + hidden rubrics from a SKILL.md (structured output)
+│   ├── evaluator.py       # With/without-skill orchestration over adapters/harness backends
+│   ├── judge.py           # Per-rubric LLM judge (temp=0, response_format)
+│   └── report.py          # Markdown + JSON rendering for harness runs
+├── reporters/             # builders.py — section preparation for reporter.py
+├── classifier.py          # Output-type classifier routing assertion strategy
+├── structure_quality.py   # Tool-permission isolation + script usage detection
+├── hooks_detector.py      # Hook/guardrail detection in SKILL.md files
 ├── config.py              # Configuration management and validation
 ├── observability.py       # OTel GenAI session telemetry: SessionTelemetry, record_trace
 ├── token_ledger.py        # Real-time token usage tracking (not approximations)
-├── trigger_accuracy_eval.py  # L1 trigger accuracy evaluation
-├── trajectory_evaluator.py   # L6 trajectory quality evaluation
-├── adversarial.py         # Adversarial testing support
-├── gotchas_flywheel.py    # Gotcha patterns accumulation
 ├── progressive_disclosure.py # Progressive disclosure evaluation
 ├── deadline.py            # Global deadline enforcement
 ├── constants.py           # Shared constants and defaults
 ├── report_models.py       # Report data models (Pydantic)
 ├── trace_models.py        # Telemetry trace data models
-└── __init__.py            # Public API: exports parse_skill_md
+└── __init__.py            # Public API: parse_skill_md, Deadline, PhaseTimer
 ```
 
 ## KEY SYMBOLS
@@ -54,9 +58,11 @@ engine/
 | `Grader` | Output assertion checker (deterministic + LLM-as-judge) |
 | `MetricsCalculator` | L1-L8 metric computation |
 | `EnvelopeChecker` | Operating envelope validation (wired into L5) |
-| `SecurityScanner` | 52-pattern security probe suite |
+| `SecurityScanner` | 80-pattern security probe suite (6 categories) |
 | `DialogueJudgeResult` | LLM-as-Judge result with per-dimension scores |
-| `SkillsBenchAnalyzer` | Multi-skill cognitive overload detection |
+| `HarnessEvaluator` | Double-run orchestration for the real-harness path |
+| `HarnessJudge` | Per-rubric structured-output judge (scores clamped 0–10) |
+| `Task` / `Rubric` / `JudgeResult` | Harness models — hidden rubrics and verdicts (`harness/models.py`) |
 | `GoldenEvalSet` / `CalibrationRunner` | Human-anchored calibration framework |
 
 ## CONVENTIONS

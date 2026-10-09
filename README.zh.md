@@ -156,7 +156,7 @@ Skill-Cert 首先读取 `SKILL.md`，提取结构化语义模型 `SkillSpec`。�
 | CRD | Credential Access / 凭证访问 |
 | OBF | Obfuscation / 混淆行为 |
 
-当前内置 52 个安全探测模式，覆盖 6 大类别（INJ/EXF/DCMD/CRD/OBF/PRIV_ESC）。扫描结果分为 PASS / WARN / BLOCK。如果出现 BLOCK 级风险，评测会直接失败，避免执行潜在危险 Skill。
+当前内置 80 个安全探测模式，覆盖 6 大类别（INJ/EXF/DCMD/CRD/OBF/PRIV_ESC）。扫描结果分为 PASS / WARN / BLOCK。如果出现 BLOCK 级风险，评测会直接失败，避免执行潜在危险 Skill。
 
 ### Phase 1：自动生成 eval 测试
 
@@ -299,7 +299,7 @@ Skill-Cert 输出两类报告：
 | 可维护性评分 | `maintainability.py` | SKILL.md 可读性、完整性、新鲜度评分 |
 | 外部集成 | `integrations.py` | SkillLab / DeepEval providers（优雅降级） |
 | 运行包络 | `envelope.py` | steps/tokens/timeout/tool_calls 限制执行 |
-| 成本分析 | `adapters/pricing.py` | 17 个模型，6 个 provider 家族 |
+| 成本分析 | `adapters/pricing.py` | 19 个模型，5 个 provider 家族 + whalecloud LOCAL |
 | OTel 遥测 | `engine/observability.py` | SessionTelemetry、record_trace、会话摘要 |
 | Token Ledger | `engine/token_ledger.py` | 实时 token 使用追踪（非近似值） |
 
@@ -323,7 +323,7 @@ templates/        Support 层：提示词、Schema、模板
 
 ### 5.1 Presentation：CLI 层
 
-实现位置：`skill_cert/cli/`。职责：解析命令行参数、加载配置、调用核心 pipeline、输出退出码、生成报告文件。入口：`main.py`，配置向导：`setup.py`。
+实现位置：`skill_cert/cli/`。职责：解析命令行参数、加载配置、调用核心 pipeline、输出退出码、生成报告文件。入口：`main.py`，harness 子命令：`harness.py`，配置向导：`setup.py`。
 
 ### 5.2 Domain：评测核心层
 
@@ -349,16 +349,16 @@ templates/        Support 层：提示词、Schema、模板
 | `stress_test.py` | 压力测试 |
 | `reliability.py` | 可靠性追踪 |
 | `maintainability.py` | SKILL.md 可维护性评分 |
-| `skills_bench.py` | 多技能认知过载检测 |
+| `harness/` | 真实运行环境评测路径：taskgen → 双跑 → LLM judge → report |
+| `reporters/` | `reporter.py` 使用的报告分节构造器 |
+| `classifier.py` | 输出类型分类，决定断言策略 |
+| `structure_quality.py` | 工具权限隔离与脚本使用检测 |
+| `hooks_detector.py` | SKILL.md 中的 hook/guardrail 检测 |
 | `calibration.py` | Golden eval 集校准（Cohen's Kappa） |
 | `stability.py` | 执行稳定性分析 |
 | `integrations.py` | SkillLab / DeepEval 外部集成 |
 | `observability.py` | OTel GenAI session 遥测 |
 | `token_ledger.py` | 实时 token 使用追踪 |
-| `trigger_accuracy_eval.py` | L1 触发准确度评测 |
-| `trajectory_evaluator.py` | L6 轨迹质量评测 |
-| `adversarial.py` | 对抗性测试支持 |
-| `gotchas_flywheel.py` | Gotcha 模式积累 |
 | `progressive_disclosure.py` | Progressive disclosure 评测 |
 | `deadline.py` | 全局 deadline 强制执行 |
 | `constants.py` | 共享常量和默认值 |
@@ -377,7 +377,7 @@ templates/        Support 层：提示词、Schema、模板
 
 实现位置：`prompts/`、`schemas/`、`templates/`。
 
-职责：LLM judge prompt、testgen prompt、test-review prompt、test-gap prompt、eval JSON schema、SkillSpec schema、minimum eval fallback template。
+职责：LLM judge 提示词（`judge.md`、`judge-trigger.md`、`judge-workflow.md`、`judge-output.md`）、harness 提示词（`harness-taskgen.md`、`harness-judge.md`）、report JSON schema、minimum eval fallback template。
 
 ---
 
@@ -525,19 +525,20 @@ ruff check . && ruff format .
 
 ```
 skill-cert/
-├── engine/          # 核心 pipeline：33 个模块 — parser, testgen, runner, grader, metrics, reporter, drift,
-│                    # dialogue_evaluator, dialogue_runner, replay, simulator, security_probes, envelope,
-│                    # integrations, reliability, maintainability, multi_skill, stress_test, stability, config,
-│                    # skills_bench, calibration, observability, token_ledger, trigger_accuracy_eval,
-│                    # trajectory_evaluator, adversarial, gotchas_flywheel, progressive_disclosure,
-│                    # deadline, constants, report_models, trace_models
-├── skill_cert/cli/  # CLI 入口 (main.py, setup.py)
-├── adapters/        # LLM provider 适配器 (Anthropic, OpenAI-compatible) + pricing table
-├── prompts/         # LLM prompt 模板 (judge, dialogue, drift, testgen, test-review, test-gap)
-├── schemas/         # JSON schemas (eval cases, SkillSpec)
+├── engine/          # 核心 pipeline：31 个模块 + harness/ + reporters/ — parser, testgen, runner, grader,
+│                    # metrics, reporter, drift, envelope, security_probes, dialogue_evaluator,
+│                    # dialogue_runner, replay, simulator, integrations, reliability, maintainability,
+│                    # multi_skill, stress_test, stability, config, calibration, observability,
+│                    # token_ledger, progressive_disclosure, classifier, structure_quality,
+│                    # hooks_detector, deadline, constants, report_models, trace_models
+├── skill_cert/cli/  # CLI 入口 (main.py, harness.py, setup.py, evals.py, 各 mode 处理器)
+├── adapters/        # LLM Provider 适配器 (Anthropic, OpenAI-compatible) + pricing + harness/ 后端
+├── prompts/         # LLM prompt 模板 (judge, judge-trigger, judge-workflow, judge-output, harness-taskgen, harness-judge)
+├── schemas/         # JSON schema（report.schema.json）
 ├── templates/       # Fallback eval 模板 (minimum-evals.json)
-├── tests/           # pytest 测试套件 — 1134 个测试，与 engine/ 模块 1:1 对应
-└── results/         # 输出目录：{skill}-report.md, {skill}-result.json, {skill}-evals-cache.json
+├── tests/           # pytest 测试套件 — 1510 个测试，与 engine/ 模块 1:1 对应
+└── results/         # 输出目录：{skill}-report.md / -result.json / -evals-cache.json；
+                     # harness 运行写 {skill}-harness-report.md / -harness-report.json
 ```
 
 注：`skill_cert/cli.py` 已删除（被 `cli/` 包目录 shadow）。
@@ -569,7 +570,7 @@ skill-cert/
 
 **安全扫描覆盖有限**
 
-当前 52 个安全探测模式覆盖 6 大类别。行业标准（如 SpecWeave）推荐 100+ 模式。仍可能存在未覆盖的攻击向量。
+当前 80 个安全探测模式覆盖 6 大类别。行业标准（如 SpecWeave）推荐 100+ 模式。仍可能存在未覆盖的攻击向量。
 
 **单模型评测不够**
 
