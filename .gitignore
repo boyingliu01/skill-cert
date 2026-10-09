@@ -39,6 +39,7 @@ Thumbs.db
 # Local tooling artifacts
 .omo/
 .xp-gate/
+.code-walkthrough-result.json
 .quality-history.jsonl
 .sprint-state/
 MagicMock/
