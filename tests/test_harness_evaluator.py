@@ -1,0 +1,368 @@
+"""Unit tests for harness evaluator: pure delta/trigger functions + fake end-to-end."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+from adapters.harness.base import HarnessRunResult
+from engine.harness.evaluator import (
+    HarnessEvaluator,
+    SecurityBlockedError,
+    compute_deltas,
+    compute_trigger_rate,
+    compute_verdicts,
+    condition_mean,
+    dimension_score,
+)
+from engine.harness.models import (
+    JudgeItemResult,
+    JudgeResult,
+    Rubric,
+    RubricItem,
+    RunRecord,
+    Task,
+)
+from engine.harness.report import render_report, write_report
+
+# ---------- pure functions ----------
+
+
+def make_task(task_id="t1") -> Task:
+    return Task(
+        id=task_id,
+        description="d",
+        rubrics=Rubric(
+            task_completion=[RubricItem(id=f"{task_id}-tc1", criterion="c1", points=2)],
+            instruction_following=[RubricItem(id=f"{task_id}-if1", criterion="c2", points=1)],
+        ),
+    )
+
+
+def make_record(task_id, condition, tc=None, if_=None, skill_loaded=False, judge=True) -> RunRecord:
+    items = []
+    if tc is not None:
+        items.append(JudgeItemResult(rubric_id=f"{task_id}-tc1", score=tc))
+    if if_ is not None:
+        items.append(JudgeItemResult(rubric_id=f"{task_id}-if1", score=if_))
+    return RunRecord(
+        task_id=task_id,
+        condition=condition,
+        skill_loaded=skill_loaded,
+        judge=JudgeResult(items=items) if judge else None,
+    )
+
+
+def test_dimension_score_weighted():
+    # (10*2 + 0*1) / 3 * 10 = 66.67
+    task = Task(
+        id="x",
+        description="d",
+        rubrics=Rubric(
+            task_completion=[
+                RubricItem(id="a", criterion="c", points=2),
+                RubricItem(id="b", criterion="c", points=1),
+            ]
+        ),
+    )
+    judge = JudgeResult(items=[JudgeItemResult(rubric_id="a", score=10)])
+    assert dimension_score(task, judge, "task_completion") == pytest.approx(66.67, abs=0.01)
+
+
+def test_dimension_score_none_cases():
+    task = make_task()
+    assert dimension_score(task, None, "task_completion") is None
+    empty = Task(id="e", description="d")
+    assert dimension_score(empty, JudgeResult(items=[]), "task_completion") is None
+
+
+def test_condition_mean_averages_runs():
+    task = make_task()
+    records = [
+        make_record("t1", "with_skill", tc=10),
+        make_record("t1", "with_skill", tc=4),  # mean tc score = 7 -> 70
+        make_record("t1", "without_skill", tc=2),
+        make_record("t2", "with_skill", tc=10),  # other task, ignored
+    ]
+    assert condition_mean(task, records, "with_skill", "task_completion") == pytest.approx(70.0)
+    assert condition_mean(task, records, "without_skill", "task_completion") == pytest.approx(20.0)
+
+
+def test_compute_deltas_per_task():
+    tasks = [make_task("t1"), make_task("t2")]
+    records = [
+        make_record("t1", "with_skill", tc=10, if_=10),
+        make_record("t1", "without_skill", tc=6, if_=0),
+        make_record("t2", "with_skill", tc=8, if_=4),
+        make_record("t2", "without_skill", tc=8, if_=4, judge=False),  # judge failed -> None
+    ]
+    deltas = {d.task_id: d for d in compute_deltas(tasks, records)}
+    assert deltas["t1"].task_completion_delta == pytest.approx(40.0)
+    assert deltas["t1"].instruction_following_delta == pytest.approx(100.0)
+    assert deltas["t2"].task_completion_delta is None
+    assert deltas["t2"].instruction_following_delta is None
+
+
+def test_compute_trigger_rate():
+    records = [
+        make_record("t1", "with_skill", skill_loaded=True),
+        make_record("t1", "with_skill", skill_loaded=False),
+        make_record("t1", "without_skill", skill_loaded=False),  # excluded
+    ]
+    assert compute_trigger_rate(records) == pytest.approx(0.5)
+    assert compute_trigger_rate([]) is None
+
+
+def test_compute_verdicts_rules():
+    assert compute_verdicts(6.0, 1.0, 1.0) == ["SKILL_EFFECTIVE"]
+    assert compute_verdicts(1.0, 1.0, 1.0) == ["SKILL_REDUNDANT"]
+    assert "TRIGGER_WEAK" in compute_verdicts(6.0, 1.0, 0.4)
+    # boundaries
+    assert compute_verdicts(5.0, None, None) == ["SKILL_EFFECTIVE"]
+    assert compute_verdicts(4.9, 2.9, None) == []
+    assert compute_verdicts(None, None, None) == []
+
+
+# ---------- fake end-to-end ----------
+
+
+class FakeHarness:
+    """Records calls; reports skill_loaded only for with-skill sandboxes."""
+
+    def __init__(self, skill_loaded_when_with=True):
+        self.prepare_calls: list[tuple[Path, object]] = []
+        self.run_calls: list[tuple[str, Path]] = []
+        self.skill_loaded_when_with = skill_loaded_when_with
+        self.title = ""
+
+    def prepare(self, sandbox_dir, skill_dir):
+        self.prepare_calls.append((Path(sandbox_dir), skill_dir))
+
+    def _has_skill(self, sandbox_dir: Path) -> bool:
+        return any(p == Path(sandbox_dir) and s is not None for p, s in self.prepare_calls)
+
+    def run_task(self, task_prompt, sandbox_dir):
+        self.run_calls.append((task_prompt, Path(sandbox_dir)))
+        with_skill = self._has_skill(Path(sandbox_dir))
+        return HarnessRunResult(
+            session_id=f"ses_{len(self.run_calls)}",
+            exit_code=0,
+            final_output="OUT-with" if with_skill else "OUT-without",
+            events=[{"type": "tool_use", "part": {"tool": "skill"}}] if with_skill else [],
+            skill_loaded=with_skill and self.skill_loaded_when_with,
+            tool_call_count=1 if with_skill else 0,
+            tokens_in=100,
+            tokens_out=20,
+            cost=0.0,
+            duration_s=0.5,
+        )
+
+
+class ScriptedAdapter:
+    """Content-sensitive fake: picks response by substring in the prompt."""
+
+    def __init__(self, scripts):
+        self.scripts = list(scripts)
+        self.calls: list[dict] = []
+
+    def chat(self, messages, system=None, timeout=120, response_format=None):
+        prompt = messages[-1]["content"]
+        self.calls.append({"prompt": prompt})
+        for substring, response in self.scripts:
+            if substring in prompt:
+                return response
+        return self.scripts[-1][1]
+
+
+def taskgen_json(input_files=None):
+    return json.dumps(
+        {
+            "leakage_check": "ok",
+            "tasks": [
+                {
+                    "id": "t1",
+                    "description": "do the thing",
+                    "input_files": input_files or [],
+                    "rubrics": {
+                        "task_completion": [{"id": "t1-tc1", "criterion": "c", "points": 1}],
+                        "instruction_following": [{"id": "t1-if1", "criterion": "f", "points": 1}],
+                    },
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+
+def judge_json(tc, if_):
+    return json.dumps(
+        {
+            "reasoning": "r",
+            "items": [
+                {"rubric_id": "t1-tc1", "score": tc},
+                {"rubric_id": "t1-if1", "score": if_},
+            ],
+        }
+    )
+
+
+def make_skill(tmp_path: Path) -> Path:
+    skill_dir = tmp_path / "demo-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: demo-skill\ndescription: demo\n---\n\n# Demo\n", encoding="utf-8"
+    )
+    return skill_dir / "SKILL.md"
+
+
+def make_evaluator(tmp_path, harness=None, scripts=None, runs=1, keep=False):
+    adapter = ScriptedAdapter(
+        scripts
+        or [
+            ("任务生成器", taskgen_json()),
+            ("OUT-without", judge_json(6, 0)),  # match before OUT-with (substring!)
+            ("OUT-with", judge_json(10, 10)),
+        ]
+    )
+    return (
+        HarnessEvaluator(
+            harness=harness or FakeHarness(),
+            llm_adapter=adapter,
+            output_dir=tmp_path / "results",
+            runs=runs,
+            keep_sandboxes=keep,
+            judge_model_name="fake-judge",
+        ),
+        adapter,
+    )
+
+
+def test_evaluate_fake_end_to_end(tmp_path):
+    skill_path = make_skill(tmp_path)
+    fake_harness = FakeHarness()
+    evaluator, _ = make_evaluator(tmp_path, harness=fake_harness)
+
+    report = evaluator.evaluate(skill_path, n_tasks=1, model_label="prov/m")
+
+    # double run: 1 task x 2 conditions
+    assert len(report.runs) == 2
+    conditions = {r.condition for r in report.runs}
+    assert conditions == {"with_skill", "without_skill"}
+    assert report.skill_name == "demo-skill"
+    assert report.trigger_rate == 1.0  # fake harness loads the skill on with-runs
+    assert report.mean_tc_delta == pytest.approx(40.0)  # 100 - 60
+    assert report.mean_if_delta == pytest.approx(100.0)  # 100 - 0
+    assert "SKILL_EFFECTIVE" in report.verdicts
+    assert report.total_duration_s == pytest.approx(1.0)
+
+    # prepare: with gets the skill dir, without gets None
+    with_calls = [s for _, s in fake_harness.prepare_calls]
+    assert None in with_calls and any(s is not None for s in with_calls)
+    # task prompt passed through as task description
+    assert all(prompt == "do the thing" for prompt, _ in fake_harness.run_calls)
+    # sandboxes cleaned up by default
+    assert not any(tmp_path.joinpath("results", ".harness-runs").rglob("*"))
+
+
+def test_evaluate_keeps_sandboxes_and_writes_input_files(tmp_path):
+    skill_path = make_skill(tmp_path)
+    evaluator, _ = make_evaluator(
+        tmp_path,
+        scripts=[
+            ("任务生成器", taskgen_json(input_files=[{"path": "nested/ok.txt", "content": "hi"}])),
+            ("OUT-without", judge_json(6, 0)),
+            ("OUT-with", judge_json(10, 10)),
+        ],
+        keep=True,
+    )
+
+    evaluator.evaluate(skill_path, n_tasks=1)
+
+    sandbox_root = tmp_path / "results" / ".harness-runs"
+    sandboxes = [p for p in sandbox_root.glob("*/*") if p.is_dir()]
+    assert len(sandboxes) == 2
+    written = list(sandbox_root.rglob("ok.txt"))
+    assert len(written) == 2  # input file present in both condition sandboxes
+
+
+def test_evaluate_rejects_path_traversal_input_files(tmp_path):
+    skill_path = make_skill(tmp_path)
+    evaluator, _ = make_evaluator(
+        tmp_path,
+        scripts=[
+            ("任务生成器", taskgen_json(input_files=[{"path": "../evil.txt", "content": "x"}])),
+            ("OUT-without", judge_json(6, 0)),
+            ("OUT-with", judge_json(10, 10)),
+        ],
+        keep=True,
+    )
+
+    evaluator.evaluate(skill_path, n_tasks=1)
+
+    sandbox_root = tmp_path / "results" / ".harness-runs"
+    assert not list(sandbox_root.rglob("evil.txt"))
+    assert not (tmp_path / "results" / "evil.txt").exists()
+
+
+def test_evaluate_multiple_runs(tmp_path):
+    skill_path = make_skill(tmp_path)
+    evaluator, _ = make_evaluator(tmp_path, runs=2)
+
+    report = evaluator.evaluate(skill_path, n_tasks=1)
+
+    assert len(report.runs) == 4  # 1 task x 2 conditions x 2 runs
+    assert report.runs_per_task == 2
+    assert report.trigger_rate == 1.0
+
+
+def test_evaluate_security_block_aborts(tmp_path, monkeypatch):
+    from engine.security_probes import SecurityReport
+
+    class BlockedScanner:
+        def scan(self, content, skill_name="x", deep_security=False):
+            return SecurityReport(verdict="BLOCK", score=0.0, findings=[], summary={})
+
+    monkeypatch.setattr("engine.harness.evaluator.SecurityScanner", BlockedScanner)
+    skill_path = make_skill(tmp_path)
+    evaluator, _ = make_evaluator(tmp_path)
+
+    with pytest.raises(SecurityBlockedError, match="BLOCK"):
+        evaluator.evaluate(skill_path, n_tasks=1)
+
+
+def test_evaluate_judge_failure_yields_none_deltas(tmp_path):
+    skill_path = make_skill(tmp_path)
+    evaluator, _ = make_evaluator(
+        tmp_path,
+        scripts=[
+            ("任务生成器", taskgen_json()),
+            ("OUT-without", "not json at all"),
+            ("OUT-with", "also not json"),
+        ],
+    )
+
+    report = evaluator.evaluate(skill_path, n_tasks=1)
+
+    assert all(r.judge is None for r in report.runs)
+    assert report.mean_tc_delta is None
+    assert report.mean_if_delta is None
+    assert report.verdicts == []
+
+
+def test_report_render_and_write(tmp_path):
+    skill_path = make_skill(tmp_path)
+    evaluator, _ = make_evaluator(tmp_path)
+
+    report = evaluator.evaluate(skill_path, n_tasks=1, model_label="prov/m")
+    md_path, json_path = write_report(report, tmp_path / "out")
+
+    md = md_path.read_text(encoding="utf-8")
+    assert "# Harness Evaluation Report — demo-skill" in md
+    assert "SKILL_EFFECTIVE" in md
+    assert "100%" in md  # trigger rate
+    assert "t1" in md
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    assert data["skill_name"] == "demo-skill"
+    assert len(data["runs"]) == 2
+    # render_report is deterministic enough for smoke assertions
+    assert "leakage self-check" in render_report(report)

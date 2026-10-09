@@ -18,6 +18,7 @@ class ModelConfig(BaseModel):
     fallback_model: str | None = None
     fallback_base_url: str | None = None
     fallback_api_key: str | None = None
+    headers: dict[str, str] | None = None  # extra HTTP headers (e.g. ngrok tunnels)
 
     @model_validator(mode="after")
     def _resolve_provider_model(self) -> "ModelConfig":

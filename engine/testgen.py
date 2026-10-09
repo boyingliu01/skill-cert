@@ -1123,7 +1123,10 @@ Minimum requirements:
                     break
                 max_str_len = max(len(item_lower), len(b_lower))
                 lev_threshold = max(2, max_str_len // 10) if max_str_len >= 8 else 0
-                if max_str_len >= 8 and self._levenshtein_distance(item_lower, b_lower) <= lev_threshold:
+                if (
+                    max_str_len >= 8
+                    and self._levenshtein_distance(item_lower, b_lower) <= lev_threshold
+                ):
                     matched = True
                     break
                 b_tokens = self._tokenize(b)

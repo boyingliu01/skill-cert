@@ -43,6 +43,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         epilog="""\
 Subcommands:
   setup                          Configure LLM models interactively
+  harness                        Evaluate a skill on a real harness (opencode)
 
 Examples:
   skill-cert setup
@@ -51,6 +52,7 @@ Examples:
   skill-cert --skill path/to/SKILL.md --mode dialogue --max-turns 10
   skill-cert --skill path/to/SKILL.md --mode replay --session session.jsonl
   skill-cert --skill path/to/SKILL.md --models "m1=url,key|m2=url,key" --output ./results/
+  skill-cert harness --skill path/to/SKILL.md --model deepseek/deepseek-chat --tasks 6
 """,
     )
     parser.add_argument(
@@ -278,6 +280,12 @@ def main():
     # (avoids 'error: the following arguments are required: --skill')
     if len(sys.argv) > 1 and sys.argv[1] == "setup":
         return _handle_setup(sys.argv[1:])
+
+    # Intercept 'harness' subcommand the same way (real-harness evaluation)
+    if len(sys.argv) > 1 and sys.argv[1] == "harness":
+        from skill_cert.cli.harness import _handle_harness
+
+        return _handle_harness(sys.argv[1:])
 
     # Lazy imports — use skill_cert.cli namespace so test patches intercept.
     from skill_cert.cli import EXIT_ERROR, SkillCertConfig

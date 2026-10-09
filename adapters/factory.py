@@ -62,4 +62,5 @@ def create_adapter(model_config: ModelConfig, rpm_limit: int = 60) -> ModelAdapt
         fallback_base_url=model_config.fallback_base_url,
         fallback_api_key=model_config.fallback_api_key,
         rpm_limit=rpm_limit,
+        extra_headers=model_config.headers,
     )

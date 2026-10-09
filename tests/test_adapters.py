@@ -194,5 +194,41 @@ def test_openai_compat_model_alias_400_helpful_error():
     assert "400" in error_msg or "Bad Request" in error_msg, "Error must include HTTP status"
 
 
+def test_openai_compat_extra_headers_sent():
+    """extra_headers (e.g. ngrok tunnel headers) must reach the request."""
+    adapter = OpenAICompatAdapter(
+        base_url="https://tunnel.example.com/v1",
+        api_key="test-key",
+        model="m",
+        extra_headers={"ngrok-skip-browser-warning": "true"},
+    )
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"choices": [{"message": {"content": "ok"}}]}
+    with patch.object(adapter.client, "post", return_value=mock_response) as mock_post:
+        content = adapter.chat([{"role": "user", "content": "hi"}])
+
+    assert content == "ok"
+    headers = mock_post.call_args.kwargs["headers"]
+    assert headers["ngrok-skip-browser-warning"] == "true"
+    assert headers["Authorization"] == "Bearer test-key"
+
+
+def test_factory_passes_headers_to_openai_adapter():
+    from adapters.factory import create_adapter
+    from engine.config import ModelConfig
+
+    cfg = ModelConfig(
+        base_url="https://tunnel.example.com/v1",
+        api_key="k",
+        model_name="qwen-tunnel",
+        headers={"x-custom": "1"},
+    )
+    adapter = create_adapter(cfg)
+    assert isinstance(adapter, OpenAICompatAdapter)
+    assert adapter.extra_headers == {"x-custom": "1"}
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

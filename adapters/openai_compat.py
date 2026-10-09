@@ -21,6 +21,7 @@ class OpenAICompatAdapter(ModelAdapter):
         fallback_base_url: str | None = None,
         fallback_api_key: str | None = None,
         rpm_limit: int = 60,
+        extra_headers: dict[str, str] | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -28,6 +29,7 @@ class OpenAICompatAdapter(ModelAdapter):
         self.fallback_model = fallback_model
         self.fallback_base_url = fallback_base_url.rstrip("/") if fallback_base_url else None
         self.fallback_api_key = fallback_api_key
+        self.extra_headers: dict[str, str] = dict(extra_headers) if extra_headers else {}
         self._has_fallback = bool(
             self.fallback_model and self.fallback_base_url and self.fallback_api_key
         )
@@ -58,13 +60,18 @@ class OpenAICompatAdapter(ModelAdapter):
         base_url: str | None = None,
         api_key: str | None = None,
         use_requests_fallback: bool = False,
+        response_format: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, int]]:
         use_base = base_url or self.base_url
         use_key = api_key or self.api_key
 
         headers = {"Authorization": f"Bearer {use_key}", "Content-Type": "application/json"}
+        if self.extra_headers:
+            headers.update(self.extra_headers)
 
-        payload = {"model": model, "messages": messages, "temperature": 0.0}
+        payload: dict[str, Any] = {"model": model, "messages": messages, "temperature": 0.0}
+        if response_format is not None:
+            payload["response_format"] = response_format
 
         try:
             response = self.client.post(
@@ -126,20 +133,36 @@ class OpenAICompatAdapter(ModelAdapter):
         return content, token_data
 
     def _call_with_usage_sync(
-        self, messages: list[dict[str, str]], system: str | None = None, timeout: int = 120
+        self,
+        messages: list[dict[str, str]],
+        system: str | None = None,
+        timeout: int = 120,
+        response_format: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, int]]:
         prepared_messages = []
         if system:
             prepared_messages.append({"role": "system", "content": system})
         prepared_messages.extend(messages)
 
-        return self._call_with_usage_with_fallback(prepared_messages, self.model, timeout)
+        return self._call_with_usage_with_fallback(
+            prepared_messages, self.model, timeout, response_format
+        )
 
     def _call_with_usage_with_fallback(
-        self, messages: list[dict[str, str]], model: str, timeout: int
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        timeout: int,
+        response_format: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, int]]:
         try:
-            return self._call_with_usage(messages, model, timeout, use_requests_fallback=True)
+            return self._call_with_usage(
+                messages,
+                model,
+                timeout,
+                use_requests_fallback=True,
+                response_format=response_format,
+            )
         except (httpx.ConnectError, httpx.ConnectTimeout, OSError) as e:
             if self._has_fallback:
                 logger.warning(
@@ -153,6 +176,7 @@ class OpenAICompatAdapter(ModelAdapter):
                     base_url=self.fallback_base_url,
                     api_key=self.fallback_api_key,
                     use_requests_fallback=True,
+                    response_format=response_format,
                 )
             raise
 
@@ -161,8 +185,9 @@ class OpenAICompatAdapter(ModelAdapter):
         messages: list[dict[str, str]],
         system: str | None = None,
         timeout: int = 120,
+        response_format: dict[str, Any] | None = None,
     ) -> str:
-        content, _ = self._call_with_usage_sync(messages, system, timeout)
+        content, _ = self._call_with_usage_sync(messages, system, timeout, response_format)
         return content
 
     def chat_with_usage(
