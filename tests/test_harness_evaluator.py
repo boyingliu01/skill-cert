@@ -392,6 +392,31 @@ def test_rubric_item_points_must_be_positive():
         RubricItem(id="a", criterion="c", points=0)
 
 
+def test_rubric_ids_are_deduplicated_across_dimensions():
+    """JudgeResult.score_map() keys on rubric_id — a duplicate must not hide a score."""
+    rubric = Rubric(
+        task_completion=[RubricItem(id="dup", criterion="c", points=1)],
+        instruction_following=[RubricItem(id="dup", criterion="f", points=1)],
+    )
+
+    ids = [item.id for item in rubric.all_items()]
+    assert len(ids) == len(set(ids))
+    assert ids[0] == "dup"
+    assert ids[1] != "dup"
+
+
+def test_two_evaluations_of_one_skill_get_distinct_sandbox_dirs(tmp_path):
+    """The eval-id uniquifier keeps same-second runs from sharing directories."""
+    skill_path = make_skill(tmp_path)
+    sandbox_root = tmp_path / "results" / ".harness-runs"
+
+    for _ in range(2):
+        evaluator, _ = make_evaluator(tmp_path, keep=True)
+        evaluator.evaluate(skill_path, n_tasks=1)
+
+    assert len([p for p in sandbox_root.iterdir() if p.is_dir()]) == 2
+
+
 def test_report_verdicts_are_labelled_advisory(tmp_path):
     skill_path = make_skill(tmp_path)
     evaluator, _ = make_evaluator(tmp_path)

@@ -15,9 +15,11 @@ import logging
 import shutil
 import statistics
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
+from adapters.harness.base import HarnessAdapter
 from engine.analyzer import parse_skill_md
 from engine.security_probes import SecurityScanner
 
@@ -139,7 +141,7 @@ class HarnessEvaluator:
 
     def __init__(
         self,
-        harness: Any,  # HarnessAdapter (structural protocol, adapters layer)
+        harness: HarnessAdapter,
         llm_adapter: Any,  # used for taskgen + judge
         output_dir: Path,
         runs: int = 1,
@@ -188,8 +190,13 @@ class HarnessEvaluator:
 
         # Phase 3 + 4 — double runs, each judged immediately
         # eval_id feeds sandbox paths and the harness session title: keep it one
-        # traversal-free path component
-        eval_id = f"{safe_path_component(skill_name)}-{time.strftime('%Y%m%d-%H%M%S')}"
+        # traversal-free path component. The uuid suffix separates two evaluations
+        # of the same skill inside one second (second-resolution timestamps alone
+        # would make them share --keep-sandboxes directories).
+        eval_id = (
+            f"{safe_path_component(skill_name)}"
+            f"-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+        )
         records: list[RunRecord] = []
         skill_dir = skill_path.parent
         try:

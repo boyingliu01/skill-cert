@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Condition = Literal["with_skill", "without_skill"]
 
@@ -30,6 +30,21 @@ class Rubric(BaseModel):
 
     def all_items(self) -> list[RubricItem]:
         return self.task_completion + self.instruction_following
+
+    @model_validator(mode="after")
+    def _deduplicate_item_ids(self) -> Rubric:
+        # JudgeResult.score_map() keys on rubric_id: one duplicate id would
+        # silently drop the other item's score from the dimension totals.
+        seen: set[str] = set()
+        for item in self.all_items():
+            unique = item.id
+            suffix = 2
+            while unique in seen:
+                unique = f"{item.id}-{suffix}"
+                suffix += 1
+            item.id = unique
+            seen.add(unique)
+        return self
 
 
 class Task(BaseModel):

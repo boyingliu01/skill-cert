@@ -33,6 +33,10 @@ class HarnessRunResult(BaseModel):
 class HarnessAdapter(Protocol):
     """Execution backend protocol: sandbox preparation + non-interactive runs."""
 
+    # The evaluator rewrites this before every run, so backends must read it at
+    # run time rather than capturing it at construction.
+    title: str
+
     def prepare(self, sandbox_dir: Path, skill_dir: Path | None) -> None:
         """Install the skill into the sandbox (skill_dir=None is the without condition)."""
         ...
