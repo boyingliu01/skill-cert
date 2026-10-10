@@ -528,7 +528,7 @@ skill-cert/
 ├── prompts/         # LLM prompt templates (judge, judge-trigger, judge-workflow, judge-output, harness-taskgen, harness-judge)
 ├── schemas/         # JSON schema (report.schema.json)
 ├── templates/       # Fallback eval template (minimum-evals.json)
-├── tests/           # pytest suite — 1539 tests, mirrors engine/ modules 1:1
+├── tests/           # pytest suite — 1546 tests, mirrors engine/ modules 1:1
 └── results/         # Output: {skill}-report.md / -result.json / -evals-cache.json;
                      # harness runs write {skill}-harness-report.md / -harness-report.json
 ```

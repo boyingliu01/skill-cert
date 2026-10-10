@@ -11,6 +11,7 @@ engine/
 ├── testgen.py             # EvalGenerator: generate → review → gap-fill loop until coverage ≥90%
 ├── runner.py              # Execution engine: with/without skill, concurrency, rate limiting, deadline
 ├── grader.py              # Grader: deterministic assertions + LLM-as-judge (temp=0)
+├── json_extract.py        # Public 4-level LLM JSON extraction chain (testgen, grader, harness)
 ├── metrics.py             # L1-L8 calculation (L2 normalized gain, L5 envelope wired)
 ├── envelope.py            # Operating envelope checker: steps/tokens/timeout/tool_calls
 ├── integrations.py        # External tool integration: SkillLab/DeepEval providers

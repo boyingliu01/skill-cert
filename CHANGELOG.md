@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `RubricItem.points` is validated `≥ 1` (a zero-point dimension used to divide by zero), `RunRecord.condition` is a `Literal`, and the per-run `eval` directory is removed once from `evaluate()` rather than guessed at after every run.
   - **engine/reporters/formatters.py**: report config redaction now drops `fallback_api_key` as well as `api_key`, and masks the values of configured `headers` (tunnel/auth headers carry tokens).
   - the harness Markdown report labels its verdict section "Verdicts (advisory)" so the MVP hints cannot be read as PASS/FAIL.
+  - **engine/json_extract.py**: the 4-level LLM JSON extraction chain — plus the trailing-comma repair `grader.py` duplicated — moved out of `EvalGenerator._extract_json` into a public engine module, so the harness degradation path no longer depends on another module's private method.
+  - `eval_id` gained a uuid suffix: two evaluations of one skill within the same clock second no longer share a `--keep-sandboxes` directory.
+  - `Rubric` renumbers duplicate rubric ids across its two dimensions — a duplicate silently hid one item's score in `JudgeResult.score_map()`.
+  - **adapters/harness/base.py**: `HarnessAdapter` declares the `title` the evaluator rewrites per run, and `HarnessEvaluator` is typed against the protocol instead of `Any`.
 - **tests/test_deadline.py**: clock-advance assertions now wait ≥4 ticks; `time.monotonic()` on Windows is `GetTickCount64()` with 15.625 ms resolution, so the previous 10 ms sleeps failed intermittently.
 - **tests/conftest.py**: session-scoped home isolation keeps unit tests off the developer's `~/.skill-cert/models.yaml`. `os.path.expanduser()` prefers `USERPROFILE` over `HOME` on Windows, so the one CLI test that patched only `HOME` ran the full pipeline against a live LLM gateway; the suite is now ~80 s with no network access.
 
@@ -37,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.xp-gate-mypy-scope`**: declares the type-check surface (`engine`, `skill_cert`, `adapters`, `scripts`) for the quality gate's mypy step.
 - `AGENTS.md`, the per-directory agent guides and both READMEs realigned with the shipped engine (module inventory, L1–L8 thresholds, harness command surface, test counts).
 - Local virtualenv (510 tracked files) and a stale July sprint record removed from git; duplicate `build/` / `.venv/` ignore entries dropped and the CI history artifact ignored.
-- Suite: 1539 tests collected (1538 passed, 1 skipped).
+- Suite: 1546 tests collected (1545 passed, 1 skipped).
 
 ## [0.14.2] - 2026-07-15
 

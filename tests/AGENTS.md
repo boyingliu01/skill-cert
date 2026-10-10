@@ -1,13 +1,13 @@
 # tests/ — Test Suite
 
 ## OVERVIEW
-pytest suite mirroring engine/ modules 1:1 — **60 test modules, 1539 tests** (1 skipped). Tests use standard pytest patterns: fixtures, parametrize, mock patches.
+pytest suite mirroring engine/ modules 1:1 — **61 test modules, 1546 tests** (1 skipped). Tests use standard pytest patterns: fixtures, parametrize, mock patches.
 
 ## STRUCTURE
 ```
 tests/
 ├── test_<module>.py              # 1:1 mirror — one file per engine/ or adapters/ module
-│                                 # (analyzer, testgen, runner, grader, metrics, drift, envelope,
+│                                 # (analyzer, testgen, runner, grader, json_extract, metrics, drift, envelope,
 │                                 # reporter, builders, deadline, observability, token_ledger,
 │                                 # stability, stress_test, reliability, maintainability,
 │                                 # multi_skill, calibration, classifier, hooks_detector,

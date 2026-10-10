@@ -17,7 +17,7 @@ A second, independent path — `skill-cert harness` — runs a skill through a *
 
 ```
 skill-cert/
-├── engine/            # Core domain (31 modules + harness/ + reporters/): analyzer, testgen, runner,
+├── engine/            # Core domain (32 modules + harness/ + reporters/): analyzer, testgen, runner,
 │                      # grader, metrics, reporter, drift, envelope, dialogue, replay, security,
 │                      # observability, deadline, token_ledger, integrations, reliability,
 │                      # maintainability, multi_skill, stress_test, stability, calibration, harness/
@@ -26,7 +26,7 @@ skill-cert/
 ├── prompts/           # LLM prompt templates (.md files)
 ├── schemas/           # JSON schema: report.schema.json
 ├── templates/         # Eval fallback: minimum-evals.json
-├── tests/             # pytest suite — 1539 tests, mirrors engine/ 1:1
+├── tests/             # pytest suite — 1546 tests, mirrors engine/ 1:1
 └── results/           # Output: {skill}-report.md, {skill}-result.json, {skill}-evals-cache.json
 ```
 
@@ -80,6 +80,7 @@ ruff check . && ruff format .
 |--------|---------|
 | `engine/analyzer.py` | SKILL.md parser → SkillSpec (regex + AST, LLM fallback, schema validation, `SchemaValidationError`) |
 | `engine/testgen.py` | EvalGenerator: generate → review → gap-fill loop until coverage ≥ 90% |
+| `engine/json_extract.py` | Public 4-level JSON extraction chain (fences → balanced braces → largest-first → strict=False) shared by testgen, grader and harness |
 | `engine/runner.py` | Execution engine: with/without skill baseline comparison |
 | `engine/grader.py` | Deterministic assertions + LLM-as-judge (temp=0, position debiasing) |
 | `engine/metrics.py` | L1-L8 calculation (L2 uses normalized gain formula: Δ=(with-without)/without) |
@@ -135,7 +136,7 @@ ruff check . && ruff format .
 
 ## NOTES
 
-- 1539 tests collect (1 skipped)
+- 1546 tests collect (1 skipped)
 - Security probes: 80 patterns across 6 categories
 - L2 formula: normalized gain `Δ = (with - without) / without` (not absolute delta)
 - EnvelopeChecker is wired into L5 step efficiency scoring
