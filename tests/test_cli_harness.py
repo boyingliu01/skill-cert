@@ -36,3 +36,18 @@ def test_parser_rejects_non_positive_counts(flag, value, capsys):
 def test_parser_rejects_non_integer_counts(flag, value):
     with pytest.raises(SystemExit):
         _build_parser().parse_args([*BASE, f"--{flag}", "abc"])
+
+
+def test_dsh_harness_is_rejected_before_any_instantiation(tmp_path, capsys):
+    """The dsh stub stays behind the CLI guard — no adapter object is constructed."""
+    from skill_cert.cli.harness import _handle_harness
+
+    skill = tmp_path / "SKILL.md"
+    skill.write_text("---\nname: demo\n---\n\nbody\n", encoding="utf-8")
+
+    code = _handle_harness(
+        ["harness", "--skill", str(skill), "--model", "prov/m", "--harness", "dsh"]
+    )
+
+    assert code == 1
+    assert "dsh harness is not implemented" in capsys.readouterr().err
