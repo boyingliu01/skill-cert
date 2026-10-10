@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflows directory — with no `on:` block, GitHub ran and failed it on every push. It now
   lives at the repository root as `action.yml`, which is also where a consumer resolving
   `uses: boyingliu01/skill-cert@<ref>` looks for it.
+- **tests/test_deadline.py**: the mock-based `expired` / `adapter_timeout` boundary tests now
+  construct `Deadline(start_time=0.0, ...)`. `elapsed` is `monotonic() - start_time`, and for
+  a runner's real epoch `(s + 10.0) - s` is not exactly `10.0`, so "remaining has reached 0"
+  came down to one float ulp — green on this host (uptime happens to make it exact), red on
+  CI's Python 3.11 matrix. The sleep-based tests keep their ≥4-tick rule.
 
 ### Planned for v1 (from the v0.15.0 release walkthrough — all non-blocking)
 - Report `mean_if_delta` / `mean_tc_delta` / `trigger_rate` alongside the advisory verdicts,
