@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `eval_id` gained a uuid suffix: two evaluations of one skill within the same clock second no longer share a `--keep-sandboxes` directory.
   - `Rubric` renumbers duplicate rubric ids across its two dimensions — a duplicate silently hid one item's score in `JudgeResult.score_map()`.
   - **adapters/harness/base.py**: `HarnessAdapter` declares the `title` the evaluator rewrites per run, and `HarnessEvaluator` is typed against the protocol instead of `Any`.
+  - the phase-0 security gate now scans the whole skill bundle (`scan_skill_bundle`), not only SKILL.md — `prepare()` copies every companion script and resource into the sandbox.
+  - rubric ids the judge leaves unscored still count as 0, but are now logged instead of passing silently.
 - **tests/test_deadline.py**: clock-advance assertions now wait ≥4 ticks; `time.monotonic()` on Windows is `GetTickCount64()` with 15.625 ms resolution, so the previous 10 ms sleeps failed intermittently.
 - **tests/conftest.py**: session-scoped home isolation keeps unit tests off the developer's `~/.skill-cert/models.yaml`. `os.path.expanduser()` prefers `USERPROFILE` over `HOME` on Windows, so the one CLI test that patched only `HOME` ran the full pipeline against a live LLM gateway; the suite is now ~80 s with no network access.
 
@@ -41,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.xp-gate-mypy-scope`**: declares the type-check surface (`engine`, `skill_cert`, `adapters`, `scripts`) for the quality gate's mypy step.
 - `AGENTS.md`, the per-directory agent guides and both READMEs realigned with the shipped engine (module inventory, L1–L8 thresholds, harness command surface, test counts).
 - Local virtualenv (510 tracked files) and a stale July sprint record removed from git; duplicate `build/` / `.venv/` ignore entries dropped and the CI history artifact ignored.
-- Suite: 1546 tests collected (1545 passed, 1 skipped).
+- Suite: 1550 tests collected (1549 passed, 1 skipped).
 
 ## [0.14.2] - 2026-07-15
 
