@@ -106,6 +106,7 @@ class HarnessEvalReport(BaseModel):
     model: str
     judge_model: str = ""
     harness: str = "opencode"
+    # UTC ISO-8601 with explicit offset, second resolution
     generated_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
     )

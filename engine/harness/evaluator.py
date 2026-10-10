@@ -21,7 +21,7 @@ from typing import Any
 
 from adapters.harness.base import HarnessAdapter
 from engine.analyzer import parse_skill_md
-from engine.security_probes import SecurityScanner
+from engine.security_probes import SecurityReport, SecurityScanner
 
 from .judge import HarnessJudge
 from .models import (
@@ -43,6 +43,39 @@ CONDITIONS: tuple[Condition, ...] = ("with_skill", "without_skill")
 
 class SecurityBlockedError(RuntimeError):
     """Phase 0 security scan returned BLOCK — evaluation aborted."""
+
+
+# Companion files the with-skill run copies into the sandbox along with SKILL.md.
+SCANNED_SUFFIXES = frozenset(
+    {".md", ".py", ".sh", ".js", ".ts", ".txt", ".yaml", ".yml", ".json", ".toml"}
+)
+# Cap per companion file keeps scanning memory bounded; SKILL.md itself is
+# always scanned in full by the caller.
+MAX_SCAN_BYTES_PER_FILE = 256 * 1024
+_VERDICT_SEVERITY = {"PASS": 0, "WARN": 1, "BLOCK": 2}
+
+
+def scan_skill_bundle(skill_dir: Path, skill_content: str, skill_name: str) -> SecurityReport:
+    """Security gate for the whole skill bundle, not just SKILL.md.
+
+    ``harness.prepare`` copies the entire skill directory into the sandbox, so
+    companion scripts and resources would otherwise reach the runtime unscanned.
+    """
+    scanner = SecurityScanner()
+    worst = scanner.scan(skill_content, skill_name=skill_name)
+    for path in sorted(skill_dir.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in SCANNED_SUFFIXES:
+            continue
+        try:
+            with path.open("rb") as handle:
+                text = handle.read(MAX_SCAN_BYTES_PER_FILE).decode("utf-8", errors="replace")
+        except OSError as e:
+            logger.warning("security scan could not read %s: %s", path, e)
+            continue
+        report = scanner.scan(text, skill_name=f"{skill_name}/{path.name}")
+        if _VERDICT_SEVERITY[report.verdict] > _VERDICT_SEVERITY[worst.verdict]:
+            worst = report
+    return worst
 
 
 # ---------- pure scoring functions (unit-tested) ----------
@@ -173,8 +206,8 @@ class HarnessEvaluator:
         skill_name = str(spec.get("name") or skill_path.parent.name)
         description = str(spec.get("description") or "")
 
-        # Phase 0 — security scan (BLOCK aborts)
-        scan = SecurityScanner().scan(skill_content, skill_name=skill_name)
+        # Phase 0 — security scan of the bundle the sandbox will receive (BLOCK aborts)
+        scan = scan_skill_bundle(skill_path.parent, skill_content, skill_name)
         if scan.verdict == "BLOCK":
             raise SecurityBlockedError(
                 f"security scan BLOCK for '{skill_name}' — evaluation aborted"
@@ -288,7 +321,7 @@ class HarnessEvaluator:
         self, record: RunRecord, task: Task, skill_name: str, skill_content: str
     ) -> JudgeResult | None:
         try:
-            return self.judge.judge(
+            result = self.judge.judge(
                 task=task,
                 skill_name=skill_name,
                 skill_content=skill_content,
@@ -298,6 +331,19 @@ class HarnessEvaluator:
         except Exception as e:  # judge failure must not abort the whole evaluation
             logger.warning("judge failed for %s/%s: %s", record.task_id, record.condition, e)
             return None
+        scored = {item.rubric_id for item in result.items}
+        missing = [item.id for item in task.rubrics.all_items() if item.id not in scored]
+        if missing:
+            # dimension_score keeps them at 0 — say so instead of burying it
+            logger.warning(
+                "judge returned no score for %d/%d rubric items of %s/%s: %s",
+                len(missing),
+                len(task.rubrics.all_items()),
+                task.id,
+                record.condition,
+                ", ".join(missing[:5]),
+            )
+        return result
 
     @staticmethod
     def _trajectory_summary(record: RunRecord) -> str:
