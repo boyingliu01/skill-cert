@@ -66,13 +66,34 @@ def test_chat_json_propagates_other_runtime_errors():
 def test_chat_json_rejects_non_object_payloads():
     adapter = RecordingAdapter([lambda rf: "[1, 2]"])
 
-    with pytest.raises(ValueError, match="did not return a JSON object"):
+    with pytest.raises(ValueError, match="did not return a JSON object") as excinfo:
+        chat_json(adapter, "prompt", SCHEMA)
+
+    assert "fences" in str(excinfo.value)
+
+
+def test_chat_json_names_the_chain_when_no_json_is_found():
+    adapter = RecordingAdapter([lambda rf: "I could not do that."])
+
+    with pytest.raises(ValueError, match="extract_json"):
         chat_json(adapter, "prompt", SCHEMA)
 
 
 def test_supports_structured_output_reads_the_chat_signature():
     assert supports_structured_output(RecordingAdapter([lambda rf: "{}"])) is True
     assert supports_structured_output(PlainAdapter("{}")) is False
+
+
+def test_supports_structured_output_covers_the_in_repo_adapters():
+    """adapters/factory can only build these two — pin what each one accepts.
+
+    Probed unbound on the class so no network client is constructed.
+    """
+    from adapters.anthropic_compat import AnthropicCompatAdapter
+    from adapters.openai_compat import OpenAICompatAdapter
+
+    assert supports_structured_output(AnthropicCompatAdapter) is False
+    assert supports_structured_output(OpenAICompatAdapter) is True
 
 
 def test_chat_json_drops_the_kwarg_for_adapters_without_it():

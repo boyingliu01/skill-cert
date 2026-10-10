@@ -587,6 +587,51 @@ def test_evaluate_keeps_sandboxes_of_colliding_task_ids(tmp_path, monkeypatch):
     assert len({str(p) for p in seen}) == 4
 
 
+def test_evaluate_rebuilds_each_run_sandbox(tmp_path):
+    """A with_skill install cannot survive into the following without_skill run."""
+
+    class InspectingHarness:
+        title = ""
+
+        def __init__(self):
+            self.observed = []
+
+        def prepare(self, sandbox, skill_dir):
+            skills = sandbox / ".opencode" / "skills"
+            self.observed.append(
+                {
+                    "sandbox": Path(sandbox),
+                    "skill_dir": skill_dir,
+                    "leftover": sorted(p.name for p in skills.glob("*")) if skills.exists() else [],
+                }
+            )
+            if skill_dir is not None:
+                (skills / "installed").mkdir(parents=True)
+
+        def run_task(self, prompt, sandbox):
+            return HarnessRunResult(
+                exit_code=0,
+                duration_s=0.1,
+                events=[],
+                final_output="OUT-without",
+                session_id="s",
+                tool_call_count=0,
+                skill_loaded=False,
+            )
+
+    harness = InspectingHarness()
+    evaluator, _ = make_evaluator(tmp_path, harness=harness)
+    evaluator.evaluate(make_skill(tmp_path), n_tasks=1)
+
+    assert len(harness.observed) == 2
+    with_run, without_run = harness.observed
+    assert with_run["skill_dir"] is not None
+    assert with_run["leftover"] == []
+    assert without_run["skill_dir"] is None
+    assert without_run["leftover"] == []
+    assert with_run["sandbox"] != without_run["sandbox"]
+
+
 def test_evaluate_blocks_on_hostile_companion_file(tmp_path):
     skill_dir = tmp_path / "bundle-skill"
     (skill_dir / "scripts").mkdir(parents=True)

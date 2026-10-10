@@ -92,7 +92,7 @@ def test_generate_dedupes_ids_and_repairs_fields(tmp_path):
     assert t2.rubrics.task_completion[0].points == 1
 
 
-def test_negative_points_are_clamped_with_a_debug_trace(caplog):
+def test_negative_points_are_clamped_with_a_warning(caplog):
     """Silent coercion is fine for scoring, bad for debugging — log the original."""
     payload = {
         "leakage_check": "ok",
@@ -108,11 +108,35 @@ def test_negative_points_are_clamped_with_a_debug_trace(caplog):
         ],
     }
 
-    with caplog.at_level("DEBUG", logger="engine.harness.taskgen"):
+    with caplog.at_level("WARNING", logger="engine.harness.taskgen"):
         result = TaskGenerator(make_adapter(payload)).generate("s", "", "body", n_tasks=1)
 
     assert result.tasks[0].rubrics.task_completion[0].points == 1
     assert "clamped to 1" in caplog.text
+
+
+def test_unusable_rubric_items_are_dropped_loudly(caplog):
+    """A dropped rubric item shrinks the denominator — never drop in silence."""
+    payload = {
+        "leakage_check": "ok",
+        "tasks": [
+            {
+                "id": "t1",
+                "description": "Sort the list.",
+                "rubrics": {
+                    "task_completion": ["not-an-object", {"id": "t1-tc2", "criterion": "  "}],
+                    "instruction_following": [],
+                },
+            }
+        ],
+    }
+
+    with caplog.at_level("WARNING", logger="engine.harness.taskgen"):
+        result = TaskGenerator(make_adapter(payload)).generate("s", "", "body", n_tasks=1)
+
+    assert result.tasks[0].rubrics.task_completion == []
+    assert "is not an object and was dropped" in caplog.text
+    assert "has no criterion and was dropped" in caplog.text
 
 
 def test_generate_truncates_to_n_tasks():

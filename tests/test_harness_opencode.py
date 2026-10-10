@@ -402,6 +402,20 @@ def test_run_task_rejects_flag_like_prompt(tmp_path):
     mock_run.assert_not_called()
 
 
+def test_run_task_rejects_whitespace_then_dash_prompt(tmp_path):
+    """The guard is a superset: leading blank space cannot smuggle a flag in."""
+    sandbox = tmp_path / "sbx"
+    sandbox.mkdir()
+    harness = OpenCodeHarness(model="prov/m")
+
+    with patch("adapters.harness.opencode_harness.subprocess.run") as mock_run:
+        result = harness.run_task("   --model other", sandbox)
+
+    assert result.exit_code == -1
+    assert "as a flag" in result.error
+    mock_run.assert_not_called()
+
+
 def test_run_task_warns_when_sandbox_holds_two_skills(tmp_path, caplog):
     """Ambiguous install widens skill matching — loudly, not silently."""
     sandbox = tmp_path / "sbx"

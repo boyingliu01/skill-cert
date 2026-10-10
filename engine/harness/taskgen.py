@@ -98,17 +98,22 @@ def _coerce_rubric_items(raw: Any, prefix: str) -> list[RubricItem]:
         return items
     for j, item in enumerate(raw):
         if not isinstance(item, dict):
+            # a rubric item that never becomes an item silently shrinks the score
+            # denominator — say so at the default log level
+            logger.warning("rubric item %s%d is not an object and was dropped", prefix, j + 1)
             continue
         criterion = str(item.get("criterion") or "").strip()
         if not criterion:
+            logger.warning("rubric item %s%d has no criterion and was dropped", prefix, j + 1)
             continue
         try:
             points = int(item.get("points") or 1)
         except (TypeError, ValueError):
             points = 1
         if points < 1:
-            # silent correction would hide poor model output; keep it debug-visible
-            logger.debug("rubric item %s%d points %d clamped to 1", prefix, j + 1, points)
+            # correction is right for scoring, invisible would hide poor model
+            # output — taskgen runs once per evaluation, so warn
+            logger.warning("rubric item %s%d points %d clamped to 1", prefix, j + 1, points)
             points = 1
         items.append(
             RubricItem(

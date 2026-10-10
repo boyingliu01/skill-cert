@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 # replace them: an overridden Authorization/Content-Type turns a routing
 # mistake into an auth failure (or a cross-tenant request) that is very hard to
 # read from a 401.
+#
+# Boundary on purpose: the set lists what this adapter writes itself (plus host
+# and the Azure-style key headers it routes by), not every header that could
+# ever carry a credential. Gateway configs that legitimately need Cookie or
+# Proxy-Authorization stay possible — blocking them would break working setups
+# to defend against a typo the adapter cannot make either way.
 RESERVED_HEADERS = frozenset({"authorization", "content-type", "host", "api-key", "x-api-key"})
 
 

@@ -62,7 +62,13 @@ def chat_json(
 
     data = _parse_json(resp)
     if not isinstance(data, dict):
-        raise ValueError(f"LLM did not return a JSON object: {str(resp)[:200]}")
+        # naming the chain is what makes a degradation failure locatable: the
+        # raw 200 chars alone cannot tell apart "no JSON at all" from "repaired
+        # but still not an object".
+        raise ValueError(
+            "LLM did not return a JSON object (json.loads then extract_json: "
+            f"fences → balanced → largest-first → strict=False): {str(resp)[:200]}"
+        )
     return data
 
 
