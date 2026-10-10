@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned for v1 (from the v0.15.0 release walkthrough — all non-blocking)
+
+Filed as issues #95–#102 (label `v1-follow-up`), each with the seat id it came from and the
+acceptance criterion that seat asked for.
 - Report `mean_if_delta` / `mean_tc_delta` / `trigger_rate` alongside the advisory verdicts,
   so downstream automation reads raw quantities instead of treating `compute_verdicts`'
   inline thresholds as a configuration surface.
