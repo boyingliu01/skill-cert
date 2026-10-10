@@ -8,6 +8,7 @@ from typing import Any
 
 from .llm_json import chat_json
 from .models import InputFile, Rubric, RubricItem, Task, TaskGenResult
+from .util import render_template, strip_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -115,14 +116,6 @@ def _coerce_rubric_items(raw: Any, prefix: str) -> list[RubricItem]:
     return items
 
 
-def _strip_frontmatter(text: str) -> str:
-    if text.startswith("---"):
-        end = text.find("\n---", 3)
-        if end != -1:
-            text = text[end + 4 :]
-    return text.strip()
-
-
 class TaskGenerator:
     """Generates tasks + hidden rubrics from a skill definition."""
 
@@ -138,14 +131,17 @@ class TaskGenerator:
         n_tasks: int = 6,
         timeout: int = 180,
     ) -> TaskGenResult:
-        template = _strip_frontmatter(
+        template = strip_frontmatter(
             (self.prompts_dir / "harness-taskgen.md").read_text(encoding="utf-8")
         )
-        prompt = (
-            template.replace("{task_count}", str(max(1, n_tasks)))
-            .replace("{skill_name}", str(skill_name))
-            .replace("{skill_description}", str(skill_description or "(none)"))
-            .replace("{skill_content}", str(skill_content))
+        prompt = render_template(
+            template,
+            {
+                "task_count": str(max(1, n_tasks)),
+                "skill_name": str(skill_name),
+                "skill_description": str(skill_description or "(none)"),
+                "skill_content": str(skill_content),
+            },
         )
         data = chat_json(self.adapter, prompt, TASKGEN_SCHEMA, timeout)
         return self._parse_result(data, n_tasks)

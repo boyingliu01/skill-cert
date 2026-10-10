@@ -143,6 +143,46 @@ class TestFormattersModuleContents:
         assert "api_key" not in str(redacted["models"])
         assert redacted["models"][0]["model_name"] == "m1"
 
+    def test_redact_config_strips_every_api_key_field(self):
+        """fallback_api_key is as secret as api_key."""
+        from engine.reporters.formatters import redact_config
+
+        redacted = redact_config(
+            {
+                "models": [
+                    {
+                        "model_name": "m1",
+                        "api_key": "primary-secret",
+                        "fallback_api_key": "fallback-secret",
+                    }
+                ]
+            }
+        )
+
+        blob = str(redacted)
+        assert "primary-secret" not in blob
+        assert "fallback-secret" not in blob
+        assert redacted["models"][0]["model_name"] == "m1"
+
+    def test_redact_config_masks_header_values(self):
+        """Tunnel/auth headers carry tokens; keep the names, drop the values."""
+        from engine.reporters.formatters import redact_config
+
+        redacted = redact_config(
+            {
+                "models": [
+                    {
+                        "model_name": "m1",
+                        "headers": {"ngrok-skip-browser-warning": "true", "X-Api-Key": "t0ken"},
+                    }
+                ]
+            }
+        )
+
+        headers = redacted["models"][0]["headers"]
+        assert set(headers) == {"ngrok-skip-browser-warning", "X-Api-Key"}
+        assert set(headers.values()) == {"***"}
+
 
 class TestBuildersModuleContents:
     """Verify builders module has expected builder functions."""

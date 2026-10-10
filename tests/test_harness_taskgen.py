@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from adapters.base import StructuredOutputRejectedError
 from engine.harness.taskgen import TASKGEN_SCHEMA, TaskGenerator
 
 
@@ -103,7 +104,7 @@ def test_generate_no_tasks_raises():
         TaskGenerator(adapter).generate("demo-skill", "", "body")
 
 
-def test_generate_degrades_on_400_with_fenced_json():
+def test_generate_degrades_on_rejected_schema_with_fenced_json():
     """Gateway rejects response_format -> plain retry + fenced-JSON extraction."""
 
     class DegradingAdapter(ScriptedAdapter):
@@ -114,7 +115,9 @@ def test_generate_degrades_on_400_with_fenced_json():
         def chat(self, messages, system=None, timeout=120, response_format=None):
             if self.first and response_format is not None:
                 self.first = False
-                raise RuntimeError("API returned 400 for model 'm'. Detail: schema unsupported")
+                raise StructuredOutputRejectedError(
+                    "Gateway rejected response_format for model 'm'. Detail: schema unsupported"
+                )
             self.calls.append(
                 {"prompt": messages[-1]["content"], "response_format": response_format}
             )

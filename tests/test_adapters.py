@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from adapters.base import ModelAdapter
+from adapters.base import ModelAdapter, StructuredOutputRejectedError
 from adapters.openai_compat import OpenAICompatAdapter
 
 
@@ -192,6 +192,30 @@ def test_openai_compat_model_alias_400_helpful_error():
     error_msg = str(excinfo.value)
     assert "model" in error_msg.lower(), "Error must mention model"
     assert "400" in error_msg or "Bad Request" in error_msg, "Error must include HTTP status"
+
+
+def test_openai_compat_400_with_response_format_is_typed_rejection():
+    """A 400 on a structured call is a schema rejection, not a bad model name."""
+    adapter = OpenAICompatAdapter(
+        base_url="https://api.whalecloud.com",
+        api_key="test-key",
+        model="gpt-proxy-model",
+    )
+
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 400
+    mock_response.json.return_value = {"error": {"message": "response_format not supported"}}
+    mock_response.text = '{"error": {"message": "response_format not supported"}}'
+
+    with patch.object(adapter.client, "post", return_value=mock_response):
+        with pytest.raises(StructuredOutputRejectedError) as excinfo:
+            adapter._call_with_usage_sync(
+                [{"role": "user", "content": "hello"}],
+                timeout=30,
+                response_format={"type": "json_schema", "json_schema": {}},
+            )
+
+    assert "response_format" in str(excinfo.value)
 
 
 def test_openai_compat_extra_headers_sent():

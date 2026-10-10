@@ -23,20 +23,26 @@ def num(value: Any, default: float = 0.0) -> float:
 
 
 def redact_config(config: dict[str, Any]) -> dict[str, Any]:
-    """Strip sensitive fields (api_key) from config dict for safe reporting.
+    """Strip secrets (api keys, header values) from config for safe reporting.
 
     Args:
         config: Configuration dictionary potentially containing secrets.
 
     Returns:
-        A new dict with api_key fields removed from model entries.
+        A new dict with the secret-bearing model fields removed or masked.
     """
     redacted = dict(config)
     models_raw = redacted.get("models")
     if isinstance(models_raw, list):
-        redacted["models"] = [
-            {k: v for k, v in m.items() if k != "api_key"}
-            for m in models_raw
-            if isinstance(m, dict)
-        ]
+        cleaned_models = []
+        for m in models_raw:
+            if not isinstance(m, dict):
+                continue
+            entry = {k: v for k, v in m.items() if not k.endswith("api_key")}
+            headers = entry.get("headers")
+            if isinstance(headers, dict):
+                # tunnel/auth headers carry tokens just like api_key does
+                entry["headers"] = {name: "***" for name in headers}
+            cleaned_models.append(entry)
+        redacted["models"] = cleaned_models
     return redacted

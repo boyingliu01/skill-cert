@@ -43,6 +43,5 @@ Thumbs.db
 .quality-history.jsonl
 .sprint-state/
 MagicMock/
-.skill-cert-ci-history.json
 .archlint-cache/
 .rustest_cache/

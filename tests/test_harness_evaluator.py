@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from adapters.harness.base import HarnessRunResult
 from engine.harness.evaluator import (
@@ -16,6 +17,7 @@ from engine.harness.evaluator import (
     dimension_score,
 )
 from engine.harness.models import (
+    HarnessEvalReport,
     JudgeItemResult,
     JudgeResult,
     Rubric,
@@ -302,6 +304,103 @@ def test_evaluate_rejects_path_traversal_input_files(tmp_path):
     sandbox_root = tmp_path / "results" / ".harness-runs"
     assert not list(sandbox_root.rglob("evil.txt"))
     assert not (tmp_path / "results" / "evil.txt").exists()
+
+
+def test_write_input_file_rejects_sibling_prefix(tmp_path):
+    """A shared path prefix must not pass the escape check ('run' vs 'run-evil')."""
+    sandbox = tmp_path / "run"
+    sandbox.mkdir()
+    sibling = tmp_path / "run-evil"
+    sibling.mkdir()
+
+    HarnessEvaluator._write_input_file(sandbox, "../run-evil/leak.txt", "x")
+
+    assert not (sibling / "leak.txt").exists()
+
+
+def test_evaluate_cleans_up_eval_directory(tmp_path):
+    skill_path = make_skill(tmp_path)
+    evaluator, _ = make_evaluator(tmp_path)
+
+    evaluator.evaluate(skill_path, n_tasks=1)
+
+    sandbox_root = tmp_path / "results" / ".harness-runs"
+    assert list(sandbox_root.iterdir()) == []  # no empty eval-id dirs left behind
+
+
+def test_evaluate_sandboxes_stay_under_root_for_hostile_ids(tmp_path):
+    """LLM-authored skill/task names must not steer sandbox paths out of the root."""
+    skill_dir = tmp_path / "evil"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: ../../escape\ndescription: demo\n---\n\n# Demo\n", encoding="utf-8"
+    )
+    hostile_taskgen = json.dumps(
+        {
+            "leakage_check": "ok",
+            "tasks": [
+                {
+                    "id": "../up",
+                    "description": "do the thing",
+                    "input_files": [],
+                    "rubrics": {
+                        "task_completion": [{"id": "up-tc1", "criterion": "c", "points": 1}],
+                        "instruction_following": [{"id": "up-if1", "criterion": "f", "points": 1}],
+                    },
+                }
+            ],
+        }
+    )
+    fake_harness = FakeHarness()
+    evaluator, _ = make_evaluator(
+        tmp_path,
+        harness=fake_harness,
+        scripts=[
+            ("任务生成器", hostile_taskgen),
+            ("OUT-without", judge_json(6, 0)),
+            ("OUT-with", judge_json(10, 10)),
+        ],
+        keep=True,
+    )
+
+    report = evaluator.evaluate(skill_dir / "SKILL.md", n_tasks=1)
+
+    sandbox_root = (tmp_path / "results" / ".harness-runs").resolve()
+    assert len(report.runs) == 2
+    for _, sandbox in fake_harness.run_calls:
+        assert sandbox.resolve().is_relative_to(sandbox_root)
+    assert not (tmp_path / "results" / "up-with_skill-r1").exists()
+
+
+def test_write_report_filename_is_path_safe(tmp_path):
+    report = HarnessEvalReport(
+        skill_name="../../evil name",
+        skill_path="/tmp/SKILL.md",
+        model="prov/m",
+    )
+
+    md_path, json_path = write_report(report, tmp_path / "out")
+
+    assert md_path.parent == (tmp_path / "out").resolve() or md_path.parent == tmp_path / "out"
+    assert md_path.name == "evil-name-harness-report.md"
+    assert json_path.name == "evil-name-harness-report.json"
+
+
+def test_rubric_item_points_must_be_positive():
+    """A zero-point dimension cannot be scored — the model rejects it at the boundary."""
+    with pytest.raises(ValidationError):
+        RubricItem(id="a", criterion="c", points=0)
+
+
+def test_report_verdicts_are_labelled_advisory(tmp_path):
+    skill_path = make_skill(tmp_path)
+    evaluator, _ = make_evaluator(tmp_path)
+
+    report = evaluator.evaluate(skill_path, n_tasks=1)
+    md = render_report(report)
+
+    assert "## Verdicts (advisory)" in md
+    assert "Advisory only" in md
 
 
 def test_evaluate_multiple_runs(tmp_path):

@@ -1,10 +1,10 @@
 """Shared LLM structured-output helper for harness taskgen/judge.
 
 Strategy: call ``adapter.chat`` with an OpenAI-style ``response_format``
-json_schema; gateways that reject the parameter (HTTP 400, e.g. older
-gpt-proxy) degrade to a plain call — the prompts already embed the JSON
-format — followed by the battle-tested ``EvalGenerator._extract_json``
-4-level fallback chain.
+json_schema; gateways that refuse the parameter raise
+``StructuredOutputRejectedError``, which degrades to a plain call — the prompts
+already embed the JSON format — followed by the battle-tested
+``EvalGenerator._extract_json`` 4-level fallback chain.
 """
 
 from __future__ import annotations
@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+
+from adapters.base import StructuredOutputRejectedError
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +28,7 @@ def chat_json(
     messages = [{"role": "user", "content": prompt}]
     try:
         resp = adapter.chat(messages, timeout=timeout, response_format=schema)
-    except RuntimeError as e:
-        if schema is None or "400" not in str(e):
-            raise
+    except StructuredOutputRejectedError as e:
         logger.warning("structured output rejected (%s); degrading to prompt-embedded schema", e)
         resp = adapter.chat(messages, timeout=timeout)
 

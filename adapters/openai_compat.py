@@ -3,7 +3,7 @@ from typing import Any
 
 import httpx
 
-from .base import ModelAdapter
+from .base import ModelAdapter, StructuredOutputRejectedError
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,11 @@ class OpenAICompatAdapter(ModelAdapter):
                 )
                 if response.status_code == 401:
                     raise RuntimeError("Invalid API key")
+                elif response.status_code == 400 and response_format is not None:
+                    raise StructuredOutputRejectedError(
+                        f"Gateway rejected response_format for model '{model}'. "
+                        f"Detail: {getattr(response, 'text', '')[:200]}"
+                    )
                 elif response.status_code == 404:
                     raise RuntimeError("Model not found")
                 elif response.status_code == 429:
@@ -110,6 +115,10 @@ class OpenAICompatAdapter(ModelAdapter):
             raise RuntimeError("Invalid API key")
         elif response.status_code == 400:
             detail = self._extract_error_detail(response)
+            if response_format is not None:
+                raise StructuredOutputRejectedError(
+                    f"Gateway rejected response_format for model '{model}'. Detail: {detail}"
+                )
             raise RuntimeError(
                 f"API returned 400 for model '{model}'. "
                 f"Verify the model name matches the API endpoint's expected format. "

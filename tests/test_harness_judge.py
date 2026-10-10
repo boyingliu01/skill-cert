@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from adapters.base import StructuredOutputRejectedError
 from engine.harness.judge import JUDGE_SCHEMA, HarnessJudge
 from engine.harness.models import JudgeResult, Rubric, RubricItem, Task
 
@@ -100,7 +101,7 @@ def test_judge_prompt_contains_all_inputs():
     assert not prompt.startswith("---")
 
 
-def test_judge_degrades_on_400_and_extracts_fenced_json():
+def test_judge_degrades_on_rejected_schema_and_extracts_fenced_json():
     class DegradingAdapter(ScriptedAdapter):
         def __init__(self):
             super().__init__("unused")
@@ -109,7 +110,7 @@ def test_judge_degrades_on_400_and_extracts_fenced_json():
         def chat(self, messages, system=None, timeout=120, response_format=None):
             if self.first and response_format is not None:
                 self.first = False
-                raise RuntimeError("API returned 400. Detail: no json_schema")
+                raise StructuredOutputRejectedError("Gateway rejected response_format")
             self.calls.append(
                 {"prompt": messages[-1]["content"], "response_format": response_format}
             )
@@ -119,6 +120,17 @@ def test_judge_degrades_on_400_and_extracts_fenced_json():
 
     result = HarnessJudge(DegradingAdapter()).judge(make_task(), "s", "c", "out", "traj")
     assert result.score_map() == {"t1-tc1": 9.0}
+
+
+def test_judge_expands_placeholders_in_a_single_pass():
+    """Injected content may itself contain placeholder text — it must not re-expand."""
+    adapter = ScriptedAdapter(judge_payload([{"rubric_id": "t1-tc1", "score": 9}]))
+    HarnessJudge(adapter).judge(
+        make_task(), "s", "skill body referencing {rubric_json} literally", "out", "traj"
+    )
+    prompt = adapter.calls[0]["prompt"]
+    assert "skill body referencing {rubric_json} literally" in prompt
+    assert "{task_id}" not in prompt  # real placeholders were all filled
 
 
 def test_judge_non_json_response_raises():

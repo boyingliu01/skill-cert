@@ -10,6 +10,7 @@ from .evaluator import (
     dimension_score,
 )
 from .models import (
+    Condition,
     HarnessEvalReport,
     InputFile,
     JudgeItemResult,
@@ -33,6 +34,7 @@ __all__ = [
     "dimension_score",
     "render_report",
     "write_report",
+    "Condition",
     "HarnessEvalReport",
     "InputFile",
     "JudgeItemResult",

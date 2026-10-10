@@ -10,6 +10,7 @@ from typing import Any
 
 from .llm_json import chat_json
 from .models import JudgeItemResult, JudgeResult, Task
+from .util import render_template, strip_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -61,28 +62,25 @@ class HarnessJudge:
         template = self._load_template()
         rubric_json = json.dumps(task.rubrics.model_dump(), ensure_ascii=False, indent=2)
         input_files = "\n".join(f"- {f.path}" for f in task.input_files) or "(none)"
-        prompt = (
-            template.replace("{task_id}", str(task.id))
-            .replace("{task_description}", str(task.description))
-            .replace("{input_files}", input_files)
-            .replace("{skill_name}", str(skill_name))
-            .replace("{skill_content}", str(skill_content))
-            .replace("{final_output}", str(final_output))
-            .replace("{trajectory_summary}", str(trajectory_summary))
-            # rubric JSON last: it legitimately contains braces and must not be
-            # affected by earlier placeholder substitutions
-            .replace("{rubric_json}", rubric_json)
+        prompt = render_template(
+            template,
+            {
+                "task_id": str(task.id),
+                "task_description": str(task.description),
+                "input_files": input_files,
+                "skill_name": str(skill_name),
+                "skill_content": str(skill_content),
+                "final_output": str(final_output),
+                "trajectory_summary": str(trajectory_summary),
+                "rubric_json": rubric_json,
+            },
         )
         data = chat_json(self.adapter, prompt, JUDGE_SCHEMA, timeout)
         return self._parse_result(data, task)
 
     def _load_template(self) -> str:
         text = (self.prompts_dir / "harness-judge.md").read_text(encoding="utf-8")
-        if text.startswith("---"):
-            end = text.find("\n---", 3)
-            if end != -1:
-                text = text[end + 4 :]
-        return text.strip()
+        return strip_frontmatter(text)
 
     @staticmethod
     def _parse_result(data: dict[str, Any], task: Task) -> JudgeResult:

@@ -3,6 +3,14 @@ from dataclasses import dataclass
 from typing import Any
 
 
+class StructuredOutputRejectedError(RuntimeError):
+    """The endpoint refused a request that carried ``response_format`` (HTTP 400).
+
+    Typed so callers can degrade to a plain call instead of matching on the
+    human-readable error text.
+    """
+
+
 @dataclass
 class TokenUsage:
     input_tokens: int = 0

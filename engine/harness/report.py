@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .evaluator import condition_mean
 from .models import HarnessEvalReport
+from .util import safe_path_component
 
 
 def _fmt(value: float | None, digits: int = 1) -> str:
@@ -15,6 +16,10 @@ def _fmt(value: float | None, digits: int = 1) -> str:
 
 def _fmt_pct(value: float | None) -> str:
     return f"{value * 100:.0f}%" if value is not None else "n/a"
+
+
+def _fmt_delta(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:+.1f}"
 
 
 def _cell(text: str) -> str:
@@ -38,7 +43,7 @@ def render_report(report: HarnessEvalReport) -> str:
     add(f"| Scale | {len(report.tasks)} tasks × 2 conditions × {report.runs_per_task} runs |")
     add("")
 
-    add("## Verdicts")
+    add("## Verdicts (advisory)")
     add("")
     if report.verdicts:
         for verdict in report.verdicts:
@@ -83,10 +88,9 @@ def render_report(report: HarnessEvalReport) -> str:
         if_wo = condition_mean(task, report.runs, "without_skill", "instruction_following")
         tc_d = delta.task_completion_delta if delta else None
         if_d = delta.instruction_following_delta if delta else None
-        sign = lambda v: "n/a" if v is None else f"{v:+.1f}"  # noqa: E731
         add(
-            f"| {task.id} | {_fmt(tc_w)} | {_fmt(tc_wo)} | {sign(tc_d)} "
-            f"| {_fmt(if_w)} | {_fmt(if_wo)} | {sign(if_d)} |"
+            f"| {task.id} | {_fmt(tc_w)} | {_fmt(tc_wo)} | {_fmt_delta(tc_d)} "
+            f"| {_fmt(if_w)} | {_fmt(if_wo)} | {_fmt_delta(if_d)} |"
         )
     add("")
 
@@ -120,8 +124,10 @@ def write_report(report: HarnessEvalReport, output_dir: Path) -> tuple[Path, Pat
     """Write Markdown + JSON reports; returns (md_path, json_path)."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    md_path = output_dir / f"{report.skill_name}-harness-report.md"
-    json_path = output_dir / f"{report.skill_name}-harness-report.json"
+    # skill_name comes from the SKILL.md frontmatter — never a raw filename
+    stem = f"{safe_path_component(report.skill_name)}-harness-report"
+    md_path = output_dir / f"{stem}.md"
+    json_path = output_dir / f"{stem}.json"
     md_path.write_text(render_report(report), encoding="utf-8")
     json_path.write_text(
         json.dumps(report.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8"

@@ -23,6 +23,7 @@ from engine.security_probes import SecurityScanner
 
 from .judge import HarnessJudge
 from .models import (
+    Condition,
     HarnessEvalReport,
     JudgeResult,
     RunRecord,
@@ -31,10 +32,11 @@ from .models import (
     TaskGenResult,
 )
 from .taskgen import TaskGenerator
+from .util import safe_path_component
 
 logger = logging.getLogger(__name__)
 
-CONDITIONS = ("with_skill", "without_skill")
+CONDITIONS: tuple[Condition, ...] = ("with_skill", "without_skill")
 
 
 class SecurityBlockedError(RuntimeError):
@@ -185,17 +187,25 @@ class HarnessEvaluator:
         )
 
         # Phase 3 + 4 — double runs, each judged immediately
-        eval_id = f"{skill_name}-{time.strftime('%Y%m%d-%H%M%S')}"
+        # eval_id feeds sandbox paths and the harness session title: keep it one
+        # traversal-free path component
+        eval_id = f"{safe_path_component(skill_name)}-{time.strftime('%Y%m%d-%H%M%S')}"
         records: list[RunRecord] = []
         skill_dir = skill_path.parent
-        for task in gen.tasks:
-            for condition in CONDITIONS:
-                for run_index in range(self.runs):
-                    record = self._run_once(task, condition, run_index, skill_dir, eval_id)
-                    record.judge = self._judge_run(record, task, skill_name, skill_content)
-                    records.append(record)
-                    status = "ok" if record.error is None else f"ERR: {record.error[:60]}"
-                    logger.info("run %s/%s/r%d -> %s", task.id, condition, run_index + 1, status)
+        try:
+            for task in gen.tasks:
+                for condition in CONDITIONS:
+                    for run_index in range(self.runs):
+                        record = self._run_once(task, condition, run_index, skill_dir, eval_id)
+                        record.judge = self._judge_run(record, task, skill_name, skill_content)
+                        records.append(record)
+                        status = "ok" if record.error is None else f"ERR: {record.error[:60]}"
+                        logger.info(
+                            "run %s/%s/r%d -> %s", task.id, condition, run_index + 1, status
+                        )
+        finally:
+            if not self.keep_sandboxes:
+                shutil.rmtree(self.sandbox_root / eval_id, ignore_errors=True)
 
         # Phase 5 — aggregate
         return self._aggregate(
@@ -212,12 +222,13 @@ class HarnessEvaluator:
     def _run_once(
         self,
         task: Task,
-        condition: str,
+        condition: Condition,
         run_index: int,
         skill_dir: Path,
         eval_id: str,
     ) -> RunRecord:
-        run_id = f"{eval_id}/{task.id}-{condition}-r{run_index + 1}"
+        # task.id is LLM-authored — sanitize before it becomes a path component
+        run_id = f"{eval_id}/{safe_path_component(task.id)}-{condition}-r{run_index + 1}"
         sandbox = self.sandbox_root / run_id
         if sandbox.exists():
             shutil.rmtree(sandbox)
@@ -250,18 +261,15 @@ class HarnessEvaluator:
                 error=result.error,
             )
         finally:
+            # the eval-id directory itself is dropped once in evaluate()
             if not self.keep_sandboxes:
                 shutil.rmtree(sandbox, ignore_errors=True)
-                try:
-                    sandbox.parent.rmdir()  # drop the eval-id dir when its last child is gone
-                except OSError:
-                    pass
 
     @staticmethod
     def _write_input_file(sandbox: Path, rel_path: str, content: str) -> None:
         """Write an input file into the sandbox, rejecting path traversal."""
         target = (sandbox / rel_path).resolve()
-        if not str(target).startswith(str(sandbox.resolve())):
+        if not target.is_relative_to(sandbox.resolve()):
             logger.warning("input file escapes sandbox, skipped: %s", rel_path)
             return
         target.parent.mkdir(parents=True, exist_ok=True)

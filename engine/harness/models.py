@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+Condition = Literal["with_skill", "without_skill"]
 
 
 class InputFile(BaseModel):
@@ -17,7 +20,8 @@ class InputFile(BaseModel):
 class RubricItem(BaseModel):
     id: str
     criterion: str
-    points: int = 1
+    # ge=1 keeps a dimension's total points non-zero — dimension_score divides by it
+    points: int = Field(1, ge=1)
 
 
 class Rubric(BaseModel):
@@ -58,7 +62,7 @@ class RunRecord(BaseModel):
     """Snapshot of one harness run (task x condition x repetition) plus judge verdict."""
 
     task_id: str
-    condition: str  # "with_skill" | "without_skill"
+    condition: Condition
     run_index: int = 0
     session_id: str = ""
     final_output: str = ""
