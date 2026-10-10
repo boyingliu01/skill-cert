@@ -49,9 +49,12 @@ class SecurityBlockedError(RuntimeError):
 SCANNED_SUFFIXES = frozenset(
     {".md", ".py", ".sh", ".js", ".ts", ".txt", ".yaml", ".yml", ".json", ".toml"}
 )
-# Cap per companion file keeps scanning memory bounded; SKILL.md itself is
-# always scanned in full by the caller.
-MAX_SCAN_BYTES_PER_FILE = 256 * 1024
+# Companion files are scanned in overlapping chunks, so memory stays bounded and
+# a payload cannot hide on a chunk boundary; MAX_SCANNED_BYTES_PER_FILE is the
+# outer limit past which the remainder is reported as unscanned rather than read.
+SCAN_CHUNK_BYTES = 256 * 1024
+SCAN_CHUNK_OVERLAP = 4096
+MAX_SCANNED_BYTES_PER_FILE = 4 * 1024 * 1024
 _VERDICT_SEVERITY = {"PASS": 0, "WARN": 1, "BLOCK": 2}
 
 
@@ -60,25 +63,86 @@ def scan_skill_bundle(skill_dir: Path, skill_content: str, skill_name: str) -> S
 
     ``harness.prepare`` copies the entire skill directory into the sandbox, so
     companion scripts and resources would otherwise reach the runtime unscanned.
+    Scanning runs past the first chunk (with overlap, so a pattern cannot sit on
+    a chunk boundary) — a payload parked beyond 256 KB used to slip through — and
+    the blind spots that remain (files with an unscannable suffix, unreadable
+    files, anything past ``MAX_SCANNED_BYTES_PER_FILE``) are counted into
+    ``report.summary["bundle"]`` and logged, because a silent skip is how a
+    scanner gets trusted by mistake.
     """
     scanner = SecurityScanner()
     worst = scanner.scan(skill_content, skill_name=skill_name)
+    skipped: list[str] = []
+    unreadable: list[str] = []
+    truncated: list[str] = []
+    step = SCAN_CHUNK_BYTES - SCAN_CHUNK_OVERLAP
     for path in sorted(skill_dir.rglob("*")):
-        if not path.is_file() or path.suffix.lower() not in SCANNED_SUFFIXES:
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in SCANNED_SUFFIXES:
+            skipped.append(path.name)
             continue
         try:
+            size = path.stat().st_size
             with path.open("rb") as handle:
-                text = handle.read(MAX_SCAN_BYTES_PER_FILE).decode("utf-8", errors="replace")
+                blob = handle.read(MAX_SCANNED_BYTES_PER_FILE)
+            if size > len(blob):
+                truncated.append(path.name)
+            for start in range(0, len(blob), step):
+                chunk = blob[start : start + SCAN_CHUNK_BYTES]
+                if start and len(chunk) <= SCAN_CHUNK_OVERLAP:
+                    break  # already inside the previous chunk's overlap
+                report = scanner.scan(
+                    chunk.decode("utf-8", errors="replace"),
+                    skill_name=f"{skill_name}/{path.name}",
+                )
+                if _VERDICT_SEVERITY[report.verdict] > _VERDICT_SEVERITY[worst.verdict]:
+                    worst = report
         except OSError as e:
             logger.warning("security scan could not read %s: %s", path, e)
-            continue
-        report = scanner.scan(text, skill_name=f"{skill_name}/{path.name}")
-        if _VERDICT_SEVERITY[report.verdict] > _VERDICT_SEVERITY[worst.verdict]:
-            worst = report
+            unreadable.append(path.name)
+    blind_spots = {
+        "unscanned_suffix": len(skipped),
+        "unreadable": len(unreadable),
+        "over_scan_limit": len(truncated),
+    }
+    worst.summary["bundle"] = {**blind_spots, "unscanned_files": skipped[:10]}
+    if any(blind_spots.values()):
+        logger.warning(
+            "security scan of '%s' left %d file(s) unreadable, %d past the scan limit and "
+            "%d with an unscanned suffix (e.g. %s) — they still reach the sandbox",
+            skill_name,
+            blind_spots["unreadable"],
+            blind_spots["over_scan_limit"],
+            blind_spots["unscanned_suffix"],
+            ", ".join(skipped[:5]) or "-",
+        )
     return worst
 
 
 # ---------- pure scoring functions (unit-tested) ----------
+
+
+def sandbox_components(tasks: list[Task]) -> dict[str, str]:
+    """Map each task id to a distinct, traversal-free sandbox path component.
+
+    ``safe_path_component`` alone is not enough: two LLM-authored ids such as
+    ``t/1`` and ``t 1`` sanitize to the same ``t-1``, and the two tasks would then
+    share a run directory that ``_run_once`` wipes with ``shutil.rmtree`` before
+    every run — one condition silently deleting the other's workspace.
+    """
+    used: set[str] = set()
+    components: dict[str, str] = {}
+    for task in tasks:
+        base = safe_path_component(task.id)
+        component = base
+        suffix = 2
+        while component in used:
+            component = f"{base}-{suffix}"
+            suffix += 1
+        used.add(component)
+        components[task.id] = component
+    return components
 
 
 def dimension_score(task: Task, judge: JudgeResult | None, dimension: str) -> float | None:
@@ -231,12 +295,15 @@ class HarnessEvaluator:
             f"-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
         )
         records: list[RunRecord] = []
+        components = sandbox_components(gen.tasks)
         skill_dir = skill_path.parent
         try:
             for task in gen.tasks:
                 for condition in CONDITIONS:
                     for run_index in range(self.runs):
-                        record = self._run_once(task, condition, run_index, skill_dir, eval_id)
+                        record = self._run_once(
+                            task, condition, run_index, skill_dir, eval_id, components[task.id]
+                        )
                         record.judge = self._judge_run(record, task, skill_name, skill_content)
                         records.append(record)
                         status = "ok" if record.error is None else f"ERR: {record.error[:60]}"
@@ -266,9 +333,9 @@ class HarnessEvaluator:
         run_index: int,
         skill_dir: Path,
         eval_id: str,
+        component: str,
     ) -> RunRecord:
-        # task.id is LLM-authored — sanitize before it becomes a path component
-        run_id = f"{eval_id}/{safe_path_component(task.id)}-{condition}-r{run_index + 1}"
+        run_id = f"{eval_id}/{component}-{condition}-r{run_index + 1}"
         sandbox = self.sandbox_root / run_id
         if sandbox.exists():
             shutil.rmtree(sandbox)
