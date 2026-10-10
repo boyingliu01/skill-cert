@@ -453,6 +453,18 @@ def test_ensure_server_does_not_spawn_when_the_port_is_already_open():
     assert harness._server_process is None
 
 
+def test_ensure_server_warns_when_attaching_to_a_foreign_listener(caplog):
+    """A server on 4096 that this process did not start must be named out loud."""
+    import logging
+
+    harness = OpenCodeHarness(model="prov/m")
+    with caplog.at_level(logging.WARNING):
+        with patch.object(OpenCodeHarness, "_port_open", return_value=True):
+            harness.ensure_server()
+
+    assert "did not start" in caplog.text
+
+
 def test_ensure_server_terminates_a_child_that_never_becomes_ready():
     harness = OpenCodeHarness(model="prov/m")
     child = MagicMock()

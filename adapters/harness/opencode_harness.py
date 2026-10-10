@@ -288,6 +288,14 @@ class OpenCodeHarness:
         """
         url = f"http://{host}:{port}"
         if self._port_open(host, port):
+            if self._server_process is None:
+                # Identity of an already-listening server cannot be verified from
+                # here — say plainly that this run attaches to someone else's proc.
+                logger.warning(
+                    "attaching to an existing listener on %s that this process did not "
+                    "start; it will not be terminated by shutdown_server",
+                    url,
+                )
             self._attach_url = url
             return url
 

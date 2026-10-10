@@ -41,6 +41,29 @@ def test_render_template_leaves_unknown_and_json_braces():
     assert out == template
 
 
+def test_render_template_warns_about_placeholders_it_cannot_bind(caplog):
+    """A renamed template slot used to reach the model as literal braces."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        out = render_template("output: {judge_output}\n{task_id}", {"task_id": "t1"})
+
+    assert "{judge_output}" in out
+    assert "judge_output" in caplog.text
+    assert "task_id" not in caplog.text
+
+
+def test_template_placeholders_ignores_json_example_braces():
+    from engine.harness.util import template_placeholders
+
+    template = (
+        "fill {skill_name} then answer\n"
+        '```\n{\n  "tasks": [\n    {"id": "t1", "points": 2}\n  ]\n}\n```'
+    )
+
+    assert template_placeholders(template) == {"skill_name"}
+
+
 def test_render_template_is_single_pass():
     """A value containing a placeholder literal must not be expanded again."""
     template = "skill: {skill_content}\nrubric: {rubric_json}"
