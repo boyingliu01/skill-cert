@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **adapters/openai_compat.py**: configured `extra_headers` may no longer override `authorization`, `content-type`, `host`, `api-key` or `x-api-key` — that typo used to surface as an unexplained 401.
   - `skill-cert harness --tasks`, `--runs` and `--task-timeout` are validated `≥ 1` at parse time instead of relying on downstream `max(1, n)`.
   - negative `points` from taskgen are clamped with a debug trace; `infer_model_family` became a public engine symbol (the CLI was importing a private one); harness failures print their stack on stderr next to the summary line.
+  - the harness CLI now tells expected failures apart from engine faults: a missing SKILL.md, an unconfigured model or a rejected header config print one actionable line, while anything else prints a summary **and** the traceback.
+  - **engine/harness/llm_json.py**: `chat_json` checks whether the adapter accepts `response_format` before passing it. Adapters without it (Anthropic-style) used to abort the entire run with a `TypeError`, which the `StructuredOutputRejectedError` degradation path cannot catch.
+  - **security scan blind spots**: `scan_skill_bundle` read only the first 256 KB of each companion file, so a payload past that window reached the sandbox unscanned. Files are now scanned in overlapping chunks to the end, and what still cannot be scanned (unrecognized suffixes, unreadable files, files past the 4 MB outer limit) is counted into `report.summary["bundle"]` and logged instead of skipped in silence.
+  - two LLM-authored task ids that sanitize to the same path component (`t/1` and `t 1`) shared one sandbox directory and `rmtree`'d each other's workspace; run directories are now allocated one per task.
+  - `ensure_server` says out loud when it attaches to a `opencode serve` listener it did not start, and `render_template` warns about template placeholders it cannot bind (a renamed prompt slot used to reach the model as literal braces).
 - **packaging — release blocker**: the default setuptools finder skips directories without `__init__.py`, so every wheel published to date shipped the engine **without** `prompts/`, `templates/` or `schemas/`. Installed (non-editable) users got an empty judge prompt — `Grader._load_judge_template` degrades silently — or a `FileNotFoundError` from harness taskgen/judge. `namespaces = true` plus `package-data` now ship them; `tests/test_packaging.py` guards the build configuration.
 - **tests/test_deadline.py**: clock-advance assertions now wait ≥4 ticks; `time.monotonic()` on Windows is `GetTickCount64()` with 15.625 ms resolution, so the previous 10 ms sleeps failed intermittently.
 - **tests/conftest.py**: session-scoped home isolation keeps unit tests off the developer's `~/.skill-cert/models.yaml`. `os.path.expanduser()` prefers `USERPROFILE` over `HOME` on Windows, so the one CLI test that patched only `HOME` ran the full pipeline against a live LLM gateway; the suite is now ~80 s with no network access.
@@ -51,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.xp-gate-mypy-scope`**: declares the type-check surface (`engine`, `skill_cert`, `adapters`, `scripts`) for the quality gate's mypy step.
 - `AGENTS.md`, the per-directory agent guides and both READMEs realigned with the shipped engine (module inventory, L1–L8 thresholds, harness command surface, test counts).
 - Local virtualenv (510 tracked files) and a stale July sprint record removed from git; duplicate `build/` / `.venv/` ignore entries dropped and the CI history artifact ignored.
-- Suite: 1575 tests collected (1574 passed, 1 skipped).
+- Suite: 1589 tests collected (1588 passed, 1 skipped).
 
 ## [0.14.2] - 2026-07-15
 

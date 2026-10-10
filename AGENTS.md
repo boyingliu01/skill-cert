@@ -26,7 +26,7 @@ skill-cert/
 ├── prompts/           # LLM prompt templates (.md files)
 ├── schemas/           # JSON schema: report.schema.json
 ├── templates/         # Eval fallback: minimum-evals.json
-├── tests/             # pytest suite — 1575 tests, mirrors engine/ 1:1
+├── tests/             # pytest suite — 1589 tests, mirrors engine/ 1:1
 └── results/           # Output: {skill}-report.md, {skill}-result.json, {skill}-evals-cache.json
 ```
 
@@ -136,7 +136,7 @@ ruff check . && ruff format .
 
 ## NOTES
 
-- 1575 tests collect (1 skipped)
+- 1589 tests collect (1 skipped)
 - Security probes: 80 patterns across 6 categories
 - L2 formula: normalized gain `Δ = (with - without) / without` (not absolute delta)
 - EnvelopeChecker is wired into L5 step efficiency scoring
