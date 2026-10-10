@@ -5,7 +5,7 @@ import json
 import pytest
 
 from adapters.base import StructuredOutputRejectedError
-from engine.harness.llm_json import chat_json
+from engine.harness.llm_json import chat_json, supports_structured_output
 
 SCHEMA = {"type": "json_schema", "json_schema": {"name": "x", "schema": {}}}
 
@@ -23,6 +23,18 @@ class RecordingAdapter:
         if isinstance(result, BaseException):
             raise result
         return result
+
+
+class PlainAdapter:
+    """Shaped like AnthropicCompatAdapter: no response_format parameter at all."""
+
+    def __init__(self, reply: str):
+        self.reply = reply
+        self.seen_schema = False
+
+    def chat(self, messages, system=None, timeout=120):
+        self.seen_schema = True
+        return self.reply
 
 
 def test_chat_json_passes_schema_and_parses_object():
@@ -56,3 +68,24 @@ def test_chat_json_rejects_non_object_payloads():
 
     with pytest.raises(ValueError, match="did not return a JSON object"):
         chat_json(adapter, "prompt", SCHEMA)
+
+
+def test_supports_structured_output_reads_the_chat_signature():
+    assert supports_structured_output(RecordingAdapter([lambda rf: "{}"])) is True
+    assert supports_structured_output(PlainAdapter("{}")) is False
+
+
+def test_chat_json_drops_the_kwarg_for_adapters_without_it():
+    """An adapter without response_format must degrade, not abort with TypeError."""
+    adapter = PlainAdapter('{"tasks": []}')
+
+    assert chat_json(adapter, "prompt", SCHEMA) == {"tasks": []}
+    assert adapter.seen_schema is True
+
+
+def test_chat_json_still_passes_schema_when_supported():
+    adapter = RecordingAdapter([lambda rf: json.dumps({"a": 1})])
+
+    chat_json(adapter, "prompt", SCHEMA)
+
+    assert adapter.calls[0]["response_format"] == SCHEMA
