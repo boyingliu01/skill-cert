@@ -38,6 +38,7 @@ def render_report(report: HarnessEvalReport) -> str:
     add("| | |")
     add("|---|---|")
     add(f"| Skill | `{_cell(report.skill_path)}` |")
+    add(f"| Eval id | `{_cell(report.eval_id or '(not recorded)')}` |")
     add(f"| Harness / Model | `{report.harness}` / `{report.model}` |")
     add(f"| Judge model | `{report.judge_model or '(unspecified)'}` |")
     add(f"| Scale | {len(report.tasks)} tasks × 2 conditions × {report.runs_per_task} runs |")
@@ -52,11 +53,21 @@ def render_report(report: HarnessEvalReport) -> str:
         add("- (no verdict triggered)")
     add("")
     add(
+        f"_Quantities they were derived from: IF delta {_fmt_delta(report.mean_if_delta)}, "
+        f"TC delta {_fmt_delta(report.mean_tc_delta)}, "
+        f"trigger rate {_fmt_pct(report.trigger_rate)}._"
+    )
+    add(
         "_Advisory only (MVP rules): IF delta >= +5 -> SKILL_EFFECTIVE; "
         "|IF delta| < 3 and TC delta < 3 -> SKILL_REDUNDANT; "
-        "trigger rate < 50% -> TRIGGER_WEAK._"
+        "trigger rate < 50% -> TRIGGER_WEAK. These thresholds are a recommendation, "
+        "not a policy — nothing gates on them, and the same quantities are published "
+        "per task below and in the JSON report so a reader can set its own bar._"
     )
     add("")
+    if report.judge_circularity:
+        add(f"> **Circularity warning:** {_cell(report.judge_circularity)}")
+        add("")
 
     add("## Summary")
     add("")
@@ -77,8 +88,8 @@ def render_report(report: HarnessEvalReport) -> str:
 
     add("## Per-task deltas")
     add("")
-    add("| Task | TC with | TC without | TC delta | IF with | IF without | IF delta |")
-    add("|---|---|---|---|---|---|---|")
+    add("| Task | TC with | TC without | TC delta | IF with | IF without | IF delta | Trigger |")
+    add("|---|---|---|---|---|---|---|---|")
     delta_by_id = {d.task_id: d for d in report.deltas}
     for task in report.tasks:
         delta = delta_by_id.get(task.id)
@@ -88,9 +99,10 @@ def render_report(report: HarnessEvalReport) -> str:
         if_wo = condition_mean(task, report.runs, "without_skill", "instruction_following")
         tc_d = delta.task_completion_delta if delta else None
         if_d = delta.instruction_following_delta if delta else None
+        trig = delta.trigger_rate if delta else None
         add(
             f"| {task.id} | {_fmt(tc_w)} | {_fmt(tc_wo)} | {_fmt_delta(tc_d)} "
-            f"| {_fmt(if_w)} | {_fmt(if_wo)} | {_fmt_delta(if_d)} |"
+            f"| {_fmt(if_w)} | {_fmt(if_wo)} | {_fmt_delta(if_d)} | {_fmt_pct(trig)} |"
         )
     add("")
 
@@ -98,9 +110,9 @@ def render_report(report: HarnessEvalReport) -> str:
     add("")
     add(
         "| Task | Condition | Run | Skill loaded | Tools | Tokens in/out "
-        "| Cost | Duration | Error |"
+        "| Cost | Duration | Skipped inputs | Error |"
     )
-    add("|---|---|---|---|---|---|---|---|---|")
+    add("|---|---|---|---|---|---|---|---|---|---|")
     for rec in report.runs:
         tools = " -> ".join(rec.tool_sequence) if rec.tool_sequence else "-"
         tokens_in = "-" if rec.tokens_in is None else str(rec.tokens_in)
@@ -109,9 +121,16 @@ def render_report(report: HarnessEvalReport) -> str:
             f"| {rec.task_id} | {rec.condition} | {rec.run_index + 1} "
             f"| {'yes' if rec.skill_loaded else 'no'} | {_cell(tools)} "
             f"| {tokens_in}/{tokens_out} | {_fmt(rec.cost, 4)} "
-            f"| {rec.duration_s:.0f}s | {_cell(rec.error or '')} |"
+            f"| {rec.duration_s:.0f}s | {_cell(', '.join(rec.skipped_inputs) or '-')} "
+            f"| {_cell(rec.error or '')} |"
         )
     add("")
+    if any(rec.skipped_inputs for rec in report.runs):
+        add(
+            "_Skipped inputs are generated fixture files the sandbox escape check refused; "
+            "those runs were judged without them._"
+        )
+        add("")
 
     add("## Task-generation leakage self-check")
     add("")
@@ -120,9 +139,23 @@ def render_report(report: HarnessEvalReport) -> str:
     return "\n".join(lines)
 
 
-def write_report(report: HarnessEvalReport, output_dir: Path) -> tuple[Path, Path]:
-    """Write Markdown + JSON reports; returns (md_path, json_path)."""
+def write_report(
+    report: HarnessEvalReport, output_dir: Path, keep_history: bool = False
+) -> tuple[Path, Path]:
+    """Write Markdown + JSON reports; returns (md_path, json_path).
+
+    By default the pair lands at the deterministic ``{skill}-harness-report.*``
+    path, so rerunning one skill can be diffed against the previous result —
+    which means the previous result is overwritten. ``keep_history`` instead
+    writes each run into its own ``{eval_id}/`` subdirectory (the default names
+    are kept inside it); the run is always identifiable afterwards through the
+    ``eval_id`` field of the JSON body.
+    """
     output_dir = Path(output_dir)
+    if keep_history:
+        # eval_id is built by safe_path_component, but reports can be assembled
+        # from other sources — re-sanitize rather than trust it.
+        output_dir = output_dir / safe_path_component(report.eval_id or report.skill_name)
     output_dir.mkdir(parents=True, exist_ok=True)
     # skill_name comes from the SKILL.md frontmatter — never a raw filename
     stem = f"{safe_path_component(report.skill_name)}-harness-report"

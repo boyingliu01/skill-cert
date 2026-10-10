@@ -15,7 +15,7 @@ import logging
 from typing import Any
 
 from adapters.base import StructuredOutputRejectedError
-from engine.json_extract import extract_json
+from engine.json_extract import JSON_LEVELS, extract_json_with_level
 
 logger = logging.getLogger(__name__)
 
@@ -67,14 +67,30 @@ def chat_json(
         # but still not an object".
         raise ValueError(
             "LLM did not return a JSON object (json.loads then extract_json: "
-            f"fences → balanced → largest-first → strict=False): {str(resp)[:200]}"
+            f"{' → '.join(JSON_LEVELS)}): {str(resp)[:200]}"
         )
     return data
 
 
 def _parse_json(resp: str) -> Any:
+    """Parse a response, naming the fallback level that rescued it.
+
+    A model that only produces parseable JSON at the last level of the chain is
+    one gateway change away from producing nothing parseable, and that trend is
+    invisible unless the winning level is recorded.
+    """
     try:
         return json.loads(resp)
     except (json.JSONDecodeError, TypeError):
         pass
-    return extract_json(resp)
+    hit = extract_json_with_level(resp)
+    if hit is None:
+        return None
+    parsed, level = hit
+    logger.debug(
+        "extract_json recovered the object at level %d (%s) of %s",
+        level + 1,
+        JSON_LEVELS[level],
+        " → ".join(JSON_LEVELS),
+    )
+    return parsed

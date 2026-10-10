@@ -89,6 +89,9 @@ class RunRecord(BaseModel):
     cost: float | None = None
     duration_s: float = 0.0
     error: str | None = None
+    # Generated input files rejected by the sandbox escape check: the run spoke
+    # about a fixture that was never there, so the report must say so.
+    skipped_inputs: list[str] = Field(default_factory=list)
     judge: JudgeResult | None = None
 
 
@@ -96,6 +99,9 @@ class TaskDelta(BaseModel):
     task_id: str
     task_completion_delta: float | None = None
     instruction_following_delta: float | None = None
+    # The raw quantities the advisory verdicts are derived from are published
+    # alongside the labels: per task here, in aggregate on HarnessEvalReport.
+    trigger_rate: float | None = None
 
 
 class HarnessEvalReport(BaseModel):
@@ -103,6 +109,9 @@ class HarnessEvalReport(BaseModel):
 
     skill_name: str
     skill_path: str
+    # One evaluation round: the same traversal-free component the sandboxes are
+    # keyed by, so a report can be traced back to the runs that produced it.
+    eval_id: str = ""
     model: str
     judge_model: str = ""
     harness: str = "opencode"
@@ -121,5 +130,8 @@ class HarnessEvalReport(BaseModel):
     std_tc_delta: float | None = None
     std_if_delta: float | None = None
     verdicts: list[str] = Field(default_factory=list)  # SKILL_EFFECTIVE / SKILL_REDUNDANT / ...
+    # Non-empty when the judge model shares a family with the tested model — the
+    # scores may be self-referential. Set by the evaluator, echoed in both reports.
+    judge_circularity: str = ""
     total_cost: float | None = None
     total_duration_s: float = 0.0

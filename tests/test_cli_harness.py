@@ -13,6 +13,14 @@ def test_parser_defaults():
     args = _build_parser().parse_args(BASE)
 
     assert (args.tasks, args.runs, args.task_timeout, args.harness) == (6, 1, 600, "opencode")
+    assert args.keep_history is False
+
+
+def test_parser_keep_history():
+    """Without the flag the previous round of the same skill is overwritten."""
+    args = _build_parser().parse_args([*BASE, "--keep-history"])
+
+    assert args.keep_history is True
 
 
 def test_parser_accepts_positive_counts():

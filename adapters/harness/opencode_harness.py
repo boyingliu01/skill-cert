@@ -23,7 +23,10 @@ import shutil
 import socket
 import subprocess
 import time
+from http.client import HTTPException
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from .base import HarnessRunResult
 
@@ -36,6 +39,15 @@ FRONTMATTER_NAME_RE = re.compile(r"^name:\s*[\"']?([A-Za-z0-9_-]+)[\"']?\s*$", r
 DEFAULT_TIMEOUT_S = 600
 SERVE_HOST = "127.0.0.1"
 SERVE_PORT = 4096
+# Before attaching to a listener this process did not start, one of these has to
+# answer with a shape only opencode's server produces.
+SERVE_PROBE_PATHS: tuple[str, ...] = ("/global/health", "/doc")
+SERVE_PROBE_TIMEOUT_S = 2.0
+SERVE_PROBE_MAX_BYTES = 64 * 1024
+
+
+class ServeListenerMismatchError(RuntimeError):
+    """The serve port is taken by something that is not an opencode server."""
 
 
 def extract_skill_name(skill_dir: Path) -> str:
@@ -122,6 +134,48 @@ def parse_events(raw_stdout: str, skill_name: str | None = None) -> dict:
         "cost": cost if has_cost_event else None,
         "events": events,
     }
+
+
+def probe_serve_listener(url: str, timeout_s: float = SERVE_PROBE_TIMEOUT_S) -> tuple[bool, str]:
+    """Ask a listener whether it is an ``opencode serve`` instance.
+
+    Returns ``(is_opencode, what_was_found)``. The check is a request/response
+    identity probe, not an authenticity proof: it answers "is this an opencode
+    server" well enough that a foreign process on the port fails loudly instead
+    of quietly receiving evaluation traffic. Anything that cannot be read back
+    as one of opencode's own reply shapes — including a socket that accepts the
+    connection but never speaks HTTP — is reported as not opencode.
+    """
+    findings: list[str] = []
+    for path in SERVE_PROBE_PATHS:
+        try:
+            with urlopen(Request(url + path, method="GET"), timeout=timeout_s) as response:
+                status = getattr(response, "status", 200)
+                body = response.read(SERVE_PROBE_MAX_BYTES)
+        except HTTPError as e:
+            findings.append(f"GET {path} -> HTTP {e.code}")
+            continue
+        except (OSError, HTTPException, ValueError) as e:
+            findings.append(f"GET {path} -> no HTTP response ({type(e).__name__}: {e})")
+            break
+        text = body.decode("utf-8", errors="replace").strip()
+        if status != 200:
+            findings.append(f"GET {path} -> HTTP {status}: {text[:120] or '(empty body)'}")
+            continue
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            findings.append(f"GET {path} -> 200, not JSON: {text[:120] or '(empty body)'}")
+            continue
+        if not isinstance(payload, dict):
+            findings.append(f"GET {path} -> 200, JSON {type(payload).__name__}, not an object")
+            continue
+        # /global/health is {"healthy": bool, "version": str}; /doc is the OpenAPI
+        # document, which only carries "openapi"/"paths".
+        if "healthy" in payload or ("openapi" in payload and "paths" in payload):
+            return True, f"GET {path} -> 200 {json.dumps(payload, default=str)[:120]}"
+        findings.append(f"GET {path} -> 200 JSON object without opencode keys: {text[:120]}")
+    return False, "; ".join(findings) or "no probe attempted"
 
 
 class OpenCodeHarness:
@@ -284,16 +338,23 @@ class OpenCodeHarness:
 
         A server this instance started is owned by it: the handle is kept so the
         child is terminated on failure paths, at interpreter exit, and by
-        ``shutdown_server``. A server that was already listening is left alone.
+        ``shutdown_server``. A server that was already listening is left alone —
+        but only after ``probe_serve_listener`` confirms it is an opencode
+        server, so evaluation traffic never goes to a foreign process.
         """
         url = f"http://{host}:{port}"
         if self._port_open(host, port):
             if self._server_process is None:
-                # Identity of an already-listening server cannot be verified from
-                # here — say plainly that this run attaches to someone else's proc.
+                is_opencode, found = probe_serve_listener(url)
+                if not is_opencode:
+                    raise ServeListenerMismatchError(
+                        f"port {port} is open but the listener at {url} is not an opencode "
+                        f"serve instance — {found}. Nothing is attached and the run stops; "
+                        f"stop the other process, or point skill-cert at a free port."
+                    )
                 logger.warning(
-                    "attaching to an existing listener on %s that this process did not "
-                    "start; it will not be terminated by shutdown_server",
+                    "attaching to an existing opencode serve listener on %s that this process "
+                    "did not start; it will not be terminated by shutdown_server",
                     url,
                 )
             self._attach_url = url

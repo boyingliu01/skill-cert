@@ -118,6 +118,27 @@ def largest_first_extract(response: str) -> dict[str, Any] | None:
     return None
 
 
+# Names of the four fallback levels, in the order ``extract_json`` tries them, so
+# a caller can report *which* level produced the object instead of only that it
+# produced one. A model that quietly needs level 3 is worth seeing.
+#
+# ``largest-first`` is listed because the chain is documented as four levels, but
+# it can never be the level that matches: it enumerates exactly the same
+# candidate blocks as ``balanced`` (every '{' scanned to its depth-0 close) and
+# only reorders them, so whenever it would return an object, ``balanced`` has
+# already returned one. The engine therefore has three live levels, not four.
+JSON_LEVELS: tuple[str, ...] = ("fences", "balanced", "largest-first", "strict=False")
+
+
+def extract_json_with_level(response: str) -> tuple[dict[str, Any], int] | None:
+    """``extract_json`` plus the index into ``JSON_LEVELS`` of the level that matched.
+
+    Returns ``None`` when nothing parsed. Prefer ``extract_json`` unless the
+    winning level matters: this is the same code path, one tuple wider.
+    """
+    return _extract(response, with_level=True)
+
+
 def extract_json(response: str) -> dict[str, Any] | None:
     """Extract JSON object from LLM response using 4-level fallback.
 
@@ -126,6 +147,15 @@ def extract_json(response: str) -> dict[str, Any] | None:
     Strategy 3: Largest-first — try all {..} blocks largest to smallest (with repair)
     Strategy 4: json.loads with strict=False on full response (with repair)
     """
+    return _extract(response, with_level=False)
+
+
+def _extract(response: str, *, with_level: bool) -> Any:
+    """The shared 4-level chain; ``with_level`` selects the tuple return shape."""
+
+    def _hit(parsed: dict[str, Any], level: int):
+        return (parsed, level) if with_level else parsed
+
     if not response or not response.strip():
         return None
 
@@ -140,22 +170,22 @@ def extract_json(response: str) -> dict[str, Any] | None:
             if repaired is not None:
                 parsed = json.loads(repaired)
                 if isinstance(parsed, dict):
-                    return parsed
+                    return _hit(parsed, 0)
             parsed = json.loads(candidate)
             if isinstance(parsed, dict):
-                return parsed
+                return _hit(parsed, 0)
     except (json.JSONDecodeError, ValueError):
         pass
 
     # Strategy 2: Balanced brace extraction — find first valid outermost {..}
     result = balanced_brace_extract(response)
     if result is not None:
-        return result
+        return _hit(result, 1)
 
     # Strategy 3: Largest-first — find all {..} blocks, try largest first
     result = largest_first_extract(response)
     if result is not None:
-        return result
+        return _hit(result, 2)
 
     # Strategy 4: json.loads with strict=False on full response (with repair)
     try:
@@ -163,10 +193,10 @@ def extract_json(response: str) -> dict[str, Any] | None:
         if repaired is not None:
             parsed = json.loads(repaired, strict=False)
             if isinstance(parsed, dict):
-                return parsed
+                return _hit(parsed, 3)
         parsed = json.loads(response, strict=False)
         if isinstance(parsed, dict):
-            return parsed
+            return _hit(parsed, 3)
     except (json.JSONDecodeError, ValueError):
         pass
 
@@ -180,10 +210,10 @@ def extract_json(response: str) -> dict[str, Any] | None:
             if repaired is not None:
                 parsed = json.loads(repaired, strict=False)
                 if isinstance(parsed, dict):
-                    return parsed
+                    return _hit(parsed, 3)
             parsed = json.loads(candidate, strict=False)
             if isinstance(parsed, dict):
-                return parsed
+                return _hit(parsed, 3)
     except (json.JSONDecodeError, ValueError):
         pass
 

@@ -8,6 +8,8 @@ import json
 import os
 import shutil
 import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -17,8 +19,10 @@ from adapters.harness import (
     DshHarness,
     HarnessRunResult,
     OpenCodeHarness,
+    ServeListenerMismatchError,
     extract_skill_name,
     parse_events,
+    probe_serve_listener,
 )
 
 E2E_ENABLED = (
@@ -438,11 +442,109 @@ def test_run_task_warns_when_sandbox_holds_two_skills(tmp_path, caplog):
 # -- serve mode -----------------------------------------------------------------
 
 
-def test_ensure_server_attaches_when_port_open():
+class _ProbeHandler(BaseHTTPRequestHandler):
+    """Minimal stand-in for a listener on the serve port."""
+
+    # set per subclass by the fixture factories below
+    routes: dict = {}
+    silent = False
+
+    def do_GET(self):  # noqa: N802 - required by BaseHTTPRequestHandler
+        if self.silent:  # accept the connection, then never answer
+            return
+        payload = self.routes.get(self.path)
+        if payload is None:
+            self.send_error(404, "not found")
+            return
+        body, content_type = payload
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):  # keep pytest output clean
+        pass
+
+
+def _start_stub(routes=None, silent=False) -> ThreadingHTTPServer:
+    handler = type("Bound", (_ProbeHandler,), {"routes": routes or {}, "silent": silent})
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def _json_body(payload: dict) -> tuple[bytes, str]:
+    return json.dumps(payload).encode(), "application/json"
+
+
+OPENCODE_HEALTH = {"/global/health": _json_body({"healthy": True, "version": "1.18.21"})}
+OPENCODE_DOC = {"/doc": _json_body({"openapi": "3.1.0", "paths": {"/session": {}}})}
+FOREIGN_SERVICE = {
+    "/global/health": _json_body({"service": "metrics"}),
+    "/doc": _json_body({"service": "metrics"}),
+}
+
+
+@pytest.fixture
+def stub_server():
+    servers: list[ThreadingHTTPServer] = []
+
+    def _start(**kwargs):
+        server = _start_stub(**kwargs)
+        servers.append(server)
+        return "127.0.0.1", server.server_address[1]
+
+    yield _start
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
+
+def test_probe_serve_listener_accepts_the_health_endpoint(stub_server):
+    host, port = stub_server(routes=OPENCODE_HEALTH)
+
+    is_opencode, found = probe_serve_listener(f"http://{host}:{port}")
+
+    assert is_opencode
+    assert "1.18.21" in found
+
+
+def test_probe_serve_listener_accepts_the_openapi_document(stub_server):
+    """An older build without /global/health still identifies itself through /doc."""
+    host, port = stub_server(routes=OPENCODE_DOC)
+
+    is_opencode, _found = probe_serve_listener(f"http://{host}:{port}")
+
+    assert is_opencode
+
+
+def test_probe_serve_listener_rejects_a_foreign_json_service(stub_server):
+    host, port = stub_server(routes=FOREIGN_SERVICE)
+
+    is_opencode, found = probe_serve_listener(f"http://{host}:{port}")
+
+    assert not is_opencode
+    assert "without opencode keys" in found
+
+
+def test_probe_serve_listener_rejects_a_listener_that_never_answers(stub_server):
+    """A raw socket that accepts but does not speak HTTP must not be attached to."""
+    host, port = stub_server(silent=True)
+
+    is_opencode, found = probe_serve_listener(f"http://{host}:{port}", timeout_s=0.5)
+
+    assert not is_opencode
+    assert "no HTTP response" in found
+
+
+def test_ensure_server_attaches_when_port_open(stub_server):
+    host, port = stub_server(routes=OPENCODE_HEALTH)
     harness = OpenCodeHarness(model="prov/m")
-    with patch.object(OpenCodeHarness, "_port_open", return_value=True):
-        url = harness.ensure_server()
-    assert url == "http://127.0.0.1:4096"
+
+    url = harness.ensure_server(host=host, port=port)
+
+    assert url == f"http://{host}:{port}"
     assert harness._attach_url == url
 
 
@@ -457,26 +559,40 @@ def test_ensure_server_raises_when_opencode_dies():
                 harness.ensure_server(wait_s=0.1)
 
 
-def test_ensure_server_does_not_spawn_when_the_port_is_already_open():
+def test_ensure_server_does_not_spawn_when_the_port_is_already_open(stub_server):
+    host, port = stub_server(routes=OPENCODE_HEALTH)
     harness = OpenCodeHarness(model="prov/m")
-    with patch.object(OpenCodeHarness, "_port_open", return_value=True):
-        with patch("adapters.harness.opencode_harness.subprocess.Popen") as mock_popen:
-            harness.ensure_server()
+    with patch("adapters.harness.opencode_harness.subprocess.Popen") as mock_popen:
+        harness.ensure_server(host=host, port=port)
 
     mock_popen.assert_not_called()
     assert harness._server_process is None
 
 
-def test_ensure_server_warns_when_attaching_to_a_foreign_listener(caplog):
-    """A server on 4096 that this process did not start must be named out loud."""
+def test_ensure_server_warns_when_attaching_to_a_foreign_listener(stub_server, caplog):
+    """A server on the port that this process did not start must be named out loud."""
     import logging
 
+    host, port = stub_server(routes=OPENCODE_HEALTH)
     harness = OpenCodeHarness(model="prov/m")
     with caplog.at_level(logging.WARNING):
-        with patch.object(OpenCodeHarness, "_port_open", return_value=True):
-            harness.ensure_server()
+        harness.ensure_server(host=host, port=port)
 
     assert "did not start" in caplog.text
+
+
+def test_ensure_server_refuses_a_foreign_listener(stub_server):
+    """A non-opencode process on the serve port must fail, not receive evaluation traffic."""
+    host, port = stub_server(routes=FOREIGN_SERVICE)
+    harness = OpenCodeHarness(model="prov/m")
+
+    with pytest.raises(ServeListenerMismatchError) as excinfo:
+        harness.ensure_server(host=host, port=port)
+
+    assert str(port) in str(excinfo.value)
+    assert "metrics" in str(excinfo.value)
+    assert harness._attach_url is None
+    assert harness._server_process is None
 
 
 def test_ensure_server_terminates_a_child_that_never_becomes_ready():

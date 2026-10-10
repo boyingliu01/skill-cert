@@ -8,7 +8,7 @@ from typing import Any
 from engine.classifier import classify_output_type
 from engine.constants import CoverageThresholds, TestGenLimits
 from engine.deadline import PhaseTimer
-from engine.json_extract import extract_json
+from engine.json_extract import JSON_LEVELS, extract_json, extract_json_with_level
 
 logger = logging.getLogger(__name__)
 
@@ -622,12 +622,23 @@ Minimum requirements:
 - At least 2 error handling test cases
 """
 
-    def _parse_evals_response(self, response: str) -> dict[str, Any]:
-        parsed = extract_json(response)
+    def _log_json_level(self, level: int) -> None:
+        """Record which fallback rung produced the object, so a repair-hungry model shows."""
+        if level:
+            logger.debug(
+                "extract_json recovered the object at level %d (%s) of %s",
+                level + 1,
+                JSON_LEVELS[level],
+                " → ".join(JSON_LEVELS),
+            )
 
-        if parsed is None:
+    def _parse_evals_response(self, response: str) -> dict[str, Any]:
+        hit = extract_json_with_level(response)
+        if hit is None:
             logger.warning("Could not parse JSON from model response, using template")
             return self.minimum_evals_template
+        parsed, level = hit
+        self._log_json_level(level)
 
         if "eval_cases" not in parsed:
             for key in ["evals", "cases", "test_cases", "evaluations", "eval"]:
@@ -1081,14 +1092,17 @@ Return a JSON object with:
 """
 
     def _parse_review_response(self, response: str, current_coverage: float) -> dict[str, Any]:
-        parsed = extract_json(response)
+        hit = extract_json_with_level(response)
 
-        if parsed is None:
+        if hit is None:
             return {
                 "coverage": current_coverage,
                 "gaps": ["Could not parse review response"],
                 "needs_improvement": True,
             }
+
+        parsed, level = hit
+        self._log_json_level(level)
 
         if "coverage" not in parsed:
             parsed["coverage"] = current_coverage

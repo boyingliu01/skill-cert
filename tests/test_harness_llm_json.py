@@ -110,3 +110,26 @@ def test_chat_json_still_passes_schema_when_supported():
     chat_json(adapter, "prompt", SCHEMA)
 
     assert adapter.calls[0]["response_format"] == SCHEMA
+
+
+def test_chat_json_logs_the_level_that_rescued_the_response(caplog):
+    """A model that only yields parseable JSON at the last rung must be visible."""
+    import logging
+
+    from engine.harness.llm_json import _parse_json
+
+    with caplog.at_level(logging.DEBUG):
+        assert _parse_json('{"a": "x\x01y"}') == {"a": "x\x01y"}
+
+    assert "level 4 (strict=False)" in caplog.text
+
+
+def test_chat_json_stays_quiet_when_the_response_needed_no_repair(caplog):
+    import logging
+
+    from engine.harness.llm_json import _parse_json
+
+    with caplog.at_level(logging.DEBUG):
+        assert _parse_json('{"a": 1}') == {"a": 1}
+
+    assert "extract_json recovered" not in caplog.text

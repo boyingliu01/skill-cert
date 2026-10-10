@@ -49,9 +49,19 @@ class SecurityBlockedError(RuntimeError):
 SCANNED_SUFFIXES = frozenset(
     {".md", ".py", ".sh", ".js", ".ts", ".txt", ".yaml", ".yml", ".json", ".toml"}
 )
-# Companion files are scanned in overlapping chunks, so memory stays bounded and
-# a payload cannot hide on a chunk boundary; MAX_SCANNED_BYTES_PER_FILE is the
-# outer limit past which the remainder is reported as unscanned rather than read.
+# Companion files are scanned in overlapping chunks so each scan call hands the
+# scanner a bounded string; MAX_SCANNED_BYTES_PER_FILE is the outer limit past
+# which the remainder is reported as unscanned rather than read.
+# SCAN_CHUNK_OVERLAP is what keeps a payload from hiding on a chunk boundary —
+# but only for matches SHORTER than the overlap. Consecutive windows advance by
+# SCAN_CHUNK_BYTES - SCAN_CHUNK_OVERLAP, so a match is guaranteed to lie inside
+# some window only while it fits in the overlap tail; a longer one is found only
+# when its start happens to leave enough room in the window it lands on. Most
+# scanner patterns are short anchored phrases, but several use ``.*`` with
+# re.DOTALL and can match far past 4 KB — for those, detection is offset-
+# dependent, so a payload of that shape deliberately placed at a window tail is
+# a known miss rather than a bug. A new pattern that must match more than
+# SCAN_CHUNK_OVERLAP bytes has to bring the overlap up with it.
 SCAN_CHUNK_BYTES = 256 * 1024
 SCAN_CHUNK_OVERLAP = 4096
 MAX_SCANNED_BYTES_PER_FILE = 4 * 1024 * 1024
@@ -63,8 +73,9 @@ def scan_skill_bundle(skill_dir: Path, skill_content: str, skill_name: str) -> S
 
     ``harness.prepare`` copies the entire skill directory into the sandbox, so
     companion scripts and resources would otherwise reach the runtime unscanned.
-    Scanning runs past the first chunk (with overlap, so a pattern cannot sit on
-    a chunk boundary) — a payload parked beyond 256 KB used to slip through — and
+    Scanning runs past the first chunk (with an overlap tail, so a match shorter
+    than ``SCAN_CHUNK_OVERLAP`` cannot sit on a chunk boundary) — a payload
+    parked beyond 256 KB used to slip through — and
     the blind spots that remain (files with an unscannable suffix, unreadable
     files, anything past ``MAX_SCANNED_BYTES_PER_FILE``) are counted into
     ``report.summary["bundle"]`` and logged, because a silent skip is how a
@@ -184,20 +195,30 @@ def _pair_delta(task: Task, records: list[RunRecord], dimension: str) -> float |
 
 
 def compute_deltas(tasks: list[Task], records: list[RunRecord]) -> list[TaskDelta]:
-    """Per-task delta = mean(with) - mean(without) per dimension."""
+    """Per-task delta = mean(with) - mean(without) per dimension, plus trigger rate."""
     return [
         TaskDelta(
             task_id=task.id,
             task_completion_delta=_pair_delta(task, records, "task_completion"),
             instruction_following_delta=_pair_delta(task, records, "instruction_following"),
+            trigger_rate=compute_trigger_rate(records, task_id=task.id),
         )
         for task in tasks
     ]
 
 
-def compute_trigger_rate(records: list[RunRecord]) -> float | None:
-    """Share of with-runs where the native skill tool fired (real L1)."""
-    with_runs = [r for r in records if r.condition == "with_skill"]
+def compute_trigger_rate(records: list[RunRecord], task_id: str | None = None) -> float | None:
+    """Share of with-runs where the native skill tool fired (real L1).
+
+    ``task_id`` narrows the population to one task; the advisory TRIGGER_WEAK
+    threshold is applied to the aggregate, but a skill that fires on half the
+    tasks and never on the other half is only visible per task.
+    """
+    with_runs = [
+        r
+        for r in records
+        if r.condition == "with_skill" and (task_id is None or r.task_id == task_id)
+    ]
     if not with_runs:
         return None
     return sum(1 for r in with_runs if r.skill_loaded) / len(with_runs)
@@ -208,7 +229,13 @@ def compute_verdicts(
     mean_tc_delta: float | None,
     trigger_rate: float | None,
 ) -> list[str]:
-    """MVP decision rules — advisory hints only, no hard PASS/FAIL."""
+    """MVP decision rules — advisory hints only, no hard PASS/FAIL.
+
+    The three numbers below are a recommendation, not a policy: nothing gates on
+    them, and the harness report publishes the quantities they read (aggregate on
+    ``HarnessEvalReport``, per task on ``TaskDelta``) so a downstream automation
+    can set its own bar.
+    """
     verdicts: list[str] = []
     if mean_if_delta is not None and mean_if_delta >= 5:
         verdicts.append("SKILL_EFFECTIVE")
@@ -222,6 +249,32 @@ def compute_verdicts(
     if trigger_rate is not None and trigger_rate < 0.5:
         verdicts.append("TRIGGER_WEAK")
     return verdicts
+
+
+def judge_circularity(model_label: str, judge_model_name: str) -> str:
+    """Circularity note when the judge shares the tested model's family, else ''.
+
+    One function serves the CLI warning and the report so stderr and the written
+    report cannot disagree about a run that was already judged. The match is
+    family-level and the judge name is taken as configured, so the same model
+    behind two provider prefixes (``openai/gpt-4`` vs an azure deployment) is not
+    detected, and two names that map to no known family are not treated as a
+    match either.
+    """
+    if not model_label or not judge_model_name:
+        return ""
+    from engine.runner import infer_model_family  # lazy: runner pulls the heavy pipeline in
+
+    tested = model_label.split("/", 1)[-1]
+    family = infer_model_family(tested)
+    if family == "unknown" or family != infer_model_family(judge_model_name):
+        return ""
+    return (
+        f"judge model '{judge_model_name}' is in the same family as the tested model "
+        f"'{tested}' — circularity risk: scores may be self-referential "
+        "(family-level heuristic, matched on the names as configured; provider "
+        "prefixes are not resolved)"
+    )
 
 
 def _mean_std(values: list[float]) -> tuple[float | None, float | None]:
@@ -320,6 +373,7 @@ class HarnessEvaluator:
             records=records,
             skill_name=skill_name,
             skill_path=str(skill_path),
+            eval_id=eval_id,
             model_label=model_label,
             leakage_check=gen.leakage_check,
         )
@@ -344,8 +398,11 @@ class HarnessEvaluator:
         self.harness.title = f"skill-cert/{eval_id}/{condition}"
         try:
             self.harness.prepare(sandbox, skill_dir if condition == "with_skill" else None)
-            for input_file in task.input_files:
-                self._write_input_file(sandbox, input_file.path, input_file.content)
+            skipped_inputs = [
+                input_file.path
+                for input_file in task.input_files
+                if not self._write_input_file(sandbox, input_file.path, input_file.content)
+            ]
             result = self.harness.run_task(task.description, sandbox)
             tool_sequence = [
                 str((ev.get("part") or {}).get("tool") or "?")
@@ -366,6 +423,7 @@ class HarnessEvaluator:
                 cost=result.cost,
                 duration_s=result.duration_s,
                 error=result.error,
+                skipped_inputs=skipped_inputs,
             )
         finally:
             # the eval-id directory itself is dropped once in evaluate()
@@ -373,14 +431,20 @@ class HarnessEvaluator:
                 shutil.rmtree(sandbox, ignore_errors=True)
 
     @staticmethod
-    def _write_input_file(sandbox: Path, rel_path: str, content: str) -> None:
-        """Write an input file into the sandbox, rejecting path traversal."""
+    def _write_input_file(sandbox: Path, rel_path: str, content: str) -> bool:
+        """Write an input file into the sandbox, rejecting path traversal.
+
+        Returns whether the file actually landed — a rejected one leaves the run
+        without the fixture its task was written against, which the record has
+        to carry.
+        """
         target = (sandbox / rel_path).resolve()
         if not target.is_relative_to(sandbox.resolve()):
             logger.warning("input file escapes sandbox, skipped: %s", rel_path)
-            return
+            return False
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+        return True
 
     # -- Phase 4 -------------------------------------------------------------
 
@@ -434,6 +498,7 @@ class HarnessEvaluator:
         records: list[RunRecord],
         skill_name: str,
         skill_path: str,
+        eval_id: str,
         model_label: str,
         leakage_check: str,
     ) -> HarnessEvalReport:
@@ -451,7 +516,8 @@ class HarnessEvaluator:
 
         return HarnessEvalReport(
             skill_name=skill_name,
-            skill_path=skill_path,
+            skill_path=str(skill_path),
+            eval_id=eval_id,
             model=model_label,
             judge_model=self.judge_model_name,
             harness=self.harness_label,
@@ -466,6 +532,7 @@ class HarnessEvaluator:
             std_tc_delta=std_tc,
             std_if_delta=std_if,
             verdicts=compute_verdicts(mean_if, mean_tc, trigger),
+            judge_circularity=judge_circularity(model_label, self.judge_model_name),
             total_cost=sum(costs) if costs else None,
             total_duration_s=sum(r.duration_s for r in records),
         )

@@ -47,6 +47,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", default="./results", help="Output directory")
     parser.add_argument(
+        "--keep-history",
+        action="store_true",
+        help="Write each run into an <eval_id>/ subdirectory of --output instead of "
+        "overwriting the deterministic <skill>-harness-report.md/.json pair",
+    )
+    parser.add_argument(
         "--serve", action="store_true", help="Reuse a persistent 'opencode serve' instance"
     )
     parser.add_argument(
@@ -84,19 +90,14 @@ def _resolve_judge(judge_model: str | None):
 def _warn_circularity(model: str, judge_model: str) -> None:
     """Warn (never block) when judge shares a model family with the tested model.
 
-    Heuristic on purpose: the judge name is matched as configured, so the same
-    underlying model under two provider prefixes (``openai/gpt-4`` vs an azure
-    deployment) is not detected here.
+    The note is the same string the report carries, so a run whose stderr was
+    discarded still shows the caveat where its scores are read.
     """
-    from engine.runner import infer_model_family
+    from engine.harness.evaluator import judge_circularity
 
-    tested = model.split("/", 1)[-1]
-    if infer_model_family(tested) == infer_model_family(judge_model):
-        print(
-            f"WARNING: judge model '{judge_model}' is in the same family as the tested "
-            f"model '{tested}' — circularity risk (proceeding anyway)",
-            file=sys.stderr,
-        )
+    note = judge_circularity(model, judge_model)
+    if note:
+        print(f"WARNING: {note} (proceeding anyway)", file=sys.stderr)
 
 
 def _fmt(value: float | None) -> str:
@@ -146,7 +147,7 @@ def _handle_harness(argv: list[str]) -> int:
         print(f"[harness] skill={skill_path.name} backend=opencode model={args.model}")
         print(f"[harness] judge={judge_name} tasks={args.tasks} runs={args.runs}")
         report = evaluator.evaluate(skill_path, n_tasks=args.tasks, model_label=args.model)
-        md_path, json_path = write_report(report, Path(args.output))
+        md_path, json_path = write_report(report, Path(args.output), args.keep_history)
 
         trigger = f"{report.trigger_rate:.0%}" if report.trigger_rate is not None else "n/a"
         print()

@@ -1,8 +1,14 @@
 """Tests for the engine-wide tolerant JSON extraction chain (engine/json_extract.py)."""
 
+import itertools
+
+import pytest
+
 from engine.json_extract import (
+    JSON_LEVELS,
     balanced_brace_extract,
     extract_json,
+    extract_json_with_level,
     largest_first_extract,
     repair_json_trailing_commas,
     strip_markdown_fences,
@@ -81,6 +87,66 @@ class TestExtractJson:
         """A brace in a string value must not break brace counting."""
         response = 'noise {"note": "a } brace"} tail'
         assert extract_json(response) == {"note": "a } brace"}
+
+
+class TestExtractJsonLevel:
+    """``extract_json_with_level`` names the rung that produced the object (issue: #99)."""
+
+    def test_plain_json_and_fences_report_the_first_level(self):
+        assert extract_json_with_level('{"a": 1}') == ({"a": 1}, 0)
+        assert extract_json_with_level('```json\n{"a": 1}\n```') == ({"a": 1}, 0)
+        assert JSON_LEVELS[0] == "fences"
+
+    def test_balanced_extraction_reports_the_second_level(self):
+        """Two sibling objects: the first{...}last slice cannot parse, braces can."""
+        hit = extract_json_with_level('{"a": 1} prose {"b": 2}')
+
+        assert hit is not None
+        parsed, level = hit
+        assert parsed == {"a": 1}
+        assert level == 1
+
+    def test_strict_false_reports_the_last_level(self):
+        """A raw control character only survives the strict=False rung."""
+        hit = extract_json_with_level('{"a": "x\x01y"}')
+
+        assert hit is not None
+        assert hit[1] == 3
+        assert JSON_LEVELS[3] == "strict=False"
+
+    def test_unparseable_response_reports_no_level(self):
+        assert extract_json_with_level("no json here at all") is None
+        assert extract_json_with_level("") is None
+
+    def test_extract_json_contract_is_unchanged(self):
+        """The dict | None entry point must keep returning exactly what it returned before."""
+        for response in ('{"a": 1}', '{"a": 1} prose {"b": 2}', '{"a": "x\x01y"}', "junk"):
+            hit = extract_json_with_level(response)
+            assert extract_json(response) == (hit[0] if hit else None)
+
+    def test_largest_first_is_never_the_rung_that_matches(self):
+        """Strategy 3 enumerates the same blocks as strategy 2, reordered.
+
+        So whenever it would yield an object, balanced has already yielded one and
+        the chain stops before reaching it. Pinned here because a caller that
+        branches on ``JSON_LEVELS`` must not budget for a fourth live outcome.
+        """
+        # the two strategies genuinely disagree on WHICH object wins...
+        response = '{"a": 1} {"larger": {"inner": 2}}'
+        assert balanced_brace_extract(response) == {"a": 1}
+        assert largest_first_extract(response) == {"larger": {"inner": 2}}
+        # ...yet the chain never reports the largest-first rung
+        assert extract_json_with_level(response)[1] == 1
+
+        atoms = ["{", "}", ":", "1", ","]
+        for length in range(1, 7):
+            for combo in itertools.product(atoms, repeat=length):
+                candidate = "".join(combo)
+                if (
+                    balanced_brace_extract(candidate) is None
+                    and largest_first_extract(candidate) is not None
+                ):
+                    pytest.fail(f"largest-first rescued a response balanced missed: {candidate!r}")
 
 
 class TestTrailingCommaRepair:
