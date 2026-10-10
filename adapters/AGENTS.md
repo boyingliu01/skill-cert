@@ -9,7 +9,8 @@ adapters/
 ├── base.py               # TokenUsage / LLMResponse models + abstract ModelAdapter (chat, chat_with_usage, batch_chat)
 ├── anthropic_compat.py   # Anthropic Claude adapter (uses anthropic SDK)
 ├── openai_compat.py      # OpenAI-compatible adapter over httpx (OpenAI, Azure, gateways, local models);
-│                         # honours extra_headers and passes response_format through
+│                         # passes response_format through and rejects extra_headers that would
+│                         # override an adapter-owned header (authorization, api-key, host, …)
 ├── factory.py            # create_adapter(model_config) — maps ModelConfig (incl. headers) to an adapter
 ├── pricing.py            # Model pricing table: 19 entries (Anthropic/OpenAI/Qwen/DeepSeek/Gemini + 2 whalecloud LOCAL at 0)
 └── harness/

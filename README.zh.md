@@ -536,7 +536,7 @@ skill-cert/
 ├── prompts/         # LLM prompt 模板 (judge, judge-trigger, judge-workflow, judge-output, harness-taskgen, harness-judge)
 ├── schemas/         # JSON schema（report.schema.json）
 ├── templates/       # Fallback eval 模板 (minimum-evals.json)
-├── tests/           # pytest 测试套件 — 1550 个测试，与 engine/ 模块 1:1 对应
+├── tests/           # pytest 测试套件 — 1575 个测试，与 engine/ 模块 1:1 对应
 └── results/         # 输出目录：{skill}-report.md / -result.json / -evals-cache.json；
                      # harness 运行写 {skill}-harness-report.md / -harness-report.json
 ```

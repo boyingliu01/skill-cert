@@ -26,7 +26,7 @@ skill-cert/
 ├── prompts/           # LLM prompt templates (.md files)
 ├── schemas/           # JSON schema: report.schema.json
 ├── templates/         # Eval fallback: minimum-evals.json
-├── tests/             # pytest suite — 1550 tests, mirrors engine/ 1:1
+├── tests/             # pytest suite — 1575 tests, mirrors engine/ 1:1
 └── results/           # Output: {skill}-report.md, {skill}-result.json, {skill}-evals-cache.json
 ```
 
@@ -136,7 +136,7 @@ ruff check . && ruff format .
 
 ## NOTES
 
-- 1550 tests collect (1 skipped)
+- 1575 tests collect (1 skipped)
 - Security probes: 80 patterns across 6 categories
 - L2 formula: normalized gain `Δ = (with - without) / without` (not absolute delta)
 - EnvelopeChecker is wired into L5 step efficiency scoring
@@ -144,3 +144,4 @@ ruff check . && ruff format .
 - API keys via environment variables (no hardcoded secrets)
 - Pricing table: 19 models in 5 families (Anthropic, OpenAI, Qwen, DeepSeek, Gemini, plus whalecloud LOCAL entries priced at 0)
 - No CI type-check job here: the mypy surface Gate 1 enforces is declared in `.xp-gate-mypy-scope`
+- Wheel builds ship `prompts/`, `templates/` and `schemas/` because `[tool.setuptools.packages.find]` runs with `namespaces = true` — those dirs have no `__init__.py`, so a new top-level data directory must be added to that `include` list (guarded by `tests/test_packaging.py`)
