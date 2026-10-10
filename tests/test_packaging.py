@@ -10,7 +10,16 @@ from pathlib import Path
 
 import pytest
 
-tomllib = pytest.importorskip("tomllib", reason="TOML parsing needs Python 3.11+")
+try:  # tomllib is 3.11+; the project still supports 3.10 (dev extra pulls tomli there)
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ModuleNotFoundError:
+        pytest.skip(
+            "TOML parsing needs Python 3.11+ or 'pip install tomli'",
+            allow_module_level=True,
+        )
 
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))

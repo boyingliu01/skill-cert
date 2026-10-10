@@ -55,6 +55,10 @@ dev = [
     "mypy>=1.0",
     "types-PyYAML>=6.0",
     "types-requests>=2.31",
+    # tests/test_packaging.py reads pyproject.toml itself; tomllib is 3.11+ only,
+    # so without this the wheel-content guard would skip silently on the minimum
+    # supported interpreter.
+    "tomli>=2.0; python_version < '3.11'",
 ]
 otlp = [
     "opentelemetry-api>=1.20",
