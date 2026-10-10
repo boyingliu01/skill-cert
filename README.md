@@ -517,7 +517,7 @@ ruff check . && ruff format .
 
 ```
 skill-cert/
-├── engine/          # Core pipeline: 31 modules + harness/ + reporters/ — parser, testgen, runner, grader,
+├── engine/          # Core pipeline: 32 modules + harness/ + reporters/ — parser, testgen, runner, grader,
 │                    # metrics, reporter, drift, envelope, security_probes, dialogue_evaluator,
 │                    # dialogue_runner, replay, simulator, integrations, reliability, maintainability,
 │                    # multi_skill, stress_test, stability, config, calibration, observability,
@@ -528,9 +528,10 @@ skill-cert/
 ├── prompts/         # LLM prompt templates (judge, judge-trigger, judge-workflow, judge-output, harness-taskgen, harness-judge)
 ├── schemas/         # JSON schema (report.schema.json)
 ├── templates/       # Fallback eval template (minimum-evals.json)
-├── tests/           # pytest suite — 1594 tests, mirrors engine/ modules 1:1
+├── tests/           # pytest suite — 1628 tests, mirrors engine/ modules 1:1
 └── results/         # Output: {skill}-report.md / -result.json / -evals-cache.json;
                      # harness runs write {skill}-harness-report.md / -harness-report.json
+                     # (--keep-history puts each round in a {eval-id}/ subdirectory instead)
 ```
 
 Note: `skill_cert/cli.py` was deleted (shadowed by `cli/` package directory).
@@ -574,6 +575,7 @@ While multi-model is supported, single-model evaluation cannot detect model depe
 - **Evaluation takes time**: Full evaluation (multi-model, dialogue) may take tens of minutes to hours, depending on eval count and model response speed.
 - **Results are model-dependent**: The same Skill may produce different results on different models. Use at least 2 models from different providers.
 - **Not 100% accurate**: Automated evaluation cannot fully replace human review, especially for complex behavior judgment. Use Skill-Cert as a supplement to human review.
+- **Harness verdicts are advisory**: the `skill-cert harness` report's `SKILL_EFFECTIVE` / `SKILL_REDUNDANT` / `TRIGGER_WEAK` labels come from thresholds hardcoded in `engine/harness/evaluator.py::compute_verdicts` (IF delta ≥ +5; |IF delta| < 3 and TC delta < 3; trigger rate < 50%). They are a recommendation, not a policy — nothing gates on them, and they are not configurable. The raw quantities they read (`mean_if_delta`, `mean_tc_delta`, `trigger_rate`) are published in both report formats, in aggregate and per task, so a reader can apply its own bar.
 - **Coverage < 70% blocks evaluation**: If the Skill structure is too simple or vague, sufficient tests may not be generated, blocking evaluation.
 - **Do not modify eval cases after execution**: Eval cases are locked after Phase 2 execution. Modification breaks evaluation integrity.
 

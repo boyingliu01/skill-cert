@@ -7,25 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned for v1 (from the v0.15.0 release walkthrough — all non-blocking)
+### Added — harness report surfaces the quantities behind its labels (#95, #96, #98, #99, #101)
+- **`TaskDelta.trigger_rate`**: `compute_deltas` now passes each task's own with-runs through
+  `compute_trigger_rate(records, task_id=...)`, and the per-task table gained a `Trigger`
+  column. Before this, `compute_verdicts` read aggregate IF/TC/trigger numbers to emit
+  `SKILL_EFFECTIVE` / `SKILL_REDUNDANT` / `TRIGGER_WEAK`, but published none of them, so
+  downstream automation had no choice but to treat those inline thresholds as a configuration
+  surface. The aggregate values are printed under the verdicts and the report states plainly
+  that the thresholds are a recommendation, not a policy — nothing gates on them.
+- **`RunRecord.skipped_inputs`**: a generated input file whose path escapes the sandbox is
+  refused by `_write_input_file`, which until now left the run looking like it simply had
+  fewer inputs. The refusal is now recorded per run and rendered as a `Skipped inputs` column.
+- **`HarnessEvalReport.eval_id`**: the per-run id was used for the sandbox directory and the
+  report title but never written into the report body, so a JSON consumer could not tell two
+  rounds apart. It is now a field, rendered in the header table.
+- **`--keep-history`**: harness reports overwrite the deterministic
+  `<skill>-harness-report.md/.json` pair by default; with the flag, each round is written into
+  a subdirectory named after its `eval_id` (path-sanitised) instead.
+- **`extract_json_with_level`** + **`JSON_LEVELS`**: the public `extract_json` contract is
+  unchanged, but callers that care *how hard the chain had to work* can now get the winning
+  level. `engine/harness/llm_json.py` logs it at debug and `engine/testgen.py` logs it for both
+  parse points, so a gateway drifting toward unparseable output is visible in the logs before
+  it becomes a failure.
 
+### Changed — `ensure_server` refuses a foreign listener (#100)
+An open `opencode serve` port the harness did not start used to be attached to on the strength
+of a TCP check alone. `probe_serve_listener` now asks the listener for itself (`/global/health`,
+`/doc`) and `ensure_server` raises `ServeListenerMismatchError` unless the answer carries
+opencode's keys — pointing at a different service no longer produces a stream of confusing
+per-run failures. Attaching to a real opencode server still just warns.
+
+### Docs
+- `judge_circularity` (the same-family model/judge warning) is echoed in the report as a
+  blockquote, not only on stderr, so an archived report carries its own caveat.
+- `SCAN_CHUNK_OVERLAP` documents its pattern-length assumption at the constant: only a match
+  shorter than the overlap is guaranteed to fall inside some window. This is a recorded blind
+  spot, not a bug — several `re.DOTALL` patterns in `engine/security_probes.py` can legitimately
+  match far more than 4 KB, so their detection is offset-dependent.
+- `README.md` / `README.zh.md` / `AGENTS.md` / `tests/AGENTS.md`: suite count 1594 → 1628
+  (1627 passed, 1 skipped).
+
+### Planned for v1 (from the v0.15.0 release walkthrough — all non-blocking)
 Filed as issues #95–#102 (label `v1-follow-up`), each with the seat id it came from and the
-acceptance criterion that seat asked for.
-- Report `mean_if_delta` / `mean_tc_delta` / `trigger_rate` alongside the advisory verdicts,
-  so downstream automation reads raw quantities instead of treating `compute_verdicts`'
-  inline thresholds as a configuration surface.
-- `RunRecord.skipped_inputs` for escaped generated input files — added together with a
-  consumer, not before.
-- `run_task(prompt, sandbox, title=...)` instead of the evaluator rewriting
-  `HarnessAdapter.title` per run, landed together with parallel double-runs.
-- `--keep-history` for harness reports instead of timestamped default filenames.
-- Which extraction level `extract_json` hit, without changing its return contract for the
-  four consumers (testgen, grader, taskgen, judge).
-- A lightweight identity probe before `ensure_server` attaches to a `opencode serve`
-  listener it did not start.
-- Echo the model/judge circularity warning in the advisory verdicts, not only on stderr.
-- Document the `SCAN_CHUNK_OVERLAP = 4 KB` assumption at the constant: a pattern longer
-  than the overlap and straddling a chunk boundary is not matched.
+acceptance criterion that seat asked for. #95, #96, #98, #99, #100, #101 and #102 are done above.
+- #97: `run_task(prompt, sandbox, title=...)` instead of the evaluator rewriting
+  `HarnessAdapter.title` per run — the acceptance criterion binds it to the change that
+  introduces parallel double-runs, and that change has not landed yet, so there is still no
+  point where a per-run title could be passed instead of mutated.
 
 ## [0.15.1] - 2026-10-10
 

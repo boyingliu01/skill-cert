@@ -525,7 +525,7 @@ ruff check . && ruff format .
 
 ```
 skill-cert/
-├── engine/          # 核心 pipeline：31 个模块 + harness/ + reporters/ — parser, testgen, runner, grader,
+├── engine/          # 核心 pipeline：32 个模块 + harness/ + reporters/ — parser, testgen, runner, grader,
 │                    # metrics, reporter, drift, envelope, security_probes, dialogue_evaluator,
 │                    # dialogue_runner, replay, simulator, integrations, reliability, maintainability,
 │                    # multi_skill, stress_test, stability, config, calibration, observability,
@@ -536,9 +536,10 @@ skill-cert/
 ├── prompts/         # LLM prompt 模板 (judge, judge-trigger, judge-workflow, judge-output, harness-taskgen, harness-judge)
 ├── schemas/         # JSON schema（report.schema.json）
 ├── templates/       # Fallback eval 模板 (minimum-evals.json)
-├── tests/           # pytest 测试套件 — 1594 个测试，与 engine/ 模块 1:1 对应
+├── tests/           # pytest 测试套件 — 1628 个测试，与 engine/ 模块 1:1 对应
 └── results/         # 输出目录：{skill}-report.md / -result.json / -evals-cache.json；
                      # harness 运行写 {skill}-harness-report.md / -harness-report.json
+                     # （--keep-history 改为每轮写入以 {eval-id} 命名的子目录）
 ```
 
 注：`skill_cert/cli.py` 已删除（被 `cli/` 包目录 shadow）。
@@ -582,6 +583,7 @@ skill-cert/
 - **评测时间较长**：完整评测（含多模型、多轮对话）可能需要数十分钟到数小时，取决于 eval 数量和模型响应速度。
 - **结果受模型影响**：同一 Skill 在不同模型上结果可能不同，建议至少用 2 个不同 provider 的模型评测。
 - **评测不是 100% 准确**：自动化评测无法完全替代人工评审，尤其是复杂行为判断。建议将 Skill-Cert 作为辅助工具，结合人工评审使用。
+- **harness 结论仅供参考**：`skill-cert harness` 报告里的 `SKILL_EFFECTIVE` / `SKILL_REDUNDANT` / `TRIGGER_WEAK` 标签来自 `engine/harness/evaluator.py::compute_verdicts` 中硬编码的阈值（IF 增量 ≥ +5；|IF 增量| < 3 且 TC 增量 < 3；触发率 < 50%）。它们是建议而非策略——没有任何环节据此阻断，阈值也不可配置。这些阈值读取的原始量（`mean_if_delta`、`mean_tc_delta`、`trigger_rate`）会在 Markdown 与 JSON 两种报告里同时给出总量与分任务值，读者可以自行设定标准。
 - **覆盖率 < 70% 会阻断**：如果 Skill 结构过于简单或模糊，可能无法生成足够测试，评测会被阻断。
 - **不要修改执行后的 eval 用例**：Phase 2 执行后 eval 用例被锁定，修改会破坏评测完整性。
 
