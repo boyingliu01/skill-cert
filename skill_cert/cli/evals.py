@@ -811,8 +811,10 @@ def _run_single_phase(
                     "operational_hooks": hk_result.operational_hooks,
                     "issues": hk_result.issues,
                 }
-                print(f"  Hooks Detection: {hk_result.score:.0f}/100 "
-                      f"({'PASS' if hk_result.passed else 'FAIL'})")
+                print(
+                    f"  Hooks Detection: {hk_result.score:.0f}/100 "
+                    f"({'PASS' if hk_result.passed else 'FAIL'})"
+                )
                 if hk_result.issues:
                     for issue in hk_result.issues:
                         print(f"    ℹ️ {issue}")

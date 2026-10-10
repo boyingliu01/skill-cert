@@ -42,9 +42,7 @@ class TestDetectHooks:
     def test_full_hooks_coverage(self):
         """SKILL.md with all hook categories scores high."""
         content = (
-            "---\nname: test\n---\n"
-            "/careful\n/freeze\n/guard\n"
-            "/context-save\n/context-restore\n"
+            "---\nname: test\n---\n/careful\n/freeze\n/guard\n/context-save\n/context-restore\n"
         )
         result = detect_hooks(content)
         assert result.score >= 80.0

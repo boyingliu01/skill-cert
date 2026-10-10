@@ -22,9 +22,9 @@ OPERATIONAL_HOOK_PATTERNS: list[str] = [
     r"/browse\b",
 ]
 
-ALL_HOOK_PATTERNS: list[tuple[str, str]] = [
-    ("safety", p) for p in SAFETY_HOOK_PATTERNS
-] + [("operational", p) for p in OPERATIONAL_HOOK_PATTERNS]
+ALL_HOOK_PATTERNS: list[tuple[str, str]] = [("safety", p) for p in SAFETY_HOOK_PATTERNS] + [
+    ("operational", p) for p in OPERATIONAL_HOOK_PATTERNS
+]
 
 
 @dataclass

@@ -257,22 +257,25 @@ class TestAnalyzeStructureQuality:
         """Small well-structured SKILL.md with routing and modules scores high."""
         from engine.progressive_disclosure import analyze_structure_quality
 
-        content = "\n".join([
-            "# My Skill",
-            "",
-            "## Description",
-            "A skill for doing things.",
-            "",
-            "## Routing Table",
-            "| Trigger | Module |",
-            "|----------|--------|",
-            "| build    | references/build.md |",
-            "| test     | references/test.md |",
-            "",
-            "## Workflow",
-            "1. Check trigger",
-            "2. Route to module",
-        ] + ["padding line " * 10] * 3)  # small file
+        content = "\n".join(
+            [
+                "# My Skill",
+                "",
+                "## Description",
+                "A skill for doing things.",
+                "",
+                "## Routing Table",
+                "| Trigger | Module |",
+                "|----------|--------|",
+                "| build    | references/build.md |",
+                "| test     | references/test.md |",
+                "",
+                "## Workflow",
+                "1. Check trigger",
+                "2. Route to module",
+            ]
+            + ["padding line " * 10] * 3
+        )  # small file
         result = analyze_structure_quality(content)
         assert result.score >= 20.0
         assert not result.skill_md_over_limit
@@ -283,12 +286,10 @@ class TestAnalyzeStructureQuality:
         """SKILL.md over 500 lines should trigger over_limit with deduction."""
         from engine.progressive_disclosure import analyze_structure_quality
 
-        content = "\n".join([
-            "# Large Skill",
-            "",
-            "## Routing Table",
-            "delegate to references/module.md"
-        ] + ["line " + str(i) for i in range(510)])
+        content = "\n".join(
+            ["# Large Skill", "", "## Routing Table", "delegate to references/module.md"]
+            + ["line " + str(i) for i in range(510)]
+        )
         result = analyze_structure_quality(content)
         assert result.skill_md_over_limit
         assert result.skill_md_line_count >= 500
@@ -299,14 +300,18 @@ class TestAnalyzeStructureQuality:
         """Over-limit SKILL.md without module refs gets extraction suggestion."""
         from engine.progressive_disclosure import analyze_structure_quality
 
-        content = "\n".join([
-            "# Large Skill Without Modules",
-        ] + ["content line " + str(i) for i in range(520)])
+        content = "\n".join(
+            [
+                "# Large Skill Without Modules",
+            ]
+            + ["content line " + str(i) for i in range(520)]
+        )
         result = analyze_structure_quality(content)
         assert result.skill_md_over_limit
         # Should have issue about extracting business logic
-        assert any("extract" in issue.lower() or "module" in issue.lower()
-                   for issue in result.issues)
+        assert any(
+            "extract" in issue.lower() or "module" in issue.lower() for issue in result.issues
+        )
 
     def test_has_routing_table_detected(self):
         """Routing table text should be detected."""
@@ -339,11 +344,14 @@ class TestAnalyzeStructureQuality:
         """Exactly 500 lines should NOT be over limit (boundary)."""
         from engine.progressive_disclosure import analyze_structure_quality
 
-        content = "\n".join([
-            "# Exactly 500",
-            "## Routing Table",
-            "delegate to references/module.md",
-        ] + ["line " + str(i) for i in range(497)])
+        content = "\n".join(
+            [
+                "# Exactly 500",
+                "## Routing Table",
+                "delegate to references/module.md",
+            ]
+            + ["line " + str(i) for i in range(497)]
+        )
         result = analyze_structure_quality(content)
         assert result.skill_md_line_count == 500
         assert not result.skill_md_over_limit

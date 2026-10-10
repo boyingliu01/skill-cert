@@ -532,44 +532,62 @@ For detailed results, see the JSON output.
         )
 
         # Build 5-dimension metric analyses via build_metric_analysis()
-        l1_analysis = build_metric_analysis("L1", {
-            "score": l1_score,
-            "total_trigger_evals": l1_details.get("total_trigger_evals", 0),
-            "passed_trigger_evals": l1_details.get("passed_trigger_evals", 0),
-            "fp_count": l1_details.get("fp_count", 0),
-            "fn_count": l1_details.get("fn_count", 0),
-        })
-        l2_analysis = build_metric_analysis("L2", {
-            "score": l2_score,
-            "improvement_percentage": l2_details.get("improvement_percentage", 0.0),
-            "with_skill_avg_pass_rate": l2_details.get("with_skill_avg_pass_rate", 0.0),
-            "without_skill_avg_pass_rate": l2_details.get("without_skill_avg_pass_rate", 0.0),
-        })
-        l3_analysis = build_metric_analysis("L3", {
-            "score": l3_score,
-            "step_coverage_ratio": l3_details.get("step_coverage_ratio", 0.0),
-        })
-        l4_analysis = build_metric_analysis("L4", {
-            "score": l4_score,
-            "stdev_deterministic_pass_rate": l4_details.get(
-                "stdev_deterministic_pass_rate", 0.0
-            ),
-            "runs": l4_details.get("runs", 1),
-        })
+        l1_analysis = build_metric_analysis(
+            "L1",
+            {
+                "score": l1_score,
+                "total_trigger_evals": l1_details.get("total_trigger_evals", 0),
+                "passed_trigger_evals": l1_details.get("passed_trigger_evals", 0),
+                "fp_count": l1_details.get("fp_count", 0),
+                "fn_count": l1_details.get("fn_count", 0),
+            },
+        )
+        l2_analysis = build_metric_analysis(
+            "L2",
+            {
+                "score": l2_score,
+                "improvement_percentage": l2_details.get("improvement_percentage", 0.0),
+                "with_skill_avg_pass_rate": l2_details.get("with_skill_avg_pass_rate", 0.0),
+                "without_skill_avg_pass_rate": l2_details.get("without_skill_avg_pass_rate", 0.0),
+            },
+        )
+        l3_analysis = build_metric_analysis(
+            "L3",
+            {
+                "score": l3_score,
+                "step_coverage_ratio": l3_details.get("step_coverage_ratio", 0.0),
+            },
+        )
+        l4_analysis = build_metric_analysis(
+            "L4",
+            {
+                "score": l4_score,
+                "stdev_deterministic_pass_rate": l4_details.get(
+                    "stdev_deterministic_pass_rate", 0.0
+                ),
+                "runs": l4_details.get("runs", 1),
+            },
+        )
         l5_score_val = num(metrics.get("l5_step_efficiency", 0.0))
-        l5_analysis = build_metric_analysis("L5", {
-            "score": l5_score_val,
-            "violations": metrics.get("l5_violations", 0),
-        })
+        l5_analysis = build_metric_analysis(
+            "L5",
+            {
+                "score": l5_score_val,
+                "violations": metrics.get("l5_violations", 0),
+            },
+        )
         l6_score_val = num(metrics.get("l6_trajectory_quality", 0.0))
         l6_analysis = build_metric_analysis("L6", {"score": l6_score_val})
-        drift_analysis = build_metric_analysis("drift", {
-            "models": len(config.get("models", [])),
-            "drift_detected": drift_data.get("drift_detected"),
-            "highest_severity": drift_data.get("highest_severity", "none"),
-            "max_variance": drift_data.get("max_variance", 0.0),
-            "average_variance": drift_data.get("average_variance", 0.0),
-        })
+        drift_analysis = build_metric_analysis(
+            "drift",
+            {
+                "models": len(config.get("models", [])),
+                "drift_detected": drift_data.get("drift_detected"),
+                "highest_severity": drift_data.get("highest_severity", "none"),
+                "max_variance": drift_data.get("max_variance", 0.0),
+                "average_variance": drift_data.get("average_variance", 0.0),
+            },
+        )
         l7_analysis = build_metric_analysis("L7", cost_analysis if cost_analysis else {})
         l8_analysis = build_metric_analysis("L8", latency_analysis if latency_analysis else {})
         reliability_analysis = build_metric_analysis(

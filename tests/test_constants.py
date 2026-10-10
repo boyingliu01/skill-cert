@@ -9,13 +9,22 @@ class TestMetricMetadata:
         from engine.constants import METRIC_METADATA
 
         expected_keys = {
-            "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8",
-            "drift", "security", "cost", "reliability",
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6",
+            "L7",
+            "L8",
+            "drift",
+            "security",
+            "cost",
+            "reliability",
         }
         actual_keys = set(METRIC_METADATA.keys())
         assert actual_keys == expected_keys, (
-            f"Missing: {expected_keys - actual_keys}, "
-            f"Extra: {actual_keys - expected_keys}"
+            f"Missing: {expected_keys - actual_keys}, Extra: {actual_keys - expected_keys}"
         )
 
     def test_each_entry_has_purpose_and_method(self):
@@ -64,14 +73,22 @@ class TestMetricMetadata:
         from engine.constants import METRIC_METADATA
 
         l4 = METRIC_METADATA["L4"]
-        assert "一致" in l4["purpose"] or "稳定" in l4["purpose"] or "consistency" in l4["purpose"].lower()
+        assert (
+            "一致" in l4["purpose"]
+            or "稳定" in l4["purpose"]
+            or "consistency" in l4["purpose"].lower()
+        )
 
     def test_l7_method_mentions_pricing(self):
         """L7 method should mention pricing/token cost calculation."""
         from engine.constants import METRIC_METADATA
 
         l7 = METRIC_METADATA["L7"]
-        assert "定价" in l7["method"] or "pricing" in l7["method"].lower() or "token" in l7["method"].lower()
+        assert (
+            "定价" in l7["method"]
+            or "pricing" in l7["method"].lower()
+            or "token" in l7["method"].lower()
+        )
 
     def test_security_method_mentions_probe_categories(self):
         """Security method should mention the 6 security probe categories."""
@@ -85,4 +102,8 @@ class TestMetricMetadata:
         from engine.constants import METRIC_METADATA
 
         drift = METRIC_METADATA["drift"]
-        assert "模型" in drift["purpose"] or "cross" in drift["purpose"].lower() or "一致性" in drift["purpose"]
+        assert (
+            "模型" in drift["purpose"]
+            or "cross" in drift["purpose"].lower()
+            or "一致性" in drift["purpose"]
+        )

@@ -163,8 +163,7 @@ METRIC_METADATA: dict[str, dict[str, str]] = {
     "L5": {
         "purpose": "验证Skill执行是否在操作边界内",
         "method": (
-            "EnvelopeChecker检查每次执行的步骤数、token消耗、"
-            "超时和工具调用数是否在限制范围内"
+            "EnvelopeChecker检查每次执行的步骤数、token消耗、超时和工具调用数是否在限制范围内"
         ),
     },
     "L6": {
