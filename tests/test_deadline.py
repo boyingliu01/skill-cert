@@ -144,13 +144,20 @@ def test_deadline_repr():
 # reference at class-definition time — patching the global later has no
 # effect on ``start_time``.  By patching the module-level name we affect
 # the ``elapsed`` / ``remaining`` / ``expired`` property reads.
+#
+# These tests also pass ``start_time=0.0`` explicitly: ``elapsed`` is
+# ``monotonic() - start_time``, and for a real epoch (seconds since boot on
+# Linux, uptime on Windows) ``(s + d) - s`` is not exactly ``d``.  The
+# boundary assertions below ask whether ``remaining`` has reached 0, so a
+# single float ulp decides the test — it passed locally and failed once on
+# CI for exactly that reason.
 
 
 def test_deadline_expired_mock_monotonic():
     """AC-019-02: Use mock time.monotonic to verify deadline.expired transitions."""
     from unittest.mock import patch
 
-    dl = Deadline(max_total_time=10.0)
+    dl = Deadline(start_time=0.0, max_total_time=10.0)
     real_start = dl.start_time
 
     with patch("engine.deadline.time.monotonic") as mock_time:
@@ -171,7 +178,7 @@ def test_deadline_elapsed_mock_monotonic():
     """AC-019-02: Verify elapsed property reflects simulated time passage."""
     from unittest.mock import patch
 
-    dl = Deadline(max_total_time=60.0)
+    dl = Deadline(start_time=0.0, max_total_time=60.0)
     real_start = dl.start_time
 
     with patch("engine.deadline.time.monotonic") as mock_time:
@@ -195,7 +202,7 @@ def test_adapter_timeout_floor_parametrized(remaining_input, expected_timeout):
     """AC-019-03: adapter_timeout respects 5s floor for various remaining values."""
     from unittest.mock import patch
 
-    dl = Deadline(max_total_time=remaining_input + 5.0)
+    dl = Deadline(start_time=0.0, max_total_time=remaining_input + 5.0)
     real_start = dl.start_time
 
     with patch("engine.deadline.time.monotonic") as mock_time:
