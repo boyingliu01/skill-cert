@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **CI**: `.github/workflows/skill-cert-action.yml` was an action definition placed in the
+  workflows directory — with no `on:` block, GitHub ran and failed it on every push. It now
+  lives at the repository root as `action.yml`, which is also where a consumer resolving
+  `uses: boyingliu01/skill-cert@<ref>` looks for it.
+
+### Planned for v1 (from the v0.15.0 release walkthrough — all non-blocking)
+- Report `mean_if_delta` / `mean_tc_delta` / `trigger_rate` alongside the advisory verdicts,
+  so downstream automation reads raw quantities instead of treating `compute_verdicts`'
+  inline thresholds as a configuration surface.
+- `RunRecord.skipped_inputs` for escaped generated input files — added together with a
+  consumer, not before.
+- `run_task(prompt, sandbox, title=...)` instead of the evaluator rewriting
+  `HarnessAdapter.title` per run, landed together with parallel double-runs.
+- `--keep-history` for harness reports instead of timestamped default filenames.
+- Which extraction level `extract_json` hit, without changing its return contract for the
+  four consumers (testgen, grader, taskgen, judge).
+- A lightweight identity probe before `ensure_server` attaches to a `opencode serve`
+  listener it did not start.
+- Echo the model/judge circularity warning in the advisory verdicts, not only on stderr.
+- Document the `SCAN_CHUNK_OVERLAP = 4 KB` assumption at the constant: a pattern longer
+  than the overlap and straddling a chunk boundary is not matched.
+
 ## [0.15.0] - 2026-10-10
 
 ### Added — Real-Harness Evaluation Path
