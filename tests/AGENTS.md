@@ -1,7 +1,7 @@
 # tests/ — Test Suite
 
 ## OVERVIEW
-pytest suite mirroring engine/ modules 1:1 — **58 test modules, 1510 tests** (1 skipped). Tests use standard pytest patterns: fixtures, parametrize, mock patches.
+pytest suite mirroring engine/ modules 1:1 — **60 test modules, 1539 tests** (1 skipped). Tests use standard pytest patterns: fixtures, parametrize, mock patches.
 
 ## STRUCTURE
 ```
@@ -14,7 +14,7 @@ tests/
 │                                 # structure_quality, progressive_disclosure, replay, config,
 │                                 # constants, trace_models, report_models, pricing, integrations,
 │                                 # openai_compat, anthropic_compat, adapters, …)
-├── test_harness_{taskgen,judge,evaluator,opencode}.py   # real-harness path
+├── test_harness_{taskgen,judge,llm_json,evaluator,opencode,util}.py   # real-harness path
 ├── *_p0 / *_p1 / *_routing / *_l7 / *_latency / *_cost  # behaviour-level extras
 ├── smoke / integration / cli_* / evals / single          # pipeline-level suites
 └── conftest.py                   # Shared fixtures (mock adapters — no live API in unit tests)

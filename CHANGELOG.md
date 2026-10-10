@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — Real-Harness Evaluation Path
 - **`skill-cert harness`**: independent second pipeline — taskgen derives tasks plus hidden rubrics from a SKILL.md, a real agent runtime executes each task twice (with and without the skill), and an LLM judge scores every rubric item via structured output (temp=0). Flags: `--harness opencode|dsh`, `--model`, `--judge-model`, `--tasks`, `--runs`, `--serve`, `--task-timeout`, `--keep-sandboxes`.
-- **engine/harness/**: `taskgen.py`, `evaluator.py`, `judge.py`, `report.py`, `llm_json.py`, `models.py` (`Task` / `Rubric` / `JudgeResult`).
+- **engine/harness/**: `taskgen.py`, `evaluator.py`, `judge.py`, `report.py`, `llm_json.py`, `models.py` (`Task` / `Rubric` / `JudgeResult`), `util.py` (prompt templates + path-safe names).
 - **adapters/harness/**: runtime backends — `opencode_harness.py` (JSON event stream) and `dsh_harness.py` behind the `HarnessAdapter` protocol in `base.py`.
 - **adapters/openai_compat.py** + **adapters/factory.py**: `response_format` and custom `extra_headers` are now threaded through to the request, so structured judge output survives gateways that strip provider defaults.
 - **prompts/**: `harness-taskgen.md`, `harness-judge.md`.
-- **Tests**: `test_harness_taskgen.py`, `test_harness_judge.py`, `test_harness_evaluator.py`, `test_harness_opencode.py` (24 files, +2,710 lines).
+- **Tests**: mirrored `test_harness_*` modules — taskgen, judge, evaluator, opencode backend, llm_json, util.
 
 ### Changed — Legacy Surface Removed
 - Dropped superseded engine modules and their mirrored tests: `skills_bench`, `trajectory_evaluator`, `gotchas_analyzer` / `gotchas_flywheel`, `adversarial`, `trigger_accuracy_eval`, together with historical `docs/plans` specs, delphi scripts, old schemas and prompts (50 files, −9,801 lines).
@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Drift reporting now distinguishes **"skipped"** (single model, nothing to compare) from **"no drift detected"**, in both JSON and Markdown reports.
 
 ### Fixed
+- **harness hardening (pre-release code walkthrough)**:
+  - the sandbox escape check for generated input files compared resolved paths with `startswith`, which a sibling directory sharing a prefix (`run` vs `run-evil`) passed; it now uses `Path.is_relative_to`.
+  - LLM-authored task ids and the SKILL.md name are reduced to traversal-free path components before they become sandbox directories or report filenames.
+  - taskgen/judge prompts are expanded in a single pass, so injected skill bodies or model outputs containing placeholder text (e.g. `{rubric_json}`) are no longer substituted twice, and a `---` rule inside a prompt template is no longer mistaken for the end of its frontmatter.
+  - a gateway that refuses `response_format` now raises a typed `StructuredOutputRejectedError` from `OpenAICompatAdapter`, instead of the caller matching `"400"` inside an error string.
+  - `RubricItem.points` is validated `≥ 1` (a zero-point dimension used to divide by zero), `RunRecord.condition` is a `Literal`, and the per-run `eval` directory is removed once from `evaluate()` rather than guessed at after every run.
+  - **engine/reporters/formatters.py**: report config redaction now drops `fallback_api_key` as well as `api_key`, and masks the values of configured `headers` (tunnel/auth headers carry tokens).
+  - the harness Markdown report labels its verdict section "Verdicts (advisory)" so the MVP hints cannot be read as PASS/FAIL.
 - **tests/test_deadline.py**: clock-advance assertions now wait ≥4 ticks; `time.monotonic()` on Windows is `GetTickCount64()` with 15.625 ms resolution, so the previous 10 ms sleeps failed intermittently.
 - **tests/conftest.py**: session-scoped home isolation keeps unit tests off the developer's `~/.skill-cert/models.yaml`. `os.path.expanduser()` prefers `USERPROFILE` over `HOME` on Windows, so the one CLI test that patched only `HOME` ran the full pipeline against a live LLM gateway; the suite is now ~80 s with no network access.
 
@@ -29,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.xp-gate-mypy-scope`**: declares the type-check surface (`engine`, `skill_cert`, `adapters`, `scripts`) for the quality gate's mypy step.
 - `AGENTS.md`, the per-directory agent guides and both READMEs realigned with the shipped engine (module inventory, L1–L8 thresholds, harness command surface, test counts).
 - Local virtualenv (510 tracked files) and a stale July sprint record removed from git; duplicate `build/` / `.venv/` ignore entries dropped and the CI history artifact ignored.
-- Suite: 1510 tests collected (1509 passed, 1 skipped).
+- Suite: 1539 tests collected (1538 passed, 1 skipped).
 
 ## [0.14.2] - 2026-07-15
 

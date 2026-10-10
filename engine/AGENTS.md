@@ -30,6 +30,9 @@ engine/
 │   ├── taskgen.py         # Tasks + hidden rubrics from a SKILL.md (structured output)
 │   ├── evaluator.py       # With/without-skill orchestration over adapters/harness backends
 │   ├── judge.py           # Per-rubric LLM judge (temp=0, response_format)
+│   ├── llm_json.py        # chat_json(): structured call + typed degradation to prompt-embedded JSON
+│   ├── models.py          # Task / Rubric / RunRecord / HarnessEvalReport (Pydantic v2)
+│   ├── util.py            # Prompt-template rendering + traversal-free path components
 │   └── report.py          # Markdown + JSON rendering for harness runs
 ├── reporters/             # builders.py — section preparation for reporter.py
 ├── classifier.py          # Output-type classifier routing assertion strategy
