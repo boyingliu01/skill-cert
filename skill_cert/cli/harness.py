@@ -103,6 +103,12 @@ def _fmt(value: float | None) -> str:
     return f"{value:+.1f}" if value is not None else "n/a"
 
 
+# Errors a user can act on from the message alone (no SKILL.md at that path, no
+# model configured, unknown --judge-model, rejected header config). Anything
+# outside this set is an engine fault and keeps its traceback so it can be filed.
+_EXPECTED_ERRORS: tuple[type[Exception], ...] = (FileNotFoundError, RuntimeError, ValueError)
+
+
 def _handle_harness(argv: list[str]) -> int:
     args = _build_parser().parse_args(argv[1:])
 
@@ -157,10 +163,13 @@ def _handle_harness(argv: list[str]) -> int:
         print("\nInterrupted.", file=sys.stderr)
         return EXIT_ERROR
     except Exception as e:
+        if isinstance(e, _EXPECTED_ERRORS):
+            print(f"ERROR: {e}", file=sys.stderr)
+            return EXIT_ERROR
         import traceback
 
-        # the stack is diagnostic output — it belongs on stderr, next to the
-        # one-line summary, so `2>/dev/null` silences both and `| tee` keeps both
+        # An unexpected failure keeps its stack, but on stderr and after a
+        # one-line summary: `2>/dev/null` silences both, `| tee` keeps both.
+        print(f"ERROR: unexpected failure: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        print(f"ERROR: {e}", file=sys.stderr)
         return EXIT_ERROR

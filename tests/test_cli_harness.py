@@ -62,3 +62,37 @@ def test_dsh_harness_is_rejected_before_any_instantiation(tmp_path, capsys):
 
     assert code == 1
     assert "dsh harness is not implemented" in capsys.readouterr().err
+
+
+def _run_until_error(tmp_path, monkeypatch, capsys, boom: Exception) -> tuple[int, str]:
+    """Drive _handle_harness to the failure the monkeypatched judge-resolution step raises."""
+    from skill_cert.cli import harness as mod
+
+    skill = tmp_path / "SKILL.md"
+    skill.write_text("---\nname: demo\n---\n\nbody\n", encoding="utf-8")
+
+    def _boom(_name):
+        raise boom
+
+    monkeypatch.setattr(mod, "_resolve_judge", _boom)
+    code = mod._handle_harness(["harness", "--skill", str(skill), "--model", "prov/m"])
+    return code, capsys.readouterr().err
+
+
+def test_expected_error_prints_a_clean_one_liner(tmp_path, monkeypatch, capsys):
+    """A user-actionable failure must not spray an internal stack at the terminal."""
+    code, err = _run_until_error(tmp_path, monkeypatch, capsys, RuntimeError("No LLM configured"))
+
+    assert code == 1
+    assert "ERROR: No LLM configured" in err
+    assert "Traceback" not in err
+
+
+def test_unexpected_error_keeps_the_traceback_after_the_summary(tmp_path, monkeypatch, capsys):
+    """An engine fault stays debuggable: summary line first, then the stack."""
+    code, err = _run_until_error(tmp_path, monkeypatch, capsys, KeyError("surprise"))
+
+    assert code == 1
+    assert "unexpected failure" in err
+    assert "Traceback (most recent call last)" in err
+    assert err.index("ERROR:") < err.index("Traceback")
