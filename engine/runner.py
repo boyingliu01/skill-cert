@@ -32,7 +32,7 @@ MODEL_FAMILIES: dict[str, str] = {
 }
 
 
-def _infer_model_family(model_name: str) -> str:
+def infer_model_family(model_name: str) -> str:
     """Infer model family from model name prefix. Returns 'unknown' if not matched."""
     lower = model_name.lower()
     for prefix, family in MODEL_FAMILIES.items():
@@ -49,7 +49,7 @@ def _detect_circularity_risk(
     Returns (risk_level, warnings_list) where risk_level is one of
     'none', 'low', 'medium', 'high'.
     """
-    families = {name: _infer_model_family(name) for name in model_names}
+    families = {name: infer_model_family(name) for name in model_names}
     unique_families = set(families.values())
     if len(unique_families) == len(model_names):
         return "none", []

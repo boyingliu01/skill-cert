@@ -38,6 +38,17 @@ def test_parser_rejects_non_integer_counts(flag, value):
         _build_parser().parse_args([*BASE, f"--{flag}", "abc"])
 
 
+def test_warn_circularity_uses_the_public_family_helper(capsys):
+    """The CLI must not reach into a private engine symbol for this check."""
+    from skill_cert.cli.harness import _warn_circularity
+
+    _warn_circularity("openai/gpt-4o", "gpt-4o-mini")
+    assert "circularity risk" in capsys.readouterr().err
+
+    _warn_circularity("deepseek/deepseek-chat", "gpt-4o-mini")
+    assert "circularity risk" not in capsys.readouterr().err
+
+
 def test_dsh_harness_is_rejected_before_any_instantiation(tmp_path, capsys):
     """The dsh stub stays behind the CLI guard — no adapter object is constructed."""
     from skill_cert.cli.harness import _handle_harness

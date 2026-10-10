@@ -88,10 +88,10 @@ def _warn_circularity(model: str, judge_model: str) -> None:
     underlying model under two provider prefixes (``openai/gpt-4`` vs an azure
     deployment) is not detected here.
     """
-    from engine.runner import _infer_model_family
+    from engine.runner import infer_model_family
 
     tested = model.split("/", 1)[-1]
-    if _infer_model_family(tested) == _infer_model_family(judge_model):
+    if infer_model_family(tested) == infer_model_family(judge_model):
         print(
             f"WARNING: judge model '{judge_model}' is in the same family as the tested "
             f"model '{tested}' — circularity risk (proceeding anyway)",
@@ -159,6 +159,8 @@ def _handle_harness(argv: list[str]) -> int:
     except Exception as e:
         import traceback
 
-        traceback.print_exc()
+        # the stack is diagnostic output — it belongs on stderr, next to the
+        # one-line summary, so `2>/dev/null` silences both and `| tee` keeps both
+        traceback.print_exc(file=sys.stderr)
         print(f"ERROR: {e}", file=sys.stderr)
         return EXIT_ERROR

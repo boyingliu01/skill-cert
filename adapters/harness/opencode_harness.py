@@ -162,9 +162,21 @@ class OpenCodeHarness:
         shutil.copytree(skill_dir, dest)
 
     def run_task(self, task_prompt: str, sandbox_dir: Path) -> HarnessRunResult:
-        """Run ``opencode run`` non-interactively and parse its event stream."""
+        """Run ``opencode run`` non-interactively and parse its event stream.
+
+        The prompt is the last argv element, so a leading ``-`` would be read as
+        an option by opencode's parser instead of as task text. No end-of-options
+        separator is verified for the pinned CLI version, so such a prompt is
+        refused: silently executing something else is worse than a failed run.
+        """
         if not task_prompt.strip():
             return HarnessRunResult(exit_code=-1, duration_s=0.0, error="task prompt is empty")
+        if task_prompt.lstrip().startswith("-"):
+            return HarnessRunResult(
+                exit_code=-1,
+                duration_s=0.0,
+                error="task prompt must not start with '-' (opencode would parse it as a flag)",
+            )
         if not sandbox_dir.is_dir():
             return HarnessRunResult(
                 exit_code=-1,
