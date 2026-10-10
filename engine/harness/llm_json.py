@@ -4,7 +4,7 @@ Strategy: call ``adapter.chat`` with an OpenAI-style ``response_format``
 json_schema; gateways that refuse the parameter raise
 ``StructuredOutputRejectedError``, which degrades to a plain call — the prompts
 already embed the JSON format — followed by the battle-tested
-``EvalGenerator._extract_json`` 4-level fallback chain.
+``engine.json_extract.extract_json`` 4-level fallback chain.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import logging
 from typing import Any
 
 from adapters.base import StructuredOutputRejectedError
+from engine.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,4 @@ def _parse_json(resp: str) -> Any:
         return json.loads(resp)
     except (json.JSONDecodeError, TypeError):
         pass
-    from engine.testgen import EvalGenerator  # lazy import — 4-level fallback chain
-
-    return EvalGenerator._extract_json(resp)
+    return extract_json(resp)
