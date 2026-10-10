@@ -33,7 +33,18 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["skill_cert*", "engine*", "adapters*"]
+# namespaces=true is what makes the three prompt/schema data directories
+# (prompts/, templates/, schemas/) ship in the wheel: they have no __init__.py,
+# so the default finder would drop them and every installed (non-editable) run
+# would FileNotFoundError in grader/taskgen/judge. Locators resolve them as
+# siblings of engine/ and skill_cert/, which is exactly the site-packages layout.
+namespaces = true
+include = ["skill_cert*", "engine*", "adapters*", "prompts*", "templates*", "schemas*"]
+
+[tool.setuptools.package-data]
+prompts = ["*.md"]
+templates = ["*.json"]
+schemas = ["*.json"]
 
 [project.optional-dependencies]
 dev = [
