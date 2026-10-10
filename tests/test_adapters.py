@@ -239,6 +239,27 @@ def test_openai_compat_extra_headers_sent():
     assert headers["Authorization"] == "Bearer test-key"
 
 
+def test_openai_compat_rejects_reserved_extra_headers():
+    """A configured header must not silently replace the adapter's own auth header."""
+    with pytest.raises(ValueError, match="adapter-owned headers"):
+        OpenAICompatAdapter(
+            base_url="https://x.example.com/v1",
+            api_key="test-key",
+            model="m",
+            extra_headers={"Authorization": "Bearer other", "X-Trace": "1"},
+        )
+
+
+def test_openai_compat_reserved_header_check_is_case_and_space_insensitive():
+    with pytest.raises(ValueError, match="api-key"):
+        OpenAICompatAdapter(
+            base_url="https://x.example.com/v1",
+            api_key="test-key",
+            model="m",
+            extra_headers={" API-Key ": "secret"},
+        )
+
+
 def test_factory_passes_headers_to_openai_adapter():
     from adapters.factory import create_adapter
     from engine.config import ModelConfig

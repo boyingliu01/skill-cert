@@ -106,11 +106,15 @@ def _coerce_rubric_items(raw: Any, prefix: str) -> list[RubricItem]:
             points = int(item.get("points") or 1)
         except (TypeError, ValueError):
             points = 1
+        if points < 1:
+            # silent correction would hide poor model output; keep it debug-visible
+            logger.debug("rubric item %s%d points %d clamped to 1", prefix, j + 1, points)
+            points = 1
         items.append(
             RubricItem(
                 id=str(item.get("id") or f"{prefix}{j + 1}"),
                 criterion=criterion,
-                points=max(1, points),
+                points=points,
             )
         )
     return items

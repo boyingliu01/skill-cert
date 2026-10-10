@@ -12,6 +12,17 @@ import sys
 from pathlib import Path
 
 
+def _positive_int(value: str) -> int:
+    """argparse type: reject 0/negatives instead of silently running an empty plan."""
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected an integer, got '{value}'") from None
+    if parsed < 1:
+        raise argparse.ArgumentTypeError(f"must be >= 1, got {parsed}")
+    return parsed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="skill-cert harness",
@@ -28,9 +39,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--judge-model",
         help="Configured model name for taskgen/judge (default: first configured model)",
     )
-    parser.add_argument("--tasks", type=int, default=6, help="Number of tasks (default: 6)")
     parser.add_argument(
-        "--runs", type=int, default=1, help="Repetitions per condition (default: 1)"
+        "--tasks", type=_positive_int, default=6, help="Number of tasks (default: 6)"
+    )
+    parser.add_argument(
+        "--runs", type=_positive_int, default=1, help="Repetitions per condition (default: 1)"
     )
     parser.add_argument("--output", default="./results", help="Output directory")
     parser.add_argument(
@@ -40,7 +53,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--keep-sandboxes", action="store_true", help="Keep run sandboxes for debugging"
     )
     parser.add_argument(
-        "--task-timeout", type=int, default=600, help="Per-run timeout in seconds (default: 600)"
+        "--task-timeout",
+        type=_positive_int,
+        default=600,
+        help="Per-run timeout in seconds (default: 600)",
     )
     return parser
 
@@ -66,7 +82,12 @@ def _resolve_judge(judge_model: str | None):
 
 
 def _warn_circularity(model: str, judge_model: str) -> None:
-    """Warn (never block) when judge shares a model family with the tested model."""
+    """Warn (never block) when judge shares a model family with the tested model.
+
+    Heuristic on purpose: the judge name is matched as configured, so the same
+    underlying model under two provider prefixes (``openai/gpt-4`` vs an azure
+    deployment) is not detected here.
+    """
     from engine.runner import _infer_model_family
 
     tested = model.split("/", 1)[-1]

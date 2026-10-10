@@ -15,7 +15,9 @@ Event-stream parsing rules come from the M1 spike
 
 from __future__ import annotations
 
+import atexit
 import json
+import logging
 import re
 import shutil
 import socket
@@ -24,6 +26,8 @@ import time
 from pathlib import Path
 
 from .base import HarnessRunResult
+
+logger = logging.getLogger(__name__)
 
 # opencode requires skill directory names to match this pattern
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -35,14 +39,19 @@ SERVE_PORT = 4096
 
 
 def extract_skill_name(skill_dir: Path) -> str:
-    """Parse the ``name`` field from SKILL.md frontmatter and validate it."""
+    """Parse the ``name`` field from SKILL.md frontmatter and validate it.
+
+    The search is limited to the frontmatter block: a body line such as
+    ``name: something`` must not be mistaken for the declared skill name.
+    """
     skill_md = skill_dir / "SKILL.md"
     if not skill_md.is_file():
         raise FileNotFoundError(f"SKILL.md not found in {skill_dir}")
     text = skill_md.read_text(encoding="utf-8", errors="replace")
     fm = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
-    block = fm.group(1) if fm else text
-    name_match = FRONTMATTER_NAME_RE.search(block)
+    if fm is None:
+        raise ValueError(f"SKILL.md has no '---' frontmatter block: {skill_md}")
+    name_match = FRONTMATTER_NAME_RE.search(fm.group(1))
     if not name_match:
         raise ValueError(f"SKILL.md frontmatter has no 'name' field: {skill_md}")
     name = name_match.group(1)
@@ -131,6 +140,7 @@ class OpenCodeHarness:
         self.timeout_s = timeout_s
         self.title = title  # --title value; the evaluator updates it per run
         self._attach_url: str | None = None
+        self._server_process: subprocess.Popen | None = None
         if serve:
             self.ensure_server()
 
@@ -153,6 +163,15 @@ class OpenCodeHarness:
 
     def run_task(self, task_prompt: str, sandbox_dir: Path) -> HarnessRunResult:
         """Run ``opencode run`` non-interactively and parse its event stream."""
+        if not task_prompt.strip():
+            return HarnessRunResult(exit_code=-1, duration_s=0.0, error="task prompt is empty")
+        if not sandbox_dir.is_dir():
+            return HarnessRunResult(
+                exit_code=-1,
+                duration_s=0.0,
+                error=f"sandbox directory does not exist: {sandbox_dir}",
+            )
+
         cmd = [
             self.opencode_bin,
             "run",
@@ -197,7 +216,7 @@ class OpenCodeHarness:
         summary = parse_events(proc.stdout, skill_name=self._installed_skill_name(sandbox_dir))
         error = None
         if proc.returncode != 0:
-            stderr_tail = (proc.stderr or "").strip()[-500:]
+            stderr_tail = (proc.stderr or "").strip()[-2000:]
             error = stderr_tail or f"opencode exited with code {proc.returncode}"
 
         return HarnessRunResult(
@@ -217,12 +236,26 @@ class OpenCodeHarness:
     # -- serve mode --------------------------------------------------------
 
     def _installed_skill_name(self, sandbox_dir: Path) -> str | None:
-        """Name of the single skill installed in the sandbox (None = match any)."""
+        """Name of the single skill installed in the sandbox (None = match any).
+
+        ``prepare`` installs exactly one skill, so more than one directory means
+        the sandbox was reused or hand-modified: the trigger metric would
+        silently widen to "any skill call counts", so it is logged.
+        """
         skills_root = sandbox_dir / ".opencode" / "skills"
         if not skills_root.is_dir():
             return None
         names = [p.name for p in skills_root.iterdir() if p.is_dir()]
-        return names[0] if len(names) == 1 else None
+        if len(names) > 1:
+            logger.warning(
+                "sandbox %s holds %d installed skills (%s); skill_loaded falls back to "
+                "matching any skill call",
+                sandbox_dir,
+                len(names),
+                ", ".join(sorted(names)),
+            )
+            return None
+        return names[0] if names else None
 
     @staticmethod
     def _port_open(host: str, port: int, timeout_s: float = 1.0) -> bool:
@@ -235,22 +268,44 @@ class OpenCodeHarness:
     def ensure_server(
         self, host: str = SERVE_HOST, port: int = SERVE_PORT, wait_s: float = 30.0
     ) -> str:
-        """Detect or start ``opencode serve``; enable --attach for later runs."""
+        """Detect or start ``opencode serve``; enable --attach for later runs.
+
+        A server this instance started is owned by it: the handle is kept so the
+        child is terminated on failure paths, at interpreter exit, and by
+        ``shutdown_server``. A server that was already listening is left alone.
+        """
         url = f"http://{host}:{port}"
-        if not self._port_open(host, port):
-            proc = subprocess.Popen(
-                [self.opencode_bin, "serve"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            deadline = time.time() + wait_s
-            while time.time() < deadline:
-                if self._port_open(host, port):
-                    break
-                if proc.poll() is not None:
-                    raise RuntimeError(f"opencode serve exited early (code {proc.returncode})")
-                time.sleep(0.5)
-            else:
-                raise TimeoutError(f"opencode serve did not become ready in {wait_s}s")
-        self._attach_url = url
-        return url
+        if self._port_open(host, port):
+            self._attach_url = url
+            return url
+
+        proc = subprocess.Popen(
+            [self.opencode_bin, "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._server_process = proc
+        atexit.register(self.shutdown_server)
+        deadline = time.time() + wait_s
+        while time.time() < deadline:
+            if self._port_open(host, port):
+                self._attach_url = url
+                return url
+            if proc.poll() is not None:
+                self.shutdown_server()
+                raise RuntimeError(f"opencode serve exited early (code {proc.returncode})")
+            time.sleep(0.5)
+        self.shutdown_server()
+        raise TimeoutError(f"opencode serve did not become ready in {wait_s}s")
+
+    def shutdown_server(self) -> None:
+        """Terminate the ``opencode serve`` child started by this instance, if any."""
+        proc, self._server_process = self._server_process, None
+        if proc is None or proc.poll() is not None:
+            return
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)

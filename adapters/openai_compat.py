@@ -7,6 +7,12 @@ from .base import ModelAdapter, StructuredOutputRejectedError
 
 logger = logging.getLogger(__name__)
 
+# Headers this adapter owns. A configured custom header must not silently
+# replace them: an overridden Authorization/Content-Type turns a routing
+# mistake into an auth failure (or a cross-tenant request) that is very hard to
+# read from a 401.
+RESERVED_HEADERS = frozenset({"authorization", "content-type", "host", "api-key", "x-api-key"})
+
 
 class OpenAICompatAdapter(ModelAdapter):
     """Adapter for OpenAI-compatible APIs — uses sync httpx.Client for thread safety.
@@ -29,7 +35,7 @@ class OpenAICompatAdapter(ModelAdapter):
         self.fallback_model = fallback_model
         self.fallback_base_url = fallback_base_url.rstrip("/") if fallback_base_url else None
         self.fallback_api_key = fallback_api_key
-        self.extra_headers: dict[str, str] = dict(extra_headers) if extra_headers else {}
+        self.extra_headers: dict[str, str] = self._validate_extra_headers(extra_headers)
         self._has_fallback = bool(
             self.fallback_model and self.fallback_base_url and self.fallback_api_key
         )
@@ -39,6 +45,19 @@ class OpenAICompatAdapter(ModelAdapter):
             http1=True,
             http2=False,
         )
+
+    @staticmethod
+    def _validate_extra_headers(extra_headers: dict[str, str] | None) -> dict[str, str]:
+        """Copy config headers, rejecting any that would clobber an owned header."""
+        cleaned = dict(extra_headers) if extra_headers else {}
+        reserved = [k for k in cleaned if k.strip().lower() in RESERVED_HEADERS]
+        if reserved:
+            raise ValueError(
+                "extra_headers may not override adapter-owned headers: "
+                + ", ".join(sorted(reserved))
+                + " (owned: authorization, content-type, host, api-key, x-api-key)"
+            )
+        return cleaned
 
     @staticmethod
     def _extract_error_detail(response: httpx.Response) -> str:

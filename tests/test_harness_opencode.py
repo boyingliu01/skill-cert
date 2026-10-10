@@ -133,6 +133,16 @@ def test_extract_skill_name_no_skill_md(tmp_path):
         extract_skill_name(tmp_path)
 
 
+def test_extract_skill_name_requires_frontmatter(tmp_path):
+    """A ``name:`` line in the body must not be read as the declared skill name."""
+    skill_dir = tmp_path / "s"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("# Title\n\nname: sneaky-name\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"no '---' frontmatter"):
+        extract_skill_name(skill_dir)
+
+
 # -- prepare -------------------------------------------------------------------
 
 
@@ -355,6 +365,48 @@ def test_run_task_attach_url_adds_flag(tmp_path):
     assert cmd[cmd.index("--attach") + 1] == "http://127.0.0.1:4096"
 
 
+def test_run_task_rejects_missing_sandbox_without_spawning(tmp_path):
+    harness = OpenCodeHarness(model="prov/m")
+
+    with patch("adapters.harness.opencode_harness.subprocess.run") as mock_run:
+        result = harness.run_task("go", tmp_path / "absent")
+
+    assert result.exit_code == -1
+    assert "sandbox directory does not exist" in result.error
+    mock_run.assert_not_called()
+
+
+def test_run_task_rejects_empty_prompt_without_spawning(tmp_path):
+    sandbox = tmp_path / "sbx"
+    sandbox.mkdir()
+    harness = OpenCodeHarness(model="prov/m")
+
+    with patch("adapters.harness.opencode_harness.subprocess.run") as mock_run:
+        result = harness.run_task("   ", sandbox)
+
+    assert result.error == "task prompt is empty"
+    mock_run.assert_not_called()
+
+
+def test_run_task_warns_when_sandbox_holds_two_skills(tmp_path, caplog):
+    """Ambiguous install widens skill matching — loudly, not silently."""
+    sandbox = tmp_path / "sbx"
+    for name in ("alpha-skill", "beta-skill"):
+        (sandbox / ".opencode" / "skills" / name).mkdir(parents=True)
+    harness = OpenCodeHarness(model="prov/m")
+
+    with patch(
+        "adapters.harness.opencode_harness.subprocess.run",
+        return_value=make_completed(skill_tool_event("beta-skill")),
+    ):
+        with caplog.at_level("WARNING", logger="adapters.harness.opencode_harness"):
+            result = harness.run_task("go", sandbox)
+
+    assert "2 installed skills" in caplog.text
+    assert "alpha-skill, beta-skill" in caplog.text
+    assert result.skill_loaded is True
+
+
 # -- serve mode -----------------------------------------------------------------
 
 
@@ -375,6 +427,49 @@ def test_ensure_server_raises_when_opencode_dies():
         with patch("adapters.harness.opencode_harness.subprocess.Popen", return_value=dead):
             with pytest.raises(RuntimeError, match="exited early"):
                 harness.ensure_server(wait_s=0.1)
+
+
+def test_ensure_server_does_not_spawn_when_the_port_is_already_open():
+    harness = OpenCodeHarness(model="prov/m")
+    with patch.object(OpenCodeHarness, "_port_open", return_value=True):
+        with patch("adapters.harness.opencode_harness.subprocess.Popen") as mock_popen:
+            harness.ensure_server()
+
+    mock_popen.assert_not_called()
+    assert harness._server_process is None
+
+
+def test_ensure_server_terminates_a_child_that_never_becomes_ready():
+    harness = OpenCodeHarness(model="prov/m")
+    child = MagicMock()
+    child.poll.return_value = None
+    with patch.object(OpenCodeHarness, "_port_open", return_value=False):
+        with patch("adapters.harness.opencode_harness.subprocess.Popen", return_value=child):
+            with pytest.raises(TimeoutError, match="did not become ready"):
+                harness.ensure_server(wait_s=0.0)
+
+    child.terminate.assert_called_once()
+    assert harness._server_process is None
+    assert harness._attach_url is None
+
+
+def test_shutdown_server_terminates_only_the_child_this_instance_started():
+    harness = OpenCodeHarness(model="prov/m")
+    child = MagicMock()
+    child.poll.return_value = None
+    with patch.object(OpenCodeHarness, "_port_open", side_effect=[False, True]):
+        with patch("adapters.harness.opencode_harness.subprocess.Popen", return_value=child):
+            url = harness.ensure_server(wait_s=1.0)
+
+    assert url == "http://127.0.0.1:4096"
+    assert harness._server_process is child
+
+    harness.shutdown_server()
+    child.terminate.assert_called_once()
+    assert harness._server_process is None
+
+    harness.shutdown_server()
+    assert child.terminate.call_count == 1
 
 
 # -- dsh stub --------------------------------------------------------------------

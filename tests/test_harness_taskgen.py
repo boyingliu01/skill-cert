@@ -92,6 +92,29 @@ def test_generate_dedupes_ids_and_repairs_fields(tmp_path):
     assert t2.rubrics.task_completion[0].points == 1
 
 
+def test_negative_points_are_clamped_with_a_debug_trace(caplog):
+    """Silent coercion is fine for scoring, bad for debugging — log the original."""
+    payload = {
+        "leakage_check": "ok",
+        "tasks": [
+            {
+                "id": "t1",
+                "description": "Sort the list.",
+                "rubrics": {
+                    "task_completion": [{"id": "t1-tc1", "criterion": "c", "points": -5}],
+                    "instruction_following": [],
+                },
+            }
+        ],
+    }
+
+    with caplog.at_level("DEBUG", logger="engine.harness.taskgen"):
+        result = TaskGenerator(make_adapter(payload)).generate("s", "", "body", n_tasks=1)
+
+    assert result.tasks[0].rubrics.task_completion[0].points == 1
+    assert "clamped to 1" in caplog.text
+
+
 def test_generate_truncates_to_n_tasks():
     adapter = make_adapter()
     result = TaskGenerator(adapter).generate("demo-skill", "", "body", n_tasks=1)
