@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned for v1 (from the v0.15.0 release walkthrough — all non-blocking)
+Filed as issues #95–#102 (label `v1-follow-up`), each with the seat id it came from and the
+acceptance criterion that seat asked for. #95, #96, #98, #99, #100, #101 and #102 shipped in
+0.15.2 below.
+- #97: `run_task(prompt, sandbox, title=...)` instead of the evaluator rewriting
+  `HarnessAdapter.title` per run — the acceptance criterion binds it to the change that
+  introduces parallel double-runs, and that change has not landed yet, so there is still no
+  point where a per-run title could be passed instead of mutated. Its dependency is now
+  tracked as #107.
+- The 0.15.2 walkthrough opened six further non-blocking items, #103–#108: the four-level
+  JSON surface, the grader's private brace extractor, offset-dependent security patterns,
+  `skill_cert/cli/harness.py` coverage, parallel double-runs, and escalating `skipped_inputs`
+  into the verdicts.
+
+## [0.15.2] - 2026-11-10
+
 ### Added — harness report surfaces the quantities behind its labels (#95, #96, #98, #99, #101)
 - **`TaskDelta.trigger_rate`**: `compute_deltas` now passes each task's own with-runs through
   `compute_trigger_rate(records, task_id=...)`, and the per-task table gained a `Trigger`
@@ -46,14 +62,6 @@ per-run failures. Attaching to a real opencode server still just warns.
   match far more than 4 KB, so their detection is offset-dependent.
 - `README.md` / `README.zh.md` / `AGENTS.md` / `tests/AGENTS.md`: suite count 1594 → 1628
   (1627 passed, 1 skipped).
-
-### Planned for v1 (from the v0.15.0 release walkthrough — all non-blocking)
-Filed as issues #95–#102 (label `v1-follow-up`), each with the seat id it came from and the
-acceptance criterion that seat asked for. #95, #96, #98, #99, #100, #101 and #102 are done above.
-- #97: `run_task(prompt, sandbox, title=...)` instead of the evaluator rewriting
-  `HarnessAdapter.title` per run — the acceptance criterion binds it to the change that
-  introduces parallel double-runs, and that change has not landed yet, so there is still no
-  point where a per-run title could be passed instead of mutated.
 
 ## [0.15.1] - 2026-10-10
 
